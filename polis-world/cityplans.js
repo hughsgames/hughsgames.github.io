@@ -619,72 +619,165 @@ const SPIRAL = (() => { const a = []; for (let z = -36; z <= 36; z += 2) for (le
 // ---------- the cities ----------
 // Every plan is written around the wonder that's already there (its anchor x, z). +z is "south" on the map.
 const CITY_PLANS = {
+  // Imperial Rome, a million people strong: the Forum at its heart, the great baths, the Circus Maximus, the
+  // Pantheon, the Temple of Jupiter on the Capitoline hill, and an aqueduct marching in across the plain. The
+  // Colosseum itself stands east of the city (see rome() in worldgen.js) with the Arch of Constantine beside it.
   rome: (p) => ({
-    cx: p.x - 24, cz: p.z, R: 46, shape: 'square', S: 12, style: 'roman', colonnade: false, markets: 0.08, gardens: 0.05,
-    wall: { b: B.limestone, h: 6, trim: B.brick }, keep: [p.rect],
+    cx: p.x - 92, cz: p.z, R: 56, shape: 'square', S: 12, style: 'roman', colonnade: false, markets: 0.08, gardens: 0.05,
+    wall: { b: B.limestone, h: 7, trim: B.brick }, keep: [p.rect],
     monuments: [
-      { name: 'The Forum', at: [-30, -16], size: [22, 15], ground: B.stoneBricks, plaza: true, build(x0, z0, gy) {
-        // Temples round a paved square: Saturn, the round Temple of Vesta, the Senate house and a long basilica.
-        this.temple(x0 + 4, z0 + 4, gy, 3, 2, 4, [0, 1]);
-        this.fill(x0 + 15, gy, z0 + 1, x0 + 20, gy + 5, z0 + 5, B.brick); this.fill(x0 + 17, gy, z0 + 5, x0 + 18, gy + 2, z0 + 5, 0); this.gableRoof(x0 + 14, z0, x0 + 21, z0 + 6, gy + 6, B.brick, false);
-        this.ring(x0 + 11.5, z0 + 3.5, gy, gy + 3, 2.6, 1.6, B.column); this.dome(x0 + 11.5, z0 + 3.5, gy + 4, 2.6, B.brick);
-        this.fill(x0 + 1, gy, z0 + 10, x0 + 20, gy, z0 + 14, B.marble);
-        this.colonnadeRect(x0 + 1, z0 + 10, x0 + 20, z0 + 14, gy + 1, 4);
-        this.fill(x0 + 1, gy + 5, z0 + 10, x0 + 20, gy + 5, z0 + 14, B.limestone); this.gableRoof(x0 + 1, z0 + 10, x0 + 20, z0 + 14, gy + 6, B.brick, true);
-        this.statue(x0 + 11, z0 + 7, gy);
+      { name: 'The Forum', at: [24, -11], size: [34, 22], need: 0.82, ground: B.stoneBricks, plaza: true, build(x0, z0, gy) {
+        const x1 = x0 + 33, z1 = z0 + 21, mz = z0 + 11;
+        // The Via Sacra runs the length of the square, with a triumphal arch at the eastern end.
+        this.fill(x0, gy - 1, mz - 2, x1, gy - 1, mz + 2, B.marble);
+        this.fill(x1 - 5, gy, mz - 4, x1 - 1, gy + 8, mz, B.marble);
+        this.fill(x1 - 4, gy, mz - 3, x1 - 2, gy + 5, mz, 0);
+        this.fill(x1 - 6, gy + 9, mz - 5, x1, gy + 9, mz + 1, B.marble);
+        for (const dx of [-5, -3, -1]) this.fill(x1 + dx, gy + 10, mz - 5, x1 + dx, gy + 11, mz + 1, B.stoneBricks);
+        this.statue(x1 - 3, mz - 2, gy + 12);
+        // The Temple of Saturn: eight columns on a high podium, where Rome kept its treasury.
+        this.fill(x0 + 2, gy, z0 + 1, x0 + 13, gy + 2, z0 + 9, B.limestone);
+        this.stairs(x0 + 7, z0 + 10, gy, 3, 3, [0, 1], B.limestone, 3);
+        for (let x = x0 + 3; x <= x0 + 12; x += 2) for (const z of [z0 + 2, z0 + 8]) this.fill(x, gy + 3, z, x, gy + 9, z, B.column);
+        for (const x of [x0 + 3, x0 + 12]) for (let z = z0 + 2; z <= z0 + 8; z += 2) this.fill(x, gy + 3, z, x, gy + 9, z, B.column);
+        this.fill(x0 + 3, gy + 10, z0 + 2, x0 + 12, gy + 10, z0 + 8, B.marble);
+        this.gableRoof(x0 + 2, z0 + 1, x0 + 13, z0 + 9, gy + 11, B.marble, false);
+        // The Basilica Julia: a long law court, two storeys of arcades round a hall.
+        this.fill(x0 + 2, gy - 1, z0 + 14, x0 + 24, gy - 1, z1 - 1, B.marble);
+        for (let x = x0 + 2; x <= x0 + 24; x += 2) for (const z of [z0 + 14, z1 - 1]) this.fill(x, gy, z, x, gy + 5, z, B.column);
+        for (const x of [x0 + 2, x0 + 24]) for (let z = z0 + 14; z <= z1 - 1; z += 2) this.fill(x, gy, z, x, gy + 5, z, B.column);
+        this.fill(x0 + 2, gy + 6, z0 + 14, x0 + 24, gy + 6, z1 - 1, B.limestone);
+        this.fill(x0 + 4, gy + 7, z0 + 16, x0 + 22, gy + 11, z1 - 3, B.brick);
+        this.fill(x0 + 5, gy + 8, z0 + 17, x0 + 21, gy + 10, z1 - 4, 0);
+        for (let x = x0 + 6; x <= x0 + 20; x += 3) { this.fill(x, gy + 8, z0 + 16, x, gy + 9, z0 + 16, 0); this.fill(x, gy + 8, z1 - 3, x, gy + 9, z1 - 3, 0); }
+        this.gableRoof(x0 + 4, z0 + 16, x0 + 22, z1 - 3, gy + 12, B.brick, true);
+        // The Curia, where the Senate met: a tall brick hall with bronze doors.
+        this.fill(x0 + 18, gy, z0 + 1, x0 + 27, gy + 10, z0 + 9, B.brick);
+        this.fill(x0 + 19, gy, z0 + 2, x0 + 26, gy + 8, z0 + 8, 0);
+        this.fill(x0 + 22, gy, z0 + 9, x0 + 23, gy + 3, z0 + 9, 0);
+        for (const x of [x0 + 20, x0 + 25]) this.fill(x, gy + 5, z0 + 9, x, gy + 6, z0 + 9, 0);
+        this.fill(x0 + 18, gy + 11, z0 + 1, x0 + 27, gy + 11, z0 + 9, B.limestone);
+        this.gableRoof(x0 + 18, z0 + 1, x0 + 27, z0 + 9, gy + 12, B.brick, false);
+        // The round Temple of Vesta, where the sacred fire was never allowed to go out.
+        this.disc(x0 + 30.5, z0 + 5.5, gy, 4, B.marble);
+        this.ring(x0 + 30.5, z0 + 5.5, gy + 1, gy + 6, 4, 3, B.column);
+        this.ring(x0 + 30.5, z0 + 5.5, gy + 1, gy + 5, 2.4, 1.2, B.marble);
+        this.put(x0 + 30, gy + 1, z0 + 5, B.campfire);
+        this.dome(x0 + 30.5, z0 + 5.5, gy + 7, 4.2, B.limestone, 0.9);
+        // The Rostra, the platform of ships' beaks that speakers stood on.
+        this.fill(x0 + 14, gy, mz - 1, x0 + 19, gy + 2, mz + 3, B.limestone);
+        for (let z = mz - 1; z <= mz + 3; z += 2) this.put(x0 + 13, gy + 2, z, B.bronzeBlock);
+        this.statue(x0 + 16, mz + 1, gy + 3);
       } },
-      { name: "Trajan's Column", at: [-36, -22], size: [5, 5], build(x0, z0, gy) { this.fill(x0 + 1, gy, z0 + 1, x0 + 3, gy + 1, z0 + 3, B.marble); this.fill(x0 + 2, gy + 2, z0 + 2, x0 + 2, gy + 15, z0 + 2, B.column); this.fill(x0 + 1, gy + 16, z0 + 1, x0 + 3, gy + 16, z0 + 3, B.marble); this.fill(x0 + 2, gy + 17, z0 + 2, x0 + 2, gy + 18, z0 + 2, B.goldBlock); } },
-      { name: 'The Pantheon', at: [-26, -43], size: [17, 23], build(x0, z0, gy) {
-        const cx = x0 + 8.5, cz = z0 + 8.5;
-        this.ring(cx, cz, gy, gy + 7, 8.5, 7.2, B.brick);
-        this.disc(cx, cz, gy - 1, 7.5, B.marble);
-        this.dome(cx, cz, gy + 8, 8.5, B.limestone, 1.4);
-        this.fill(x0 + 7, gy, z0 + 15, x0 + 9, gy + 3, z0 + 17, 0);
-        // The porch of columns in front.
-        this.fill(x0 + 3, gy - 1, z0 + 16, x0 + 13, gy - 1, z0 + 22, B.marble);
-        for (let x = x0 + 3; x <= x0 + 13; x += 2) for (const z of [z0 + 22, z0 + 19]) this.fill(x, gy, z, x, gy + 5, z, B.column);
-        this.fill(x0 + 3, gy + 6, z0 + 16, x0 + 13, gy + 6, z0 + 22, B.marble);
-        this.gableRoof(x0 + 3, z0 + 16, x0 + 13, z0 + 22, gy + 7, B.marble, false);
+      { name: "Trajan's Column", at: [16, -22], size: [6, 6], build(x0, z0, gy) {
+        this.fill(x0 + 1, gy, z0 + 1, x0 + 4, gy + 1, z0 + 4, B.marble);
+        this.fill(x0 + 2, gy + 2, z0 + 2, x0 + 3, gy + 19, z0 + 3, B.column);
+        this.fill(x0 + 1, gy + 20, z0 + 1, x0 + 4, gy + 20, z0 + 4, B.marble);
+        this.fill(x0 + 2, gy + 21, z0 + 2, x0 + 3, gy + 22, z0 + 3, B.goldBlock);
       } },
-      { name: 'The Circus Maximus', at: [-30, 16], size: [46, 15], build(x0, z0, gy) {
-        // A long racetrack with tiers of seats, a central barrier with an obelisk, and starting gates.
-        const x1 = x0 + 45, z1 = z0 + 14, mz = z0 + 7;
+      { name: 'The Pantheon', at: [-26, -42], size: [26, 32], need: 0.82, build(x0, z0, gy) {
+        // A drum of brick holding up the widest dome anyone built for 1,300 years, with a hole open to the sky.
+        const cx = x0 + 12.5, cz = z0 + 12.5;
+        this.disc(cx, cz, gy - 1, 11.5, B.marble);
+        this.ring(cx, cz, gy, gy + 11, 11.5, 9.8, B.brick);
+        this.ring(cx, cz, gy, gy + 11, 9.8, 9.2, B.marble);
+        this.dome(cx, cz, gy + 12, 11.5, B.limestone, 1.6);
+        for (let k = 0; k < 5; k++) this.ring(cx, cz, gy + 12 + k * 2, gy + 12 + k * 2, 11.5 - k * 1.6, 10.2 - k * 1.6, B.stoneBricks);
+        this.fill(x0 + 10, gy, z0 + 22, x0 + 15, gy + 6, z0 + 24, 0);
+        // The porch: sixteen granite columns under a gable.
+        this.fill(x0 + 5, gy - 1, z0 + 23, x0 + 20, gy - 1, z0 + 31, B.marble);
+        for (let x = x0 + 5; x <= x0 + 20; x += 3) for (const z of [z0 + 31, z0 + 27]) this.fill(x, gy, z, x, gy + 8, z, B.column);
+        for (const x of [x0 + 5, x0 + 20]) for (let z = z0 + 23; z <= z0 + 31; z += 2) this.fill(x, gy, z, x, gy + 8, z, B.column);
+        this.fill(x0 + 5, gy + 9, z0 + 23, x0 + 20, gy + 9, z0 + 31, B.marble);
+        this.gableRoof(x0 + 5, z0 + 23, x0 + 20, z0 + 31, gy + 10, B.bronzeBlock, true);
+      } },
+      { name: 'The Temple of Jupiter', at: [2, -34], size: [24, 28], need: 0.78, build(x0, z0, gy) {
+        // The greatest temple in Rome, high on the Capitoline hill above the Forum.
+        const bx0 = x0 + 2, bz0 = z0 + 2, bx1 = x0 + 21, bz1 = z0 + 21;
+        for (let t = 0; t < 4; t++) this.fill(bx0 - 1 + t, gy + t, bz0 - 1 + t, bx1 + 1 - t, gy + t, bz1 + 1 - t, B.limestone);
+        const base = gy + 4;
+        this.stairs((bx0 + bx1) >> 1, bz1 + 2, gy, 5, 4, [0, -1], B.limestone, 5);
+        for (let x = bx0 + 1; x <= bx1 - 1; x += 3) for (const z of [bz0 + 1, bz1 - 1, bz1 - 6]) this.fill(x, base, z, x, base + 9, z, B.column);
+        for (const x of [bx0 + 1, bx1 - 1]) for (let z = bz0 + 1; z <= bz1 - 1; z += 3) this.fill(x, base, z, x, base + 9, z, B.column);
+        this.fill(bx0 + 4, base, bz0 + 4, bx1 - 4, base + 8, bz1 - 8, B.marble);
+        this.fill(bx0 + 5, base, bz0 + 5, bx1 - 5, base + 6, bz1 - 9, 0);
+        this.fill(((bx0 + bx1) >> 1) - 1, base, bz1 - 8, ((bx0 + bx1) >> 1) + 1, base + 4, bz1 - 8, 0);
+        this.statue((bx0 + bx1) >> 1, bz0 + 7, base);
+        this.fill(bx0 + 1, base + 10, bz0 + 1, bx1 - 1, base + 10, bz1 - 1, B.marble);
+        this.gableRoof(bx0 + 1, bz0 + 1, bx1 - 1, bz1 - 1, base + 11, B.goldBlock, false);
+      } },
+      { name: 'The Circus Maximus', at: [-26, 26], size: [58, 20], need: 0.7, build(x0, z0, gy) {
+        // A quarter of a million people watched the chariot races here.
+        const x1 = x0 + 57, z1 = z0 + 19, mz = z0 + 10;
         for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
-          const end = x > x1 - 7 ? Math.hypot(x - (x1 - 7), z - mz) : Math.abs(z - mz);
-          if (end > 7.5) continue;
-          if (end > 5) { const k = Math.floor(end - 5); this.fill(x, gy, z, x, gy + k + 1, z, B.limestone); this.put(x, gy + k + 2, z, k === 2 ? B.brick : B.limestone); }
+          const end = x > x1 - 10 ? Math.hypot(x - (x1 - 10), (z - mz) * 1.0) : Math.abs(z - mz);
+          if (end > 10) continue;
+          if (end > 6.5) { const k = Math.floor((end - 6.5) * 2); this.fill(x, gy, z, x, gy + k + 2, z, B.limestone); this.put(x, gy + k + 3, z, k % 3 === 2 ? B.brick : B.stoneBricks); }
           else this.put(x, gy - 1, z, B.sand);
         }
-        this.fill(x0 + 8, gy, mz, x1 - 10, gy, mz, B.stoneBricks);
-        this.obelisk((x0 + x1) >> 1, mz, gy + 1, 7);
-        for (const x of [x0 + 8, x1 - 10]) this.fill(x, gy + 1, mz, x, gy + 3, mz, B.goldBlock);
-        for (let z = z0 + 2; z <= z1 - 2; z++) { this.fill(x0, gy, z, x0, gy + 3, z, B.limestone); if ((z - z0) % 2 === 0) this.fill(x0, gy, z, x0, gy + 1, z, 0); }
+        // The spina down the middle, with the obelisk and the turning posts at each end.
+        this.fill(x0 + 12, gy, mz - 1, x1 - 14, gy, mz + 1, B.stoneBricks);
+        this.fill(x0 + 12, gy + 1, mz, x1 - 14, gy + 1, mz, B.marble);
+        this.obelisk((x0 + x1) >> 1, mz, gy + 1, 11);
+        for (const x of [x0 + 12, x1 - 14]) for (const dz of [-1, 0, 1]) this.fill(x, gy + 1, mz + dz, x, gy + 4, mz + dz, B.goldBlock);
+        // The carceres: twelve starting gates across the flat end.
+        for (let z = mz - 6; z <= mz + 6; z++) { this.fill(x0, gy, z, x0 + 1, gy + 5, z, B.brick); if ((z - mz) % 2 === 0) this.fill(x0, gy, z, x0 + 1, gy + 2, z, 0); }
+        this.fill(x0, gy + 6, mz - 6, x0 + 1, gy + 6, mz + 6, B.limestone);
       } },
-      { name: 'The Baths of Trajan', at: [10, -35], size: [22, 15], build(x0, z0, gy) {
-        const x1 = x0 + 21, z1 = z0 + 14;
-        for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (x === x0 || x === x1 || z === z0 || z === z1) this.fill(x, gy, z, x, gy + 6, z, B.brick);
-        for (const x of [x0 + 7, x0 + 14]) for (let z = z0; z <= z1; z++) this.fill(x, gy, z, x, gy + 6, z, B.brick);
-        for (const x of [x0 + 7, x0 + 14]) this.fill(x, gy, z0 + 6, x, gy + 2, z0 + 8, 0);
-        this.fill(x0 + 10, gy, z1, x0 + 11, gy + 2, z1, 0);
-        // A cold pool, a warm pool and a hot pool.
-        for (const [a, b] of [[x0 + 2, x0 + 5], [x0 + 9, x0 + 12], [x0 + 16, x0 + 19]]) { this.fill(a, gy - 2, z0 + 3, b, gy - 2, z1 - 3, B.marble); this.fill(a, gy - 1, z0 + 3, b, gy - 1, z1 - 3, B.water); }
-        for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if ((x - x0) % 7 !== 3 || (z - z0) % 7 !== 3) this.put(x, gy + 7, z, B.brick);
-        for (const x of [x0 + 3.5, x0 + 10.5, x0 + 17.5]) this.dome(x, z0 + 7.5, gy + 8, 3.5, B.limestone, 0.8);
+      { name: 'The Baths of Trajan', at: [-42, -4], size: [32, 26], need: 0.78, build(x0, z0, gy) {
+        // Free baths for the whole city: a cold hall, a warm room, a hot round room over its furnace, and a yard to
+        // exercise in. Tens of thousands of people came every day.
+        const x1 = x0 + 31, z1 = z0 + 25;
+        this.fill(x0, gy - 1, z0, x1, gy - 1, z1, B.marble);
+        for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (x === x0 || x === x1 || z === z0 || z === z1) this.fill(x, gy, z, x, gy + 8, z, B.brick);
+        // The great cold hall, with three cross-vaults and a plunge pool.
+        this.fill(x0 + 3, gy, z0 + 3, x0 + 20, gy + 11, z0 + 14, B.brick);
+        this.fill(x0 + 4, gy - 2, z0 + 4, x0 + 19, gy + 11, z0 + 13, 0);   // open to the vaults above
+        this.fill(x0 + 5, gy - 2, z0 + 5, x0 + 18, gy - 2, z0 + 12, B.marble);
+        this.fill(x0 + 5, gy - 1, z0 + 5, x0 + 18, gy - 1, z0 + 12, B.water);
+        for (const cx of [x0 + 7.5, x0 + 12.5, x0 + 17.5]) this.dome(cx, z0 + 8.5, gy + 8, 5.2, B.limestone, 0);
+        for (let x = x0 + 4; x <= x0 + 19; x += 5) for (const z of [z0 + 4, z0 + 13]) this.fill(x, gy, z, x, gy + 7, z, B.column);
+        this.fill(x0 + 10, gy, z0 + 14, x0 + 13, gy + 4, z0 + 14, 0);
+        // The hot room: a round domed hall with its furnace underneath.
+        this.ring(x0 + 25.5, z0 + 8.5, gy, gy + 8, 6, 4.8, B.brick);
+        this.disc(x0 + 25.5, z0 + 8.5, gy - 2, 4.6, B.marble);
+        this.disc(x0 + 25.5, z0 + 8.5, gy - 1, 4.6, B.water);
+        this.dome(x0 + 25.5, z0 + 8.5, gy + 9, 6, B.limestone, 1.1);
+        this.fill(x0 + 20, gy, z0 + 8, x0 + 21, gy + 3, z0 + 9, 0);
+        this.put(x0 + 25, gy - 3, z0 + 8, B.furnaceLit); this.put(x0 + 26, gy - 3, z0 + 9, B.furnaceLit);
+        // The palaestra: an open yard with a colonnade all round, for wrestling and ball games.
+        this.fill(x0 + 3, gy - 1, z0 + 17, x1 - 3, gy - 1, z1 - 2, B.sand);
+        this.colonnadeRect(x0 + 3, z0 + 17, x1 - 3, z1 - 2, gy, 5);
+        this.fill(x0 + 3, gy + 5, z0 + 17, x1 - 3, gy + 5, z0 + 18, B.limestone);
+        this.fill(x0 + 3, gy + 5, z1 - 3, x1 - 3, gy + 5, z1 - 2, B.limestone);
+        this.fill(x0 + 14, gy, z1, x0 + 17, gy + 4, z1, 0);
       } },
-      { name: 'The Aqueduct', at: [26, -18], size: [20, 3], need: 0.6, noFlatten: true, build(x0, z0, gy) {
-        // Arches on piers carrying a water channel across the valley into the city.
+      { name: 'The Aqueduct', at: [6, 24], size: [48, 5], need: 0.5, noFlatten: true, build(x0, z0, gy) {
+        // Two tiers of arches carrying a channel of fresh water into the city, ending in a tank and a fountain.
         let top = 0;
-        for (let x = x0; x <= x0 + 19; x++) top = Math.max(top, this.ground(x, z0 + 1));
-        top = Math.min(top + 8, H - 6);
-        for (let x = x0; x <= x0 + 19; x++) {
-          const g = this.ground(x, z0 + 1), pier = (x - x0) % 4 === 0;
-          for (let z = z0; z <= z0 + 2; z++) {
-            if (pier) this.fill(x, g - 1, z, x, top, z, B.limestone);
-            else { this.fill(x, top - 1, z, x, top, z, B.limestone); if ((x - x0) % 4 !== 2) this.put(x, top - 2, z, B.limestone); }
+        for (let x = x0; x <= x0 + 47; x++) top = Math.max(top, this.ground(x, z0 + 2));
+        top = Math.min(top + 15, H - 9);
+        const mid = top - 8;
+        for (let x = x0; x <= x0 + 47; x++) {
+          const g = this.ground(x, z0 + 2), bigPier = (x - x0) % 6 === 0, smallPier = (x - x0) % 3 === 0;
+          for (let z = z0; z <= z0 + 3; z++) {
+            if (bigPier) this.fill(x, g - 1, z, x, mid, z, B.limestone);
+            else { this.fill(x, mid - 1, z, x, mid, z, B.limestone); if ((x - x0) % 6 !== 3) this.put(x, mid - 2, z, B.limestone); }
+            if (smallPier) this.fill(x, mid + 1, z, x, top, z, B.limestone);
+            else { this.fill(x, top - 1, z, x, top, z, B.limestone); if ((x - x0) % 3 !== 1) this.put(x, top - 2, z, B.limestone); }
           }
-          this.put(x, top + 1, z0, B.limestone); this.put(x, top + 1, z0 + 2, B.limestone); this.put(x, top + 1, z0 + 1, B.water);
+          this.put(x, top + 1, z0, B.stoneBricks); this.put(x, top + 1, z0 + 3, B.stoneBricks);
+          this.put(x, top + 1, z0 + 1, B.water); this.put(x, top + 1, z0 + 2, B.water);
+          this.put(x, top + 2, z0, B.limestone); this.put(x, top + 2, z0 + 3, B.limestone);
         }
-        this.put(x0 - 1, top + 1, z0 + 1, B.limestone); this.put(x0 + 20, top + 1, z0 + 1, B.limestone);
+        // Capped at the far end so the channel stays full.
+        this.fill(x0 + 48, top, z0, x0 + 48, top + 2, z0 + 3, B.limestone);
+        // The castellum at the city end: a tank the water falls into, and a public fountain below it.
+        this.fill(x0 - 4, mid, z0 - 1, x0 - 1, top + 2, z0 + 4, B.limestone);
+        this.fill(x0 - 3, top, z0, x0 - 2, top + 1, z0 + 3, B.water);
+        this.fill(x0 - 3, mid - 1, z0 + 1, x0 - 2, top - 1, z0 + 2, B.water);
+        this.fill(x0 - 6, mid - 2, z0, x0 - 4, mid - 2, z0 + 3, B.stoneBricks);
+        this.fill(x0 - 6, mid - 1, z0 + 1, x0 - 5, mid - 1, z0 + 2, B.water);
       } },
     ],
   }),

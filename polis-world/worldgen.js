@@ -663,7 +663,7 @@ function carveTunnel(w, atl, cp, seed) {
 
 // ---------- historic sites ----------
 const SITES = [
-  { id: 'rome', tile: [17.3, 17.3], fp: [-30, -12, 14, 12] },
+  { id: 'rome', tile: [17.3, 17.3], fp: [-30, -12, 14, 12], big: [-52, -34, 42, 34] },   // fp decides where Rome goes (don't change it); big is the ground the Colosseum and its square now need
   { id: 'athens', tile: [23.3, 26.3], fp: [-16, -9, 14, 9] },
   { id: 'giza', tile: [42.0, 26.7], fp: [-27, -11, 11, 27] },
   { id: 'alexandria', tile: [34.7, 28.7], fp: [-8, -18, 9, 8] },
@@ -814,25 +814,78 @@ class Stamper {
     oak(this.w, cx + 10, p, cz + 5, 99);
     return gy;
   }
+  /// The Colosseum, at something like its real size: an oval of travertine 68 blocks by 56 and 24 high, with four
+  /// storeys of arches, banked seating all the way round, the sand of the arena, and the hypogeum underneath it —
+  /// the two floors of passages where the animals and the fighters waited their turn. Beside it stand the Arch of
+  /// Constantine and the Meta Sudans fountain, just as they do in Rome.
   rome(cx, cz, r) {
     const gy = this.level(r, WL + 1); this.flatten(r, gy, B.grass);
-    for (let dz = -10; dz <= 10; dz++) for (let dx = -13; dx <= 13; dx++) {
-      const eo = (dx / 12.5) ** 2 + (dz / 9.5) ** 2, x = cx + dx, z = cz + dz;
-      if (eo > 1) { if (eo < 1.4) this.put(x, gy - 1, z, B.gravel); continue; }
-      const ei = (dx / 6.5) ** 2 + (dz / 3.5) ** 2;
-      if (ei <= 1) { this.put(x, gy - 1, z, B.sand); continue; }
-      const a = Math.sqrt(ei), b = Math.sqrt(eo), t = Math.min(Math.max((a - 1) * b / Math.max(a - b, 0.001), 0), 1);
-      if (eo > 0.82) {
-        const h = dz > 2 && dx > 2 ? 6 : 9;
-        this.fill(x, gy, z, x, gy + h - 1, z, B.limestone);
-        if (eo > 0.92) { const k = Math.floor((Math.atan2(dz / 9.5, dx / 12.5) + Math.PI) / (2 * Math.PI) * 44); if (k % 2 === 0) for (const y of [gy, gy + 1, gy + 3, gy + 4, gy + 6]) if (y < gy + h - 1) this.put(x, y, z, 0); }
-      } else { const h = 1 + Math.floor(t * 6); this.fill(x, gy, z, x, gy + h - 2, z, B.limestone); this.put(x, gy + h - 1, z, B.stoneBricks); }
+    const A = 34, Bo = 28, aA = 16, aB = 10;          // outer semi-axes, then the arena's
+    const TOP = gy + 23, PODIUM = gy + 5, SEAT_TOP = gy + 18, FLOOR = gy - 1;
+    // How far across the seating a spot is: 0 at the arena wall, 1 at the outer wall (null = outside the building).
+    const across = (dx, dz) => {
+      const f = (s) => (dx / (aA + (A - aA) * s)) ** 2 + (dz / (aB + (Bo - aB) * s)) ** 2 - 1;
+      if (f(0) <= 0) return -1;
+      if (f(1) > 0) return null;
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 11; i++) { const m = (lo + hi) / 2; if (f(m) > 0) lo = m; else hi = m; }
+      return (lo + hi) / 2;
+    };
+    for (let dz = -Bo - 6; dz <= Bo + 6; dz++) for (let dx = -A - 6; dx <= A + 6; dx++) {
+      const x = cx + dx, z = cz + dz, s = across(dx, dz);
+      if (s === null) { this.put(x, gy - 1, z, (Math.abs(dx) + Math.abs(dz)) % 7 === 0 ? B.cobblestone : B.stoneBricks); continue; }   // the paved square round it
+      if (s < 0) {
+        // The arena: sand over the hypogeum. One end of the floor is left open so you can see down into it.
+        const open = dz > 3 && Math.abs(dx) < 11;
+        for (let y = gy - 7; y <= gy - 2; y++) {
+          const wall = (Math.abs(dx) % 5 === 0) || (Math.abs(dz) % 5 === 0);
+          this.put(x, y, z, y === gy - 7 ? B.stoneBricks : wall ? B.brick : 0);
+        }
+        if (open) { this.put(x, FLOOR, z, 0); this.put(x, gy, z, 0); }   // the floor is gone at this end: you can see down into the passages
+        else this.put(x, FLOOR, z, B.sand);
+        continue;
+      }
+      const th = Math.atan2(dz / Bo, dx / A);
+      const bay = (th + Math.PI) / (2 * Math.PI) * 38, f = bay - Math.floor(bay);   // 38 bays of arches round the building
+      const wide = f > 0.26 && f < 0.86, crown = f > 0.40 && f < 0.72;
+      const onAxis = (Math.abs(dz) <= 2 && Math.abs(dx) > aA) || (Math.abs(dx) <= 2 && Math.abs(dz) > aB);
+      if (s > 0.88) {
+        // The outer wall: three storeys of arches on piers, then a solid attic storey with small windows.
+        this.fill(x, gy, z, x, TOP, z, B.limestone);
+        for (const base of [gy, gy + 6, gy + 12]) {
+          if (wide) this.fill(x, base, z, x, base + 3, z, 0);
+          if (crown) this.put(x, base + 4, z, 0);
+        }
+        if (crown) { this.put(x, gy + 19, z, 0); this.put(x, gy + 20, z, 0); }
+        for (const y of [gy + 5, gy + 11, gy + 17, TOP]) this.put(x, y, z, B.stoneBricks);   // the cornices between storeys
+        if (f < 0.04) this.fill(x, TOP + 1, z, x, TOP + 3, z, B.column);                     // the masts that held the awning
+        continue;
+      }
+      // The cavea: rows of seats climbing from the podium at the arena's edge to the gallery at the top.
+      const h = Math.round(PODIUM + s / 0.88 * (SEAT_TOP - PODIUM));
+      this.fill(x, gy - 1, z, x, h - 1, z, B.limestone);
+      this.put(x, h, z, B.stoneBricks);
+      // Two vaulted galleries run right round behind the arches, so you can walk in off the square.
+      if (s > 0.70 && wide) { this.fill(x, gy, z, x, gy + 3, z, 0); if (crown) this.put(x, gy + 4, z, 0); this.fill(x, gy + 6, z, x, gy + 9, z, 0); if (crown) this.put(x, gy + 10, z, 0); this.put(x, gy - 1, z, B.stoneBricks); }
+      if (s < 0.06) { this.fill(x, PODIUM - 4, z, x, PODIUM, z, B.marble); this.put(x, PODIUM + 1, z, B.carvedStone); }   // the podium wall above the sand
+      if (onAxis) { this.fill(x, gy, z, x, gy + 3, z, 0); this.put(x, gy - 1, z, B.cobblestone); }                        // the four great entrance tunnels
     }
-    for (let dx = -13; dx <= 13; dx++) if (Math.abs(dx) > 6) this.fill(cx + dx, gy, cz, cx + dx, gy + 1, cz, 0);
-    for (let dz = -10; dz <= 10; dz++) if (Math.abs(dz) > 3) this.fill(cx, gy, cz + dz, cx, gy + 1, cz + dz, 0);
-    this.fill(cx - 30, gy - 1, cz - 1, cx - 14, gy - 1, cz + 1, B.cobblestone);
-    this.fill(cx - 30, gy - 1, cz - 2, cx - 14, gy - 1, cz - 2, B.stoneBricks);
-    this.fill(cx - 30, gy - 1, cz + 2, cx - 14, gy - 1, cz + 2, B.stoneBricks);
+    // Stairs down into the hypogeum from the open end of the arena, so you can walk about underneath.
+    for (let k = 0; k < 6; k++) { const z = cz + 4 + k; this.fill(cx - 1, gy - 2 - k, z, cx + 1, gy - 2 - k, z, B.stoneBricks); this.fill(cx - 1, gy - 1 - k, z, cx + 1, gy + 2, z, 0); }
+    // The Arch of Constantine and the Meta Sudans fountain, west of the amphitheatre.
+    const ax = cx - A - 10;
+    this.fill(ax - 4, gy, cz - 6, ax + 4, gy + 9, cz - 2, B.marble);
+    this.fill(ax - 1, gy, cz - 6, ax + 1, gy + 5, cz - 2, 0);
+    for (const dx of [-3, 3]) this.fill(ax + dx, gy, cz - 6, ax + dx, gy + 3, cz - 2, 0);
+    this.fill(ax - 5, gy + 10, cz - 7, ax + 5, gy + 10, cz - 1, B.marble);
+    for (const dx of [-4, -2, 2, 4]) this.fill(ax + dx, gy + 11, cz - 7, ax + dx, gy + 12, cz - 1, B.stoneBricks);
+    for (const dx of [-4, 4]) for (const dz of [-6, -2]) this.fill(ax + dx, gy, cz + dz, ax + dx, gy + 9, cz + dz, B.column);
+    this.disc(ax, cz + 4, gy - 1, 3.5, B.stoneBricks); this.disc(ax, cz + 4, gy, 2.5, B.water);
+    this.fill(ax, gy, cz + 4, ax, gy + 4, cz + 4, B.limestone); this.put(ax, gy + 5, cz + 4, B.water);
+    // The road in from the city, with kerbstones.
+    this.fill(cx - A - 34, gy - 1, cz - 1, cx - A - 2, gy - 1, cz + 1, B.cobblestone);
+    this.fill(cx - A - 34, gy - 1, cz - 2, cx - A - 2, gy - 1, cz - 2, B.stoneBricks);
+    this.fill(cx - A - 34, gy - 1, cz + 2, cx - A - 2, gy - 1, cz + 2, B.stoneBricks);
     return gy;
   }
   alexandria(cx, cz) {
@@ -1213,7 +1266,7 @@ self.onmessage = (e) => {
   const placed = {};
   SITES.forEach((site, k) => {
     const anchor = site.fixed ? [Math.floor(site.tile[1] * BPT), Math.floor(site.tile[0] * BPT)] : st.choose(site, taken);
-    const f = site.fp;
+    const f = site.big || site.fp;   // some wonders need more ground than their placement footprint
     const r = [Math.max(anchor[0] + f[0], 3), Math.max(anchor[1] + f[1], 3), Math.min(anchor[0] + f[2], w.n - 4), Math.min(anchor[1] + f[3], w.n - 4)];
     st.site = k;
     const ground = st.build(site.id, anchor[0], anchor[1], r);
