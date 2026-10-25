@@ -967,10 +967,12 @@ function updateHerds(dt) {
   for (let k = 0; k < count; k++) { const [mx, mz] = world.nearestLand(x + k * 2 - 2, z + (k % 2) * 2); addMob(kind, mx + 0.5, mz + 0.5); }
 }
 // ---------- riding ----------
-// Horses and camels can be ridden. This is how the world really worked: a Persian messenger changed horses at stations
-// along the Royal Road and carried a letter 2,700 km in a week, and camels crossed deserts that would kill a horse.
-const RIDEABLE = { horse: 8.4, camel: 6.8 };
-const seatY = (m) => (m.kind === 'camel' ? 1.42 : 1.22) * (m.young ? 0.6 : 1);
+// Horses, camels, elephants, yaks and llamas can all be ridden or driven. This is how the world really worked: a
+// Persian messenger changed horses along the Royal Road and carried a letter 2,700 km in a week; camels crossed
+// deserts that would kill a horse; elephants carried kings and fought in battles; yaks and llamas went where carts
+// could not. Each goes at its own pace, and you sit higher on the big ones.
+const RIDEABLE = { horse: 8.4, camel: 6.8, elephant: 5.0, yak: 4.6, llama: 5.4 };
+const seatY = (m) => ({ camel: 1.42, elephant: 2.35, yak: 1.32, llama: 1.25 }[m.kind] ?? 1.22) * (m.young ? 0.6 : 1);
 function mount(m) {
   if (m.flee > 0 || m.angry > 0) { message(`The ${SPECIES[m.kind].name} shies away. Come back when it has calmed down.`); return; }
   P.ride = m; m.ridden = true; m.wait = 0; m.toSea = null;
