@@ -20,7 +20,7 @@ const WORLD_VERSION = 6;   // 5: Olympia · 6: the Great Wall reaches round Chin
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
-const input = { mode: matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'desk', keys: new Set(), joy: { x: 0, y: 0 }, mining: false, buildMode: false };
+const input = { mode: matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'desk', keys: new Set(), joy: { x: 0, y: 0 }, mining: false, buildMode: false, freeLook: false };
 function setMode(m) {
   if (input.mode === m) return;
   input.mode = m;
@@ -286,17 +286,24 @@ addEventListener('blur', () => { input.keys.clear(); input.mining = false; });
 canvas.addEventListener('mousedown', (e) => {
   setMode('desk');
   if (!G.started) return;
-  if (!document.pointerLockElement) { requestLock(); return; }
+  if (!document.pointerLockElement && !input.freeLook) { requestLock(); return; }
+  if (input.freeLook) drag = { x: e.clientX, y: e.clientY, moved: false };
   if (D.mode) { if (e.button === 2 && D.mode === 'place') { D.rot = (D.rot + 1) % 4; buildGhost(); } else if (e.button === 0) designAction(); return; }
   if (e.button === 0) { const a = aimFrom(); if (a.who) interact(a.who); else input.mining = true; }
   if (e.button === 2) useOrPlace();
 });
-addEventListener('mouseup', (e) => { if (e.button === 0) input.mining = false; });
+addEventListener('mouseup', (e) => { if (e.button === 0) input.mining = false; drag = null; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+let drag = null;
+const turnBy = (mx, my) => { P.yaw -= mx * 0.0024; P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - my * 0.0024)); };
 addEventListener('mousemove', (e) => {
-  if (document.pointerLockElement !== canvas) return;
-  P.yaw -= e.movementX * 0.0024;
-  P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - e.movementY * 0.0024));
+  if (document.pointerLockElement === canvas) { turnBy(e.movementX, e.movementY); return; }
+  // Without the mouse lock (Safari and anything that refuses it) you look by dragging instead.
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) > 3) { drag.moved = true; input.mining = false; }
+  if (drag.moved) turnBy(dx * 1.6, dy * 1.6);
+  drag.x = e.clientX; drag.y = e.clientY;
 });
 addEventListener('wheel', (e) => {
   if (!G.started || openPanel) return;
@@ -305,7 +312,19 @@ addEventListener('wheel', (e) => {
 }, { passive: false });
 function requestLock() {
   if (input.mode !== 'desk') return;
-  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) { /* some viewers don't allow it */ }
+  if (input.freeLook) { refreshPaused(); return; }
+  let asked = false;
+  try { const p = canvas.requestPointerLock(); asked = true; if (p && p.catch) p.catch(dragLookInstead); } catch (_) { dragLookInstead(); }
+  // Some browsers refuse to hold the mouse and never say so. If it hasn't caught by now, play without it.
+  if (asked) setTimeout(() => { if (document.pointerLockElement !== canvas) dragLookInstead(); }, 700);
+}
+/// This browser won't let the game hold the mouse, so the player looks around by dragging instead.
+function dragLookInstead() {
+  if (input.freeLook) return;
+  input.freeLook = true;
+  updateHelp();
+  refreshPaused();
+  toast('Drag the mouse to look around', 'freelook');
 }
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
@@ -2255,7 +2274,7 @@ function closeDialogue(who) {
   dialogueOpen = false; $('dialogue').hidden = true;
   if (input.mode === 'desk') requestLock();
 }
-function refreshPaused() { $('paused').hidden = document.pointerLockElement === canvas || !G.started || input.mode !== 'desk' || !!openPanel || dialogueOpen; }
+function refreshPaused() { $('paused').hidden = document.pointerLockElement === canvas || input.freeLook || !G.started || input.mode !== 'desk' || !!openPanel || dialogueOpen; }
 function togglePanel(name) { if (openPanel === name) closePanels(); else { closePanels(true); openPanel = name; renderPanel(); if (document.pointerLockElement) document.exitPointerLock(); } }
 function closePanels(keepUnlocked) {
   for (const id of ['inventory', 'map', 'help', 'card', 'designs']) $(id).hidden = true;
@@ -2374,6 +2393,7 @@ function updateHelp() {
   $('helpDesk').hidden = input.mode !== 'desk';
   $('helpTouch').hidden = input.mode !== 'touch';
   $('pausedHint').textContent = input.mode === 'desk' ? 'Click to play' : 'Tap to play';
+  $('helpLook').textContent = input.freeLook ? 'Drag to look around (hold the button and move)' : 'Look around';
 }
 
 
