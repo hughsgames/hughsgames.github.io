@@ -315,8 +315,9 @@ function requestLock() {
   if (input.freeLook) { refreshPaused(); return; }
   let asked = false;
   try { const p = canvas.requestPointerLock(); asked = true; if (p && p.catch) p.catch(dragLookInstead); } catch (_) { dragLookInstead(); }
-  // Some browsers refuse to hold the mouse and never say so. If it hasn't caught by now, play without it.
-  if (asked) setTimeout(() => { if (document.pointerLockElement !== canvas) dragLookInstead(); }, 700);
+  // Some browsers refuse to hold the mouse and never say so. If it has never once caught, play without it.
+  // (Only ever: the game lets go of the mouse itself whenever a window opens, and that mustn't count as a refusal.)
+  if (asked) setTimeout(() => { if (!lockEverHeld && document.pointerLockElement !== canvas) dragLookInstead(); }, 700);
 }
 /// This browser won't let the game hold the mouse, so the player looks around by dragging instead.
 function dragLookInstead() {
@@ -326,10 +327,12 @@ function dragLookInstead() {
   refreshPaused();
   toast('Drag the mouse to look around', 'freelook');
 }
+let lockEverHeld = false;
 // The browser said no to holding the mouse: don't leave the player staring at the veil, switch to dragging.
-document.addEventListener('pointerlockerror', () => { console.warn('Polis World: this browser refused the mouse lock, switching to drag-to-look'); dragLookInstead(); });
+document.addEventListener('pointerlockerror', () => { if (!lockEverHeld) { console.warn('Polis World: this browser refused the mouse lock, switching to drag-to-look'); dragLookInstead(); } });
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
+  if (locked) lockEverHeld = true;
   // A late lock while a window is open (designer, inventory…) would swallow its clicks: let go again.
   if (locked && (openPanel || dialogueOpen)) { document.exitPointerLock(); return; }
   refreshPaused();
