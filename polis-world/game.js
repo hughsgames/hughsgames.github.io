@@ -545,6 +545,12 @@ function useOrHit(sx, sy) {
   if (a.block) startBreak(a.block);
 }
 function useOrPlace(sx, sy) {
+  // Standing by a ship's steering oars: take them, or let them go again.
+  if (ships && (ships.helm || ships.helmHere(P.x, P.z, P.y))) {
+    const took = ships.takeHelm(P.x, P.z, P.y);
+    message(took ? 'You have the steering oars. W rows · S backs water · A and D turn.' : 'You let go of the steering oars.');
+    return;
+  }
   const a = aimFrom(sx, sy);
   if (a.who) { interact(a.who); return; }
   const t = a.block;
@@ -1929,12 +1935,14 @@ function updateDiscovery(dt) {
     showCard(e.name, `${e.date} · ${e.kind === 'event' ? 'A turning point in history' : 'A great battle'}`, e.text + who);
     return;
   }
-  // The warships: a card about each kind the first time you get close to one.
+  // The ships: a card about each kind the first time you get close to one — the warships out at sea, and the
+  // working boats tied up in the ports.
   const ns = ships && ships.nearest(P.x, P.z);
   if (ns && ns.d < 40 && !G.found.has('ship:' + ns.s.type)) {
-    const t = SHIP_TYPES[ns.s.type];
+    const t = ns.s.t;
     G.found.add('ship:' + ns.s.type); addStars(1);
-    showCard(`You spotted ${t.title.replace(/^An? /, (a) => a.toLowerCase())}!`, `Warship · ${SITE_TEXT[ns.s.city]?.name ?? ''}`, t.body + '\n\nSwim up to its side and press Space (or the jump button) to climb aboard and ride along.');
+    showCard(`You spotted ${t.title.replace(/^An? /, (a) => a.toLowerCase())}!`, `${t.civil ? 'In the port of' : 'Warship ·'} ${SITE_TEXT[ns.s.city]?.name ?? ''}`,
+      t.body + '\n\nSwim up to its side and press Space (or the jump button) to climb aboard. Then walk to the stern and press X to take the steering oars yourself.');
     return;
   }
   const cy = G.canyon;
@@ -1969,6 +1977,7 @@ function updatePlayer(dt) {
   let side = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
   if (input.mode === 'touch') { fwd = input.joy.y; side = input.joy.x; }
   if (openPanel || dialogueOpen) { fwd = 0; side = 0; }
+  if (P.steering) { fwd = 0; side = 0; }   // at the steering oars your hands are full: W A S D sails the ship instead
   const amt = Math.min(Math.hypot(fwd, side), 1);
   const fx0 = Math.floor(P.x), fz0 = Math.floor(P.z);
   const feet = world.get(fx0, Math.floor(P.y + 0.4), fz0);
@@ -2860,7 +2869,13 @@ function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   if (world) {
-    if (ships) { const boarded = ships.update(dt, P, input.keys.has('Space'), !G.hover); if (boarded) { input.keys.delete('Space'); message(`You climbed aboard the ${boarded.t.name}!`); } }
+    if (ships) {
+      const k = input.keys, atHelm = !!ships.helm, canSteer = atHelm && !openPanel && !dialogueOpen;
+      const drive = canSteer ? { fwd: (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) || (input.mode === 'touch' ? input.joy.y : 0), turn: (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) || (input.mode === 'touch' ? input.joy.x : 0) } : {};
+      P.steering = atHelm;   // a card or window pauses the ship, but you keep the oars
+      const boarded = ships.update(dt, P, input.keys.has('Space'), !G.hover, drive);
+      if (boarded) { input.keys.delete('Space'); message(`You climbed aboard the ${boarded.t.name}! Walk to the back and press X to take the steering oars.`); }
+    }
     updatePlayer(dt);
     // Hold the mouse button to dig; let go and digging stops (on a touch screen one tap digs the whole block).
     if (input.mode === 'desk') {
@@ -2890,5 +2905,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
 boot();

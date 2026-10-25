@@ -31,6 +31,44 @@ export const SHIP_TYPES = {
 };
 export const FLEETS = [{ city: 'athens', type: 'trireme', n: 2 }, { city: 'rome', type: 'quinquereme', n: 1 }, { city: 'carthage', type: 'bireme', n: 2 }];   // in this order, each choosing the nearest free sea
 
+// The working boats tied up in the ports: round-bellied merchantmen that carried the grain and oil of the ancient
+// world, little fishing boats, and the flat barges that worked the Nile and the Euphrates. They sit still at their
+// moorings — but you can climb aboard any of them and take the steering oar yourself.
+export const BOAT_TYPES = {
+  merchantman: {
+    name: 'merchant ship', L: 13, B: 4.6, hs: 1.35, dk: 1.55, banks: 0, per: 0, men: [0], oar: [0], speed: 2.2, civil: true, full: 1.5,
+    hull: 0x6b4a2a, band: 0x9c5a2a, sail: [0xeadfc4, 0xb8402e, 0xeadfc4], marines: 0, cargo: 'jars', crewTunic: 0xdccaa6,
+    title: 'A merchant ship',
+    body: 'Round and deep-bellied, built to carry as much as possible rather than to go fast. Ships like this carried grain from Egypt to Rome, olive oil, wine and fish sauce in tall clay jars called amphorae, and tin from as far away as Britain. One ship could carry what hundreds of donkeys could not. Sailors kept close to the coast and hardly sailed at all in winter, when storms made the sea too dangerous.',
+  },
+  fishingBoat: {
+    name: 'fishing boat', L: 7.5, B: 2.6, hs: 0.95, dk: 1.05, banks: 0, per: 0, men: [0], oar: [0], speed: 2.6, civil: true, full: 1.2,
+    hull: 0x7a5736, band: 0x3f6f7a, sail: [0xe8dcc0, 0xe8dcc0, 0xe8dcc0], marines: 0, cargo: 'nets', crewTunic: 0xcfd8d2, smallSail: true, furled: true,
+    title: 'A fishing boat',
+    body: 'Most boats in the ancient world were small ones like this, rowed out at dawn and back at dusk. Fishermen used nets weighted with lead, lines with bronze hooks, and wicker traps. Salted and dried fish fed whole cities, and the Romans loved a fish sauce called garum so much that whole towns were built around making it.',
+  },
+  riverBarge: {
+    name: 'river barge', L: 11, B: 3.8, hs: 0.8, dk: 0.95, banks: 0, per: 0, men: [0], oar: [0], speed: 2.0, civil: true, full: 2.6, flat: true,
+    hull: 0x8a6a42, band: 0x4a6a3a, sail: [0xf0e6cc, 0xf0e6cc, 0xf0e6cc], marines: 0, cargo: 'sacks', crewTunic: 0xe4d8b8, smallSail: true,
+    title: 'A river barge',
+    body: 'Flat-bottomed, for rivers too shallow for a sea ship. Barges carried grain, stone and cattle down the Nile and the Euphrates. On the Nile the current carries a boat north, and the wind blows south almost all year — so boats drifted down with the stream and sailed back up again. The huge stones for the pyramids and for Babylon\'s walls travelled by water like this.',
+  },
+};
+/// Which cities keep boats at their waterfront, and what kind.
+export const PORTS = [
+  { city: 'athens', boats: ['merchantman', 'fishingBoat', 'fishingBoat'] },
+  { city: 'rome', boats: ['merchantman', 'fishingBoat'] },
+  { city: 'carthage', boats: ['merchantman', 'fishingBoat'] },
+  { city: 'alexandria', boats: ['merchantman', 'merchantman', 'fishingBoat'] },
+  { city: 'giza', boats: ['riverBarge', 'fishingBoat'] },
+  { city: 'babylon', boats: ['riverBarge', 'fishingBoat'] },
+  { city: 'wu', boats: ['riverBarge', 'fishingBoat'] },
+  { city: 'jerusalem', boats: ['fishingBoat'] },
+  { city: 'mohenjoDaro', boats: ['riverBarge'] },
+  { city: 'angkor', boats: ['fishingBoat', 'fishingBoat'] },
+  { city: 'teotihuacan', boats: ['fishingBoat'] },
+];
+
 const SKIN = [0xc68e64, 0xa8744e, 0xd9a77e, 0x8a5a3a, 0xb98058];
 const box = (list, x0, y0, z0, x1, y1, z1, color, rot = null) => {
   const m = new THREE.Matrix4().makeTranslation((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
@@ -39,8 +77,15 @@ const box = (list, x0, y0, z0, x1, y1, z1, color, rot = null) => {
 };
 const rotX = (a) => new THREE.Matrix4().makeRotationX(a);
 
-/// Half the width of the hull at a point along it (z from bow +L/2 to stern -L/2).
-function halfWidth(t, z) { const u = Math.min(Math.abs(z) / (t.L / 2), 1); return Math.max(0.25, (t.B / 2) * Math.pow(Math.max(0, 1 - Math.pow(u, z > 0 ? 2.2 : 3)), 0.5)); }
+/// Half the width of the hull at a point along it (z from bow +L/2 to stern -L/2). Warships are long and sharp;
+/// merchant ships and barges are round and full-bellied (t.full).
+function halfWidth(t, z) {
+  const u = Math.min(Math.abs(z) / (t.L / 2), 1);
+  const p = t.full ? t.full * (z > 0 ? 1 : 1.25) : (z > 0 ? 2.2 : 3);
+  return Math.max(0.25, (t.B / 2) * Math.pow(Math.max(0, 1 - Math.pow(u, p)), 0.5));
+}
+/// How far in from bow and stern the walkable deck starts.
+const deckEnd = (t) => (t.civil ? 1.2 : 2.6);
 /// Where the oars sit: [z, bank] for each oar station on one side.
 function stations(t) {
   const out = [], z0 = -t.L / 2 + 3.6, z1 = t.L / 2 - 4.2;
@@ -106,6 +151,62 @@ function hullGeometry(t) {
   // (The soldiers on deck, the helmsman and the flute player are real people now: see crewOf.)
   return mergeBoxes(list);
 }
+/// A working boat: a round hull with a deck you can walk on, a mast and sail, a steering oar over the stern
+/// quarter, and whatever it carries — jars of oil and wine, fishing nets, or sacks of grain.
+function boatGeometry(t) {
+  const L = t.L, list = [], wood = t.hull, dark = 0x3f2d1c, deckC = 0xa8855a, de = deckEnd(t), rail = 0x8a6a42;
+  for (let z = -L / 2; z < L / 2; z += 0.5) {
+    const zc = z + 0.25, hw = halfWidth(t, zc);
+    const rise = t.flat ? 0 : Math.max(0, Math.abs(zc) - (L / 2 - 2.2)) * 0.5;
+    box(list, -hw * 0.92, t.flat ? -0.45 : -0.62, z, hw * 0.92, -0.18, z + 0.5, dark);                        // the bottom
+    for (const s of [-1, 1]) {
+      box(list, s * hw - 0.09, -0.3, z, s * hw + 0.09, t.hs + rise, z + 0.5, wood);                            // planked sides
+      box(list, s * hw - 0.1, t.hs - 0.26 + rise, z, s * hw + 0.1, t.hs - 0.08 + rise, z + 0.5, t.band);       // the painted rubbing band
+    }
+  }
+  // Deck planks amidships, with a low rail round them.
+  for (let z = -L / 2 + de; z < L / 2 - de; z += 0.5) { const hw = Math.min(halfWidth(t, z), halfWidth(t, z + 0.5)) - 0.1; box(list, -hw, t.dk - 0.14, z, hw, t.dk, z + 0.5, deckC); }
+  for (const s of [-1, 1]) for (let z = -L / 2 + de; z < L / 2 - de; z += 0.5) { const hw = halfWidth(t, z + 0.25) - 0.02; box(list, s * hw - 0.05, t.dk, z, s * hw + 0.05, t.dk + 0.34, z + 0.5, rail); }
+  // Stem and stern posts. A merchantman's stern curls over like a swan's neck; a barge is blunt at both ends.
+  if (!t.flat) {
+    box(list, -0.18, -0.2, L / 2 - 0.4, 0.18, t.hs + 1.0, L / 2 + 0.2, wood);
+    for (let k = 0; k < 7; k++) {
+      const a = 0.22 * k;
+      list.push({ m: new THREE.Matrix4().makeTranslation(0, t.hs + 0.8 + 0.34 * k * Math.cos(a * 0.7), -L / 2 + 0.4 + 0.3 * k * Math.sin(a) - 0.14 * k).multiply(rotX(a)).multiply(new THREE.Matrix4().makeScale(0.26, 0.42, 0.3)), color: wood });
+    }
+  } else { for (const s of [-1, 1]) box(list, -t.B / 4, -0.3, s * (L / 2 - 0.3) - 0.15, t.B / 4, t.hs + 0.5, s * (L / 2 - 0.3) + 0.15, wood); }
+  // Mast, yard and sail.
+  const mz = t.smallSail ? -0.5 : 0.4, top = t.dk + (t.smallSail ? 3.6 : 6.0), sw = t.B * (t.smallSail ? 0.55 : 0.8), sh = t.smallSail ? 2.0 : 3.4;
+  box(list, -0.14, t.dk - 0.1, mz - 0.14, 0.14, top + 0.3, mz + 0.14, 0x6b4a2a);
+  box(list, -sw - 0.25, top - 0.1, mz + 0.12, sw + 0.25, top + 0.1, mz + 0.28, 0x6b4a2a);
+  if (t.furled) box(list, -sw, top - 0.42, mz + 0.14, sw, top - 0.12, mz + 0.46, t.sail[0]);                   // rolled up along the yard
+  else for (let k = 0; k < 3; k++) box(list, -sw, top - (k + 1) * sh / 3, mz + 0.28, sw, top - k * sh / 3, mz + 0.34, t.sail[k]);
+  for (const s of [-1, 1]) box(list, s * 0.02, t.dk, mz - 0.1, s * (t.B / 2 - 0.3), t.dk + 0.06, mz - 0.14, 0xc9b38a);   // stays fore and aft
+  // The steering oar, slung over the stern on the starboard side.
+  const sq = halfWidth(t, -L / 2 + 1.6) + 0.2;
+  list.push({ m: new THREE.Matrix4().makeTranslation(sq, t.hs * 0.4, -L / 2 + 1.5).multiply(rotX(0.6)).multiply(new THREE.Matrix4().makeScale(0.13, 2.6, 0.13)), color: 0x6b4a2a });
+  box(list, sq - 0.06, -0.75, -L / 2 - 0.1, sq + 0.06, -0.1, -L / 2 + 0.45, 0x6b4a2a);
+  box(list, sq - 0.2, t.dk + 0.1, -L / 2 + 2.1, sq + 0.2, t.dk + 0.2, -L / 2 + 2.5, rail);                     // the tiller bar
+  // What she's carrying.
+  const c0 = -L / 2 + de + 0.4, c1 = L / 2 - de - 0.4;
+  if (t.cargo === 'jars') for (let z = c0; z < c1 - 0.5; z += 1.1) for (const s of [-0.62, 0.62]) {
+    const x = s * Math.min(1, halfWidth(t, z) / 2.2);
+    box(list, x - 0.26, t.dk, z - 0.26, x + 0.26, t.dk + 0.62, z + 0.26, 0xb5793f);
+    box(list, x - 0.14, t.dk + 0.62, z - 0.14, x + 0.14, t.dk + 0.95, z + 0.14, 0xa06a36);
+    box(list, x - 0.2, t.dk + 0.95, z - 0.2, x + 0.2, t.dk + 1.05, z + 0.2, 0x8a5a2c);
+  }
+  if (t.cargo === 'sacks') for (let z = c0; z < c1 - 0.4; z += 0.95) for (const s of [-1, 1]) {
+    const x = s * Math.min(0.75, halfWidth(t, z) / 2.4), h = 0.5 + ((z * 3) % 2) * 0.12;
+    box(list, x - 0.34, t.dk, z - 0.32, x + 0.34, t.dk + h, z + 0.32, 0xcdb785);
+    box(list, x - 0.2, t.dk + h, z - 0.18, x + 0.2, t.dk + h + 0.12, z + 0.18, 0xb8a06c);
+  }
+  if (t.cargo === 'nets') {
+    for (let z = c0; z < c1; z += 0.3) for (const s of [-1, 1]) { const hw = halfWidth(t, z); box(list, s * hw - 0.12, t.hs - 0.1, z, s * hw + 0.02, t.hs + 0.5, z + 0.18, 0x6d7a5a); }   // net hung to dry
+    box(list, -0.5, t.dk, c0, 0.1, t.dk + 0.34, c0 + 0.7, 0xb59a62); box(list, 0.1, t.dk, c0 + 0.2, 0.62, t.dk + 0.3, c0 + 0.85, 0xa88e58);   // creels
+    for (let k = 0; k < 5; k++) box(list, -0.3 + k * 0.14, t.dk + 0.34, c1 - 0.8, -0.24 + k * 0.14, t.dk + 0.4, c1 - 0.3, 0x9aa7b5);          // the day's catch
+  }
+  return mergeBoxes(list);
+}
 function oarGeometry() {
   const list = [];
   box(list, 0, -0.045, -0.045, 1, 0.045, 0.045, 0xb89466);       // the shaft, stretched to each oar's length (handle included)
@@ -127,16 +228,17 @@ function rowerGeometry() {
 /// the flute player who keeps the rowers in time. They stand still, so they're posed once.
 function crewOf(t, body) {
   const army = { tunic: t.band, shield: t.shields, helm: 0xb8913a, crest: t.crest, rect: t.rect };
-  const d0 = -t.L / 2 + 2.6, d1 = t.L / 2 - 2.6, mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const de = deckEnd(t), d0 = -t.L / 2 + de, d1 = t.L / 2 - de, mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const marines = new Squad(body, rig(soldierLook(army, t.L | 0)), t.marines, mat);
   for (let k = 0; k < t.marines; k++) {
     const sd = k % 2 ? 1 : -1, z = d0 + 1.5 + (d1 - d0 - 3) * Math.floor(k / 2) / Math.max(1, Math.ceil(t.marines / 2) - 1);
     marines.setPose(k, sd * (halfWidth(t, z) - 0.6), t.dk, z, sd > 0 ? Math.PI / 2 : -Math.PI / 2, { armL: -0.35, armR: -0.15, armRz: 0.05 });
   }
   marines.done();
-  const others = new Squad(body, rig(rowerLook(0xe7dcc2, 3)), t.piper ? 2 : 1, mat);
-  others.setPose(0, 0, t.dk, -t.L / 2 + 2.9, 0, { armL: -0.9, armR: -0.9, armLz: 0.5, armRz: -0.5 });   // the helmsman, a steering oar in each hand
+  const others = new Squad(body, rig(rowerLook(t.crewTunic ?? 0xe7dcc2, 3)), t.piper || t.civil ? 2 : 1, mat);
+  others.setPose(0, t.civil ? halfWidth(t, -t.L / 2 + de) * 0.45 : 0, t.dk, -t.L / 2 + (t.civil ? de + 0.7 : 2.9), 0, { armL: -0.9, armR: -0.9, armLz: 0.5, armRz: -0.5 });   // the helmsman, a steering oar in each hand
   if (t.piper) others.setPose(1, 0, t.dk, d0 + 1, Math.PI, { armL: -1.3, armR: -1.3, armLz: -0.25, armRz: 0.25 });   // playing the aulos, facing the rowers
+  if (t.civil) others.setPose(1, -halfWidth(t, d1 - 0.8) * 0.4, t.dk, d1 - 0.8, Math.PI * 0.75, { armL: -1.1, armR: -0.4, armLz: -0.3 });   // a sailor working forward
   others.done();
 }
 
@@ -199,6 +301,19 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
   const oarMat = new THREE.MeshLambertMaterial({ vertexColors: true }), hullMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const oarGeo = oarGeometry(), bladeGeo = bladeGeometry(), rowerGeo = rowerGeometry();
   const ships = [], lanes = [];
+  /// Deep enough to sail over: open water with nothing built on it. (Gentler than isWet, which also wants clear
+  /// sky above — a ship can pass under a bridge, it just can't sail up the beach.)
+  const sailOk = (x, z) => world.inb(x, z) && !!IS_WATERY[world.get(x, WL - 1, z)] && world.get(x, WL, z) === 0;
+  /// Could the whole hull float here? Samples the keel and both sides along its length.
+  function floats(t, x, z, yaw) {
+    const c = Math.cos(yaw), sn = Math.sin(yaw);
+    // A little working boat draws much less water than a warship, and can nose much closer to the shore.
+    for (const u of (t.civil ? [-0.7, 0, 0.7] : [-0.95, -0.5, 0, 0.5, 0.95])) {
+      const lz = u * t.L / 2, hw = halfWidth(t, lz) * (t.civil ? 0.55 : 0.85);
+      for (const lx of [0, -hw, hw]) if (!sailOk(Math.round(x + lx * c + lz * sn), Math.round(z - lx * sn + lz * c))) return false;
+    }
+    return true;
+  }
   const q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1), M = new THREE.Matrix4(), Mb = new THREE.Matrix4(), Ms = new THREE.Matrix4();
   for (const f of FLEETS) {
     const city = cities[f.city]; if (!city) continue;
@@ -211,10 +326,46 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
       ships.push(makeShip(t, f.type, f.city, c, k));
     }
   }
-  function makeShip(t, type, city, course, k) {
+  /// Moorings for a city's port: open water close in to the shore, a boat's length apart, clear of the warships'
+  /// rowing lanes. Each boat lies along the shore, the way a boat lies at a quay.
+  function moorings(room, x0, z0, N, cx, cz, t, taken) {
+    const need = t.B / 2 + 0.8, out = [];
+    for (let j = 1; j < N - 1; j += 1) for (let i = 1; i < N - 1; i += 1) {
+      const r = room[j * N + i];
+      if (r < need || r > need + 7) continue;                       // floating, but still in close by the shore
+      const x = x0 + i, z = z0 + j, d = Math.hypot(x - cx, z - cz);
+      if (d > 110) continue;
+      out.push([x, z, d]);
+    }
+    out.sort((a, b) => a[2] - b[2]);
+    for (const [x, z] of out) {
+      if (taken.some(([px, pz]) => Math.hypot(x - px, z - pz) < t.L + 3)) continue;
+      if (lanes.some((l) => segDist(x, z, l[0], l[1], l[2], l[3]) < l[4] + t.L / 2)) continue;
+      // Lie along the shore: the boat has to actually fit, bow and stern, in the direction she lies.
+      let best = null;
+      for (let a = 0; a < Math.PI; a += Math.PI / 12) if (floats(t, x + 0.5, z + 0.5, a)) { best = a; break; }
+      if (best === null) continue;
+      taken.push([x, z]);
+      return { x: x + 0.5, z: z + 0.5, yaw: best };
+    }
+    return null;
+  }
+  // The working boats of each port: merchantmen, fishing boats and river barges, tied up near the waterfront.
+  for (const port of PORTS) {
+    const city = cities[port.city]; if (!city) continue;
+    const [cx, cz] = city.center, N = 240, x0 = Math.round(cx - N / 2), z0 = Math.round(cz - N / 2);
+    const room = seaRoom(isWet, x0, z0, N), taken = [];
+    for (const id of port.boats) {
+      const t = BOAT_TYPES[id];
+      const m = moorings(room, x0, z0, N, cx, cz, t, taken);
+      if (!m) continue;
+      ships.push(makeShip(t, id, port.city, null, 0, m));
+    }
+  }
+  function makeShip(t, type, city, course, k, moored = null) {
     const g = new THREE.Group(), body = new THREE.Group();
     g.add(body);
-    const hull = new THREE.Mesh(hullGeometry(t), hullMat); hull.castShadow = hull.receiveShadow = true; body.add(hull);
+    const hull = new THREE.Mesh(t.civil ? boatGeometry(t) : hullGeometry(t), hullMat); hull.castShadow = hull.receiveShadow = true; body.add(hull);
     const st = stations(t), oars = [];
     for (const side of [-1, 1]) for (const [z, b] of st) oars.push({ side, z, b, len: t.oar[b], x: side * (halfWidth(t, z) + (b === 0 ? (t.outrigger || 0) : 0)), y: pivotY(t, b) });
     const shaft = new THREE.InstancedMesh(oarGeo, oarMat, oars.length), blade = new THREE.InstancedMesh(bladeGeo, oarMat, oars.length);
@@ -225,8 +376,8 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
     const rowers = [0, 1].map((k) => new Squad(body, rig(rowerLook(k ? 0xd8c8a8 : 0xe9e0cc, k + type.length)), Math.ceil(seats.length / 2) - (k && seats.length % 2 ? 1 : 0), oarMat));
     seats.forEach((r, i) => { r.squad = rowers[i % 2]; r.i = i >> 1; });
     crewOf(t, body);
-    const [ax, az] = course.a, [bx, bz] = course.b;
-    const s = { type, city, t, course, g, body, oars, seats, shaft, blade, rowers, x: ax, z: az, yaw: Math.atan2(bx - ax, bz - az), from: 0, leg: 'row', u: 0.15, phi: k * 1.7, turning: 0, back: 0, len: course.len };
+    const [ax, az] = course ? course.a : [moored.x, moored.z], [bx, bz] = course ? course.b : [moored.x + Math.sin(moored.yaw), moored.z + Math.cos(moored.yaw)];
+    const s = { type, city, t, course, g, body, oars, seats, shaft, blade, rowers, x: ax, z: az, yaw: Math.atan2(bx - ax, bz - az), from: 0, leg: course ? 'row' : 'moored', u: 0.15, phi: k * 1.7, turning: 0, back: 0, len: course ? course.len : 0, moored: !course };
     g.position.set(s.x, surface, s.z); g.rotation.y = s.yaw;
     scene.add(g);
     pose(s, 0, true);
@@ -253,7 +404,9 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
 
   // Where each ship's deck is, so you can stand on it and be carried along.
   const local = (s, x, z) => { const dx = x - s.x, dz = z - s.z, c = Math.cos(s.yaw), sn = Math.sin(s.yaw); return [dx * c - dz * sn, dx * sn + dz * c]; };
-  const onDeck = (s, lx, lz, pad) => Math.abs(lz) < s.t.L / 2 - 2.6 - pad && Math.abs(lx) < halfWidth(s.t, lz) - 0.1 - pad;
+  /// Where the helmsman stands, in world blocks: at the stern, by the steering oars.
+  const helmSpot = (s) => { const lz = -s.t.L / 2 + (s.t.civil ? deckEnd(s.t) + 0.7 : 3.4), c = Math.cos(s.yaw), sn = Math.sin(s.yaw); return [s.x + lz * sn, s.z + lz * c]; };
+  const onDeck = (s, lx, lz, pad) => Math.abs(lz) < s.t.L / 2 - deckEnd(s.t) - pad && Math.abs(lx) < halfWidth(s.t, lz) - 0.1 - pad;
   const inHull = (s, lx, lz, pad) => Math.abs(lz) < s.t.L / 2 + pad && Math.abs(lx) < halfWidth(s.t, lz) + pad;
   let riding = null, time = 0;
 
@@ -269,15 +422,44 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
       return false;
     },
     /// Moves the ships; carries you along if you're standing on a deck; lifts you aboard if you swim up to one.
-    update(dt, P, wantsUp, interact = true) {
+    update(dt, P, wantsUp, interact = true, drive = {}) {
       time += dt;
       let carry = null;
       if (interact && P.ground) for (const s of ships) { const [lx, lz] = local(s, P.x, P.z); if (onDeck(s, lx, lz, -0.3) && Math.abs(P.y - (surface + s.t.dk)) < 0.25) { carry = { s, lx, lz }; break; } }
       riding = carry ? carry.s : null;
+      // At the oars you stand where the helmsman stands, and stay there however the ship pitches and turns.
+      const held = ships.find((s) => s.helm);
+      if (held && interact) {
+        if (Math.hypot(P.x - held.x, P.z - held.z) > held.t.L * 1.5) { held.helm = false; held.turning = 0; held.back = 0; if (held.course) held.leg = 'back-to-course'; }   // travelled away
+        else { carry = null; riding = held; }
+      }
       for (const s of ships) {
         const t = s.t, near = Math.hypot(P.x - s.x, P.z - s.z);
-        const [ax, az] = s.course.a, [bx, bz] = s.course.b;
-        if (s.leg === 'row' || s.leg === 'back') {
+        const [ax, az] = s.course ? s.course.a : [s.x, s.z], [bx, bz] = s.course ? s.course.b : [s.x, s.z];
+        if (!s.course && !s.helm) { s.turning = 0; s.back = 0; }   // tied up in port, waiting for a crew
+        else if (s.helm) {
+          // You have the steering oars: the crew rows where you point them.
+          const fwd = drive.fwd || 0, turn = drive.turn || 0;
+          s.turning = !fwd && turn ? 1 : 0; s.back = fwd < 0 ? 1 : 0;
+          const rate = (0.55 - Math.abs(fwd) * 0.2) * dt;
+          const nyaw = s.yaw - turn * rate;
+          const v = fwd > 0 ? t.speed * 0.85 : fwd < 0 ? -t.speed * 0.4 : 0;
+          const nx = s.x + Math.sin(nyaw) * v * dt, nz = s.z + Math.cos(nyaw) * v * dt;
+          if (floats(t, nx, nz, nyaw)) { s.x = nx; s.z = nz; s.yaw = nyaw; s.aground = 0; }
+          else if (floats(t, s.x, s.z, nyaw)) { s.yaw = nyaw; s.aground = (s.aground || 0) + dt; }
+          else s.aground = (s.aground || 0) + dt;
+          s.phi += dt * Math.PI * 2 * (0.3 + 0.45 * Math.abs(fwd) + 0.2 * (s.turning ? 1 : 0));
+        } else if (s.leg === 'back-to-course') {
+          // Rowing back to its patrol after you let go of the oars.
+          s.turning = 0; s.back = 0;
+          const dx = ax - s.x, dz = az - s.z, d = Math.hypot(dx, dz) || 1;
+          const want = Math.atan2(dx, dz);
+          let turn = ((want - s.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+          s.yaw += Math.max(-0.5 * dt, Math.min(0.5 * dt, turn));
+          if (Math.abs(turn) < 0.5) { const step = Math.min(t.speed * 0.7 * dt, d); const nx = s.x + Math.sin(s.yaw) * step, nz = s.z + Math.cos(s.yaw) * step; if (floats(t, nx, nz, s.yaw)) { s.x = nx; s.z = nz; } else s.leg = 'row'; }
+          s.phi += dt * Math.PI * 2 * 0.45;
+          if (d < 3) { s.leg = 'row'; s.u = 0; s.from = 0; s.yaw = Math.atan2(bx - ax, bz - az); s.x = ax; s.z = az; }
+        } else if (s.leg === 'row' || s.leg === 'back') {
           // Rowing from one end of the course to the other (or, on a shuttle course, backing water home stern first).
           s.turning = 0; s.back = s.leg === 'back' ? 1 : 0;
           s.u = Math.min(1, s.u + dt * t.speed / s.len * (s.back ? 0.5 : 0.8));
@@ -302,7 +484,12 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
         s.g.visible = near < 260;
         if (near < 150) pose(s, time);
       }
-      if (carry) {
+      if (held && held.helm && interact) {
+        // Standing at the steering oars, turning with the ship.
+        const [hx, hz] = helmSpot(held);
+        P.yaw += held.yaw - (held.lastYaw ?? held.yaw);
+        P.x = hx; P.z = hz; P.y = surface + held.t.dk + 0.02; P.vy = 0; P.ground = true;
+      } else if (carry) {
         // Keep your place on the deck: the same spot relative to the ship, turned as the ship turns.
         const s = carry.s, c = Math.cos(s.yaw), sn = Math.sin(s.yaw), [lx, lz] = [carry.lx, carry.lz];
         const nx = s.x + lx * c + lz * sn, nz = s.z - lx * sn + lz * c;
@@ -328,6 +515,25 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
       return null;
     },
     get riding() { return riding; },
+    /// The ship you're steering, if any.
+    get helm() { return ships.find((s) => s.helm) || null; },
+    /// Standing by the steering oars? Then you can take them. (Being on the deck beside them is enough: you
+    /// shouldn't have to stand on exactly the right plank.)
+    helmHere(x, z, y) {
+      for (const s of ships) {
+        const [hx, hz] = helmSpot(s);
+        if (Math.hypot(x - hx, z - hz) < 2.6 && (y === undefined || Math.abs(y - (surface + s.t.dk)) < 1.8)) return s;
+      }
+      return null;
+    },
+    /// Take the oars (or let them go). Returns the ship you took, or null when you let go.
+    takeHelm(x, z, y) {
+      const got = ships.find((s) => s.helm);
+      if (got) { got.helm = false; got.turning = 0; got.back = 0; if (got.course) got.leg = 'back-to-course'; return null; }
+      const s = this.helmHere(x, z, y);
+      if (s) { s.helm = true; s.aground = 0; }
+      return s;
+    },
     /// The nearest ship to a point, for the "you spotted…" card.
     nearest(x, z) { let best = null, bd = Infinity; for (const s of ships) { const d = Math.hypot(x - s.x, z - s.z); if (d < bd) { bd = d; best = s; } } return best ? { s: best, d: bd } : null; },
   };
