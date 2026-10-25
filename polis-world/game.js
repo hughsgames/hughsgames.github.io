@@ -7,7 +7,7 @@ import { TALK, ORDERS } from './talk.js';
 import { ROLES, REFUGEE_NAMES, WHY, LOOKS as REFUGEE_LOOKS } from './village.js';
 import { createScenery } from './scenery.js';
 import { createShips, SHIP_TYPES } from './ships.js';
-import { WILD, buildWild, REGION, GROUP } from './animals.js';
+import { WILD, buildWild, GROUP, LAND, wildHere } from './animals.js';
 import { createEvents, ARMIES, FLEETS_OF } from './events.js';
 import { PARTS as BODY, JOINTS, isUpper, dress, JOBS, pose, boxModel, toolGeometry, useToolModels, LOADS, PROPS, PROP_DIST } from './people.js';
 import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_GRIP, pixelSize, isLongTool } from './icons.js';
@@ -952,14 +952,16 @@ function updateHerds(dt) {
   const [x, z] = world.nearestLand(Math.floor(P.x + Math.cos(a) * d), Math.floor(P.z + Math.sin(a) * d));
   if (Math.hypot(x - P.x, z - P.z) < 20) return;
   const bi = world.bio[z * world.n + x];
-  const kinds = bi === 6 ? ['camel', 'goat'] : bi === 9 || bi === 10 ? ['goat', 'sheep'] : bi === 8 ? ['pig', 'cow', 'chicken'] : ['sheep', 'cow', 'chicken', 'pig'];
+  const kinds = bi === 6 ? ['goat', 'camel'] : bi === 9 || bi === 10 ? ['goat', 'sheep'] : bi === 8 ? ['pig', 'cow', 'chicken'] : ['sheep', 'cow', 'chicken', 'pig'];
   let kind = kinds[Math.floor(Math.random() * kinds.length)];
-  // Wild animals of the region: tigers near Angkor and in China, crocodiles by the Nile, pandas in Shu, turtles on beaches…
-  let near = null, nd = 170;
+  // Wild animals of this part of the world, on ground that suits them: lions and gazelles in the desert, pandas in
+  // the bamboo hills of Shu, hippos in the Nile, ibex up the mountains, turtles on the beaches.
+  let near = null, nd = 260;
   for (const [id, c] of Object.entries(G.cities)) { const dd = c ? Math.hypot(c.center[0] - x, c.center[1] - z) : Infinity; if (dd < nd) { nd = dd; near = id; } }
-  const wetBy = [[3, 0], [-3, 0], [0, 3], [0, -3]].some(([ox, oz]) => world.hasWater(x + ox, z + oz));
-  if (bi === 4 && Math.random() < 0.6) kind = 'turtle';
-  else if (near && REGION[near] && Math.random() < 0.55) { kind = REGION[near][Math.floor(Math.random() * REGION[near].length)]; if (kind === 'crocodile' && !wetBy) kind = 'camel'; }
+  const wetBy = [[3, 0], [-3, 0], [0, 3], [0, -3], [5, 5], [-5, -5]].some(([ox, oz]) => world.hasWater(x + ox, z + oz));
+  const wild = wildHere(near ? LAND[near] : null, bi, wetBy);
+  if (bi === 4 && Math.random() < 0.5) kind = 'turtle';
+  else if (wild.length && Math.random() < 0.7) kind = wild[Math.floor(Math.random() * wild.length)];
   if (G.camp && Math.hypot(x - G.camp.spawn[0], z - G.camp.spawn[1]) < 45 && WILD[kind]?.temper === 'fight') kind = 'deer';   // nothing fierce right by your camp
   const count = GROUP[kind] ?? (kind === 'chicken' ? 4 : 3);
   for (let k = 0; k < count; k++) { const [mx, mz] = world.nearestLand(x + k * 2 - 2, z + (k % 2) * 2); addMob(kind, mx + 0.5, mz + 0.5); }
@@ -2985,5 +2987,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
 boot();

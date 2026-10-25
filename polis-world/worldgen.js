@@ -336,8 +336,79 @@ function palm(w, x, h, z, seed) {
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { put(w, x + dx, top, z + dz, B.palmLeaves); put(w, x + dx * 2, top, z + dz * 2, B.palmLeaves); put(w, x + dx * 3, top - 1, z + dz * 3, B.palmLeaves); }
   for (const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { put(w, x + dx, top, z + dz, B.palmLeaves); put(w, x + dx * 2, top - 1, z + dz * 2, B.palmLeaves); }
 }
-function plantTrees(w, heights, seed, spawn) {
+// ---------- the plants of each land ----------
+// Which part of the ancient world a place belongs to. Plants follow it: olives and cypresses round the
+// Mediterranean, acacias on the edge of the African desert, bamboo in China and Southeast Asia, papyrus and reeds
+// along the Nile and the Euphrates.
+const SITE_LAND = {
+  rome: 'medit', athens: 'medit', olympia: 'medit', atlantis: 'medit', carthage: 'africa', jerusalem: 'levant',
+  giza: 'egypt', alexandria: 'egypt', babylon: 'mesopotamia', persepolis: 'persia', mohenjoDaro: 'india',
+  angkor: 'seasia', forbiddenCity: 'china', wei: 'china', shu: 'china', wu: 'china', greatWall: 'steppe', teotihuacan: 'america',
+};
+const LAND_CELL = 16;
+function landMap(n, placed) {
+  const m = Math.ceil(n / LAND_CELL), out = new Array(m * m).fill(null);
+  for (let j = 0; j < m; j++) for (let i = 0; i < m; i++) {
+    const x = i * LAND_CELL + LAND_CELL / 2, z = j * LAND_CELL + LAND_CELL / 2;
+    let best = null, bd = 320;
+    for (const s of SITES) {
+      const c = placed && placed[s.id], sx = c ? c[0] : s.tile[1] * BPT, sz = c ? c[1] : s.tile[0] * BPT;
+      const d = Math.hypot(sx - x, sz - z);
+      if (d < bd) { bd = d; best = SITE_LAND[s.id] || null; }
+    }
+    out[j * m + i] = best;
+  }
+  return { m, out };
+}
+/// An olive tree: a short gnarled trunk under a low, wide, silvery head. Olives fed the whole Mediterranean.
+function olive(w, x, h, z, seed) {
+  const t = 2 + (hash(x, z, seed + 101) < 0.45 ? 1 : 0);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.oakLog);
+  const top = h + t;
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) put(w, x + dx, top, z + dz, B.spruceLeaves);
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top + 1, z + dz, B.spruceLeaves);
+  if (hash(x, z, seed + 102) < 0.5) for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) put(w, x + dx, top, z + dz, B.spruceLeaves);
+}
+/// A cypress: a dark green spike. Greeks and Romans planted them by temples and graves.
+function cypress(w, x, h, z, seed) {
+  const t = 5 + Math.floor(hash(x, z, seed + 103) * 3.99);
+  w.set(x, h, z, B.spruceLog);
+  for (let y = h + 1; y < h + t; y++) w.set(x, y, z, B.spruceLeaves);
+  put(w, x, h + t, z, B.spruceLeaves);
+}
+/// An acacia: a bare trunk holding a flat umbrella of leaves over the dry country.
+function acacia(w, x, h, z, seed) {
+  const t = 3 + Math.floor(hash(x, z, seed + 105) * 2.99);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.oakLog);
+  const top = h + t;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dz) <= 3) put(w, x + dx, top, z + dz, B.oakLeaves);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top - 1, z + dz, B.oakLeaves);
+}
+/// A clump of bamboo: tall thin stems of different heights, the food of Shu's pandas.
+function bamboo(w, x, h, z, seed) {
+  for (let k = 0; k < 5; k++) {
+    const dx = Math.floor(hash(x + k * 5, z, seed + 107) * 3) - 1, dz = Math.floor(hash(x, z + k * 5, seed + 109) * 3) - 1;
+    const t = 4 + Math.floor(hash(x + k * 3, z + k, seed + 111) * 3.99);
+    const gy = heightAt(w, x + dx, z + dz, h);
+    if (gy === null) continue;
+    for (let y = gy; y < gy + t; y++) put(w, x + dx, y, z + dz, B.spruceLeaves);
+  }
+}
+/// Reeds and papyrus along the water's edge. Egypt made its paper, its boats and its baskets out of them.
+function reeds(w, x, h, z, seed) {
+  const t = 1 + (hash(x, z, seed + 113) < 0.45 ? 1 : 0) + (hash(x, z, seed + 115) < 0.2 ? 1 : 0);
+  for (let y = h; y < h + t; y++) put(w, x, y, z, B.tallGrass);
+}
+/// The top of the ground at a spot, if it's clear and level enough to plant on.
+function heightAt(w, x, z, about) {
+  for (let y = about + 2; y >= about - 2; y--) if (SOLID[w.get(x, y - 1, z)] && w.get(x, y, z) === 0) return y;
+  return null;
+}
+
+function plantTrees(w, heights, seed, spawn, placed) {
   const n = w.n, trunks = new Uint8Array(n * n);
+  const LM = landMap(n, placed);
+  const landOf = (x, z) => LM.out[Math.floor(z / LAND_CELL) * LM.m + Math.floor(x / LAND_CELL)];
   for (let z = 3; z < n - 3; z++) for (let x = 3; x < n - 3; x++) {
     const i = z * n + x, h = heights[i];
     if (h >= H - 12 || w.get(x, h, z) !== 0) continue;
@@ -361,6 +432,39 @@ function plantTrees(w, heights, seed, spawn) {
         else if (kind === 4) palm(w, x, h, z, seed); else { const tall = 2 + Math.floor(hash(x, z, seed + 25) * 1.99); for (let y = h; y < h + tall; y++) w.set(x, y, z, B.cactus); }
         continue;
       }
+    }
+    // The plants of this particular land, added later. They draw their own random numbers, so every tree that was
+    // ever planted in a saved world stays exactly where it was.
+    if (!near) {
+      const land = landOf(x, z), r4 = hash(x, z, seed + 131), grassy = top === B.grass, sandy = top === B.sand;
+      const med = land === 'medit' || land === 'levant', afr = land === 'africa' || land === 'egypt', east = land === 'china' || land === 'seasia';
+      let want = null;
+      if ((b === BI.plain || b === BI.hill) && grassy) {
+        if (med && r4 < 0.013) want = olive;
+        else if (med && r4 < 0.019) want = cypress;
+        else if ((afr || land === 'levant') && r4 < 0.014) want = acacia;
+        else if (east && r4 < 0.009) want = bamboo;
+      } else if (b === BI.forest && grassy) {
+        if (east && r4 < 0.012) want = bamboo;
+        else if (med && r4 < 0.012) want = olive;
+      } else if (b === BI.desert && sandy && afr && r4 < 0.003) want = acacia;
+      else if (b === BI.oasis && (grassy || sandy) && r4 < 0.022) want = acacia;
+      if (want) {
+        let crowded = false;
+        for (let dz = -2; dz <= 2 && !crowded; dz++) for (let dx = -2; dx <= 2; dx++) if (trunks[(z + dz) * n + x + dx]) { crowded = true; break; }
+        if (!crowded) { trunks[i] = 1; want(w, x, h, z, seed); continue; }
+      }
+      // Reed beds along every river, lake and quiet shore.
+      if ((grassy || sandy) && b !== BI.mountain) {
+        let byWater = false;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1]]) {
+          const j = (z + dz) * n + (x + dx);
+          if (j >= 0 && j < n * n && isWaterBiome(w.bio[j])) { byWater = true; break; }
+        }
+        if (byWater && hash(x, z, seed + 133) < (land === 'egypt' || land === 'mesopotamia' ? 0.5 : 0.3)) { reeds(w, x, h, z, seed); continue; }
+      }
+      // Low bushes in the woods and on the hillsides.
+      if (grassy && (b === BI.forest || b === BI.hill) && hash(x, z, seed + 139) < 0.02) { w.set(x, h, z, B.oakLeaves); continue; }
     }
     if (top === B.grass) {
       let g = 0.05, f = 0;
