@@ -326,6 +326,8 @@ function dragLookInstead() {
   refreshPaused();
   toast('Drag the mouse to look around', 'freelook');
 }
+// The browser said no to holding the mouse: don't leave the player staring at the veil, switch to dragging.
+document.addEventListener('pointerlockerror', () => { console.warn('Polis World: this browser refused the mouse lock, switching to drag-to-look'); dragLookInstead(); });
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
   // A late lock while a window is open (designer, inventory…) would swallow its clicks: let go again.
