@@ -551,7 +551,12 @@ function useOrPlace(sx, sy) {
     message(took ? 'You have the steering oars. W rows · S backs water · A and D turn.' : 'You let go of the steering oars.');
     return;
   }
+  if (P.ride) { dismount(); return; }
   const a = aimFrom(sx, sy);
+  // Swing up onto a horse or a camel you're looking at — or one you're standing right beside.
+  if (a.who && RIDEABLE[a.who.kind] && !a.who.dead && !a.who.mount && Math.hypot(a.who.x - P.x, a.who.z - P.z) < 5) { mount(a.who); return; }
+  const beside = mobs.find((m) => RIDEABLE[m.kind] && !m.dead && !m.mount && Math.hypot(m.x - P.x, m.z - P.z) < 2.6 && (Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) > 0);
+  if (beside) { mount(beside); return; }
   if (a.who) { interact(a.who); return; }
   const t = a.block;
   if (t && isDoorish(t.b)) { toggleDoor(t.x, t.y, t.z); return; }
@@ -959,9 +964,69 @@ function updateHerds(dt) {
   const count = GROUP[kind] ?? (kind === 'chicken' ? 4 : 3);
   for (let k = 0; k < count; k++) { const [mx, mz] = world.nearestLand(x + k * 2 - 2, z + (k % 2) * 2); addMob(kind, mx + 0.5, mz + 0.5); }
 }
+// ---------- riding ----------
+// Horses and camels can be ridden. This is how the world really worked: a Persian messenger changed horses at stations
+// along the Royal Road and carried a letter 2,700 km in a week, and camels crossed deserts that would kill a horse.
+const RIDEABLE = { horse: 8.4, camel: 6.8 };
+const seatY = (m) => (m.kind === 'camel' ? 1.42 : 1.22) * (m.young ? 0.6 : 1);
+function mount(m) {
+  if (m.flee > 0 || m.angry > 0) { message(`The ${SPECIES[m.kind].name} shies away. Come back when it has calmed down.`); return; }
+  P.ride = m; m.ridden = true; m.wait = 0; m.toSea = null;
+  message(`You climbed onto the ${SPECIES[m.kind].name}! W A S D to ride, X to get down.`);
+  if (!G.talked.has('_ride')) { G.talked.add('_ride'); addStars(1, 'Your first ride!'); }
+}
+function dismount() {
+  const m = P.ride;
+  P.ride = null;
+  if (!m) return;
+  m.ridden = false; m.tx = m.x; m.tz = m.z; m.wait = 2; m.home = [m.x, m.z];
+  // Step down beside it, onto whatever ground is there.
+  for (const [ox, oz] of [[1.3, 0], [-1.3, 0], [0, 1.3], [0, -1.3], [1.2, 1.2], [-1.2, -1.2], [0, 0]]) {
+    const x = m.x + ox, z = m.z + oz, g = world.groundY(Math.floor(x), Math.floor(z), Math.floor(m.y + 1.2));
+    if (g <= m.y + 1.2 && g > m.y - 4 && !world.solid(Math.floor(x), Math.floor(g), Math.floor(z)) && !world.solid(Math.floor(x), Math.floor(g) + 1, Math.floor(z))) { P.x = x; P.z = z; P.y = g; break; }
+  }
+  P.vy = 0; P.ground = true;
+  message(`You got down off the ${SPECIES[m.kind].name}.`);
+}
+/// You steer with the same keys as walking; the animal turns and runs where you point it.
+function updateRide(dt, fwd, side) {
+  const m = P.ride;
+  if (m.dead) { P.ride = null; return; }
+  const amt = Math.min(Math.hypot(fwd, side), 1);
+  let moved = false;
+  if (amt > 0.08) {
+    const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
+    let vx = sy * fwd - cy * side, vz = cy * fwd + sy * side;
+    const l = Math.hypot(vx, vz) || 1; vx /= l; vz /= l;
+    const sprint = input.keys.has('ShiftLeft') || input.keys.has('ShiftRight');
+    const step = RIDEABLE[m.kind] * (sprint ? 1.25 : 1) * amt * dt;
+    const nx = m.x + vx * step, nz = m.z + vz * step;
+    const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + 1.05));
+    const wet = world.hasWater(Math.floor(nx), Math.floor(nz)) && g < WL - 0.5;
+    if (!wet && g <= m.y + 1.05 && g > m.y - 3.5 && !world.solid(Math.floor(nx), Math.floor(g), Math.floor(nz)) && !world.solid(Math.floor(nx), Math.floor(g) + 1, Math.floor(nz))) {
+      m.x = nx; m.z = nz; moved = true;
+    }
+    m.g.rotation.y = angleLerp(m.g.rotation.y, Math.atan2(vx, vz), Math.min(dt * 7, 1));
+  }
+  const g = world.groundY(Math.floor(m.x), Math.floor(m.z), Math.floor(m.y + 1.05));
+  m.y = m.y < g ? Math.min(g, m.y + dt * 9) : Math.max(g, m.y - dt * 16);
+  m.phase = moved ? m.phase + dt * 14 : 0;
+  const sw = moved ? Math.sin(m.phase) * 0.75 : 0;
+  m.legs.forEach((l, i) => { l.rotation.x = sw * (i === 0 || i === 3 ? 1 : -1); });
+  m.g.position.set(m.x, m.y, m.z);
+  // You sit astride, legs forward, reins in both hands, rising a little to the trot.
+  P.x = m.x; P.z = m.z; P.y = m.y + seatY(m) + (moved ? Math.abs(Math.sin(m.phase)) * 0.06 : 0);
+  P.vx = P.vz = 0; P.vy = 0; P.ground = true; P.water = false; P.walk = 0; P.heading = m.g.rotation.y;
+  const b = playerBody;
+  b.g.position.set(P.x, P.y, P.z);
+  b.g.rotation.y = G.firstPerson ? P.yaw : angleLerp(b.g.rotation.y, m.g.rotation.y, Math.min(dt * 10, 1));
+  b.legs[0].rotation.x = -1.35; b.legs[1].rotation.x = -1.35;
+  b.arms[0].rotation.x = -0.75; b.arms[1].rotation.x = -0.75;
+}
+
 function updateMobs(dt) {
   for (const m of mobs) {
-    if (m.dead) continue;
+    if (m.dead || m.ridden) continue;   // the one you're riding is moved by updateRide
     const sp0 = SPECIES[m.kind], dP = Math.hypot(m.x - P.x, m.z - P.z);
     // How each animal reacts to you. A frightened turtle heads for the sea, and a parrot takes off if you come close.
     if (sp0.temper === 'sea' && !m.inSea && !m.toSea && dP < 5) goToSea(m);
@@ -1601,6 +1666,16 @@ function updateNpcs(dt) {
   for (const n of npcs) {
     if (!n.body.g.visible) continue;
     if (Math.hypot(n.x - P.x, n.z - P.z) > 120) continue;
+    // In the saddle: he goes wherever his horse goes, and sits there while he talks to you.
+    if (n.mounted && !n.mounted.dead) {
+      const h = n.mounted;
+      n.x = h.x; n.z = h.z; n.y = h.y + (h.kind === 'camel' ? 1.42 : 1.22);
+      n.body.g.position.set(n.x, n.y, n.z);
+      n.body.g.rotation.y = n.talking ? angleLerp(n.body.g.rotation.y, Math.atan2(P.x - n.x, P.z - n.z), Math.min(dt * 8, 1)) : h.g.rotation.y;
+      n.body.legs[0].rotation.x = -1.35; n.body.legs[1].rotation.x = -1.35;
+      n.body.arms[0].rotation.x = -0.8; n.body.arms[1].rotation.x = -0.8;
+      continue;
+    }
     // Villagers with a job stay at their workplace and get on with it.
     if (n.kind === 'villager' && n.v.spot && !n.talking) {
       const r = ROLES[n.v.role], po = pose(r.anim, villageClock + n.phase0, false, 0);
@@ -1753,7 +1828,10 @@ function spawnTravellers() {
   h.body.g.add(boxMesh(0.16, 0.6, 0.16, 0x6e4428, 0.18, 1.25, -0.22));   // a quiver of arrows on his back
   for (const ox of [0.14, 0.2, 0.24]) h.body.g.add(boxMesh(0.03, 0.2, 0.03, 0xe8e2d0, ox, 1.63, -0.22));
   if (ICON_CANVAS.has('ironSpear')) { const spear = new THREE.Mesh(itemModel('ironSpear', 'hand'), MODEL_MAT); h.body.arms[1].add(spear); }
-  const horse = addMob('horse', h.x - 1.5, h.z + 1); horse.follow = h; horse.tame = true;
+  // Tarkan hunts from horseback, the way hunters did from Persia to the steppe. The horse roams near camp and he
+  // rides it; nobody else can take his horse.
+  const [phx, phz] = world.nearestLand(Math.floor(h.x + 2), Math.floor(h.z - 1));
+  const horse = addMob('horse', phx + 0.5, phz + 0.5); horse.tame = true; horse.mount = h; horse.home = [phx + 0.5, phz + 0.5]; h.mounted = horse;
   // His eagle circles high overhead.
   const g = new THREE.Group(), wings = [];
   g.add(boxMesh(0.22, 0.2, 0.5, 0x5a3a20, 0, 0, 0)); g.add(boxMesh(0.18, 0.18, 0.18, 0xf2efe6, 0, 0.04, 0.32)); g.add(boxMesh(0.06, 0.06, 0.08, 0xe8b830, 0, 0.02, 0.44)); g.add(boxMesh(0.2, 0.04, 0.22, 0xf2efe6, 0, 0, -0.34));
@@ -1978,6 +2056,7 @@ function updatePlayer(dt) {
   if (input.mode === 'touch') { fwd = input.joy.y; side = input.joy.x; }
   if (openPanel || dialogueOpen) { fwd = 0; side = 0; }
   if (P.steering) { fwd = 0; side = 0; }   // at the steering oars your hands are full: W A S D sails the ship instead
+  if (P.ride) { updateRide(dt, fwd, side); return; }   // in the saddle, W A S D rides
   const amt = Math.min(Math.hypot(fwd, side), 1);
   const fx0 = Math.floor(P.x), fz0 = Math.floor(P.z);
   const feet = world.get(fx0, Math.floor(P.y + 0.4), fz0);
@@ -2398,6 +2477,7 @@ function drawMap() {
   void s;
 }
 function travel(x, z) {
+  if (P.ride) { const m = P.ride; P.ride = null; m.ridden = false; m.tx = m.x; m.tz = m.z; m.home = [m.x, m.z]; }   // your horse stays where it was grazing
   const [lx, lz] = world.nearestLand(Math.floor(x), Math.floor(z));
   P.x = lx + 0.5; P.z = lz + 0.5; P.y = world.groundY(lx, lz); P.vy = 0;
   closePanels();
