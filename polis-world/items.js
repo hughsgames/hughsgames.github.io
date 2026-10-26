@@ -17,6 +17,7 @@ it('roastBeef', 'Roast Beef', { food: 6 }); it('roastMutton', 'Roast Mutton', { 
 it('roastChicken', 'Roast Chicken', { food: 5 }); it('roastGoat', 'Roast Goat', { food: 5 }); it('cookedFish', 'Grilled Fish', { food: 5 });
 it('bread', 'Bread', { food: 5 }); it('wheat', 'Wheat'); it('wheatSeeds', 'Wheat Seeds');
 it('leather', 'Leather'); it('wool', 'Wool'); it('feather', 'Feather');
+it('raft', 'Raft', { boat: 'raft' }); it('sailboat', 'Sailboat', { boat: 'sailboat' });
 const toolTiers = [['wooden', 'Wooden', 1], ['stone', 'Stone', 2], ['bronze', 'Bronze', 3], ['iron', 'Iron', 4], ['ancient', 'Ancient Metal', 5]];
 for (const [k, n, tier] of toolTiers) {
   it(k + 'Pickaxe', n + ' Pickaxe', { tool: 'pickaxe', tier }); it(k + 'Axe', n + ' Axe', { tool: 'axe', tier });
@@ -65,6 +66,8 @@ function r(out, n, cat, inputs, note = null, furnace = false) {
   RECIPES.push({ id: out + RECIPES.length, out, n, cat, inputs: inputs.map(([a, c]) => [Array.isArray(a) ? a : [a], c]), note, furnace });
 }
 r('planks', 4, 'Basics', [[LOGS, 1]]);
+r('raft', 1, 'Travel', [[LOGS, 4], ['stick', 2]], 'People have tied logs together to cross rivers for thousands of years. Hold it and click on water to set it afloat.');
+r('sailboat', 1, 'Travel', [['planks', 12], ['wool', 3], ['stick', 3]], 'Phoenician sailors crossed the whole Mediterranean in wooden boats with square sails. Hold it and click on water, then take the steering oar.');
 r('stick', 4, 'Basics', [['planks', 2]]);
 r('torch', 4, 'Basics', [['stick', 1], [FUEL, 1]], 'Before lamps were common, people lit the night with burning torches.');
 r('campfire', 1, 'Basics', [['stick', 3], [STONES, 3]], 'Place it, then hold raw meat or fish and click it to cook.');

@@ -54,6 +54,20 @@ export const BOAT_TYPES = {
     body: 'Flat-bottomed, for rivers too shallow for a sea ship. Barges carried grain, stone and cattle down the Nile and the Euphrates. On the Nile the current carries a boat north, and the wind blows south almost all year — so boats drifted down with the stream and sailed back up again. The huge stones for the pyramids and for Babylon\'s walls travelled by water like this.',
   },
 };
+// The two boats you can make yourself, the same as the phone game's.
+BOAT_TYPES.raft = {
+  name: 'raft', L: 5, B: 3.2, hs: 0.45, dk: 0.5, banks: 0, per: 0, men: [0], oar: [0], speed: 2.4, civil: true, full: 3, flat: true,
+  hull: 0x8a5a32, band: 0x6a4228, sail: [0xeadfc4, 0xeadfc4, 0xeadfc4], marines: 0, crewTunic: 0xdccaa6, noMast: true, yours: true,
+  title: 'Your raft',
+  body: 'Logs lashed together with rope: the oldest kind of boat there is. People have crossed rivers and lakes on rafts for many thousands of years, and traders floated goods downstream on them long before anyone built a ship.',
+};
+BOAT_TYPES.sailboat = {
+  name: 'sailboat', L: 7, B: 2.8, hs: 0.85, dk: 0.95, banks: 0, per: 0, men: [0], oar: [0], speed: 3.4, civil: true, full: 1.4,
+  hull: 0x8a5a32, band: 0xb8402e, sail: [0xf0e7d2, 0xb8402e, 0xf0e7d2], marines: 0, crewTunic: 0xdccaa6, smallSail: true, yours: true,
+  title: 'Your sailboat',
+  body: 'A small wooden boat with one square sail. Boats like this carried people and goods all round the Mediterranean. A square sail is wonderful with the wind behind you and hard work against it, which is why sailors learned the winds and the seasons by heart.',
+};
+
 /// Which cities keep boats at their waterfront, and what kind.
 export const PORTS = [
   { city: 'athens', boats: ['merchantman', 'fishingBoat', 'fishingBoat'] },
@@ -177,6 +191,12 @@ function boatGeometry(t) {
   } else { for (const s of [-1, 1]) box(list, -t.B / 4, -0.3, s * (L / 2 - 0.3) - 0.15, t.B / 4, t.hs + 0.5, s * (L / 2 - 0.3) + 0.15, wood); }
   // Mast, yard and sail.
   const mz = t.smallSail ? -0.5 : 0.4, top = t.dk + (t.smallSail ? 3.6 : 6.0), sw = t.B * (t.smallSail ? 0.55 : 0.8), sh = t.smallSail ? 2.0 : 3.4;
+  if (t.noMast) {
+    // A raft: just the logs, a pole to push with, and a coil of rope.
+    for (const z of [-t.L / 2 + 0.6, t.L / 2 - 0.6]) box(list, -t.B / 2 + 0.2, t.dk, z - 0.12, t.B / 2 - 0.2, t.dk + 0.12, z + 0.12, 0x6a5434);
+    box(list, t.B / 2 - 0.5, t.dk, -t.L / 2 + 0.8, t.B / 2 - 0.36, t.dk + 0.14, t.L / 2 - 0.8, 0x6a5434);
+    return mergeBoxes(list);
+  }
   box(list, -0.14, t.dk - 0.1, mz - 0.14, 0.14, top + 0.3, mz + 0.14, 0x6b4a2a);
   box(list, -sw - 0.25, top - 0.1, mz + 0.12, sw + 0.25, top + 0.1, mz + 0.28, 0x6b4a2a);
   if (t.furled) box(list, -sw, top - 0.42, mz + 0.14, sw, top - 0.12, mz + 0.46, t.sail[0]);                   // rolled up along the yard
@@ -375,7 +395,7 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
     // The rowers are real people (two looks, taking turns along the benches), facing the stern as rowers do.
     const rowers = [0, 1].map((k) => new Squad(body, rig(rowerLook(k ? 0xd8c8a8 : 0xe9e0cc, k + type.length)), Math.ceil(seats.length / 2) - (k && seats.length % 2 ? 1 : 0), oarMat));
     seats.forEach((r, i) => { r.squad = rowers[i % 2]; r.i = i >> 1; });
-    crewOf(t, body);
+    if (!t.yours) crewOf(t, body);   // a boat you built yourself has no crew but you
     const [ax, az] = course ? course.a : [moored.x, moored.z], [bx, bz] = course ? course.b : [moored.x + Math.sin(moored.yaw), moored.z + Math.cos(moored.yaw)];
     const s = { type, city, t, course, g, body, oars, seats, shaft, blade, rowers, x: ax, z: az, yaw: Math.atan2(bx - ax, bz - az), from: 0, leg: course ? 'row' : 'moored', u: 0.15, phi: k * 1.7, turning: 0, back: 0, len: course ? course.len : 0, moored: !course };
     g.position.set(s.x, surface, s.z); g.rotation.y = s.yaw;
@@ -533,6 +553,21 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
       const s = this.helmHere(x, z, y);
       if (s) { s.helm = true; s.aground = 0; }
       return s;
+    },
+    /// Sets a boat you built afloat here, if there's water enough for it. Returns the boat, or null.
+    place(type, x, z, yaw) {
+      const t = BOAT_TYPES[type];
+      if (!t) return null;
+      for (const [ox, oz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) {
+        for (const a of [yaw, yaw + Math.PI / 2, yaw + Math.PI / 4]) {
+          const bx = x + ox, bz = z + oz;
+          if (!floats(t, bx, bz, a)) continue;
+          const s = makeShip(t, type, null, null, 0, { x: bx, z: bz, yaw: a });
+          ships.push(s);
+          return s;
+        }
+      }
+      return null;
     },
     /// The nearest ship to a point, for the "you spotted…" card.
     nearest(x, z) { let best = null, bd = Infinity; for (const s of ships) { const d = Math.hypot(x - s.x, z - s.z); if (d < bd) { bd = d; best = s; } } return best ? { s: best, d: bd } : null; },

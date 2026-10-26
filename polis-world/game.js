@@ -552,6 +552,23 @@ function useOrPlace(sx, sy) {
     return;
   }
   if (P.ride) { dismount(); return; }
+  // Setting a boat you built on the water.
+  const inHand = heldItem();
+  if (inHand && ITEM[inHand.id].boat && ships) {
+    const dx = Math.sin(P.yaw), dz = Math.cos(P.yaw);
+    for (const d of [2.5, 3.5, 4.5, 1.5, 5.5]) {
+      const bx = P.x + dx * d, bz = P.z + dz * d;
+      if (!world.hasWater(Math.floor(bx), Math.floor(bz))) continue;
+      const boat = ships.place(ITEM[inHand.id].boat, bx, bz, P.yaw);
+      if (!boat) continue;
+      inv.remove(inHand.id, 1); refreshHotbar(); scheduleSave();
+      message(`You set the ${boat.t.name} afloat. Climb aboard and press X at the back to steer.`);
+      if (!G.talked.has('_boat')) { G.talked.add('_boat'); addStars(1, 'Your first boat!'); }
+      return;
+    }
+    message('You need open water in front of you to set it afloat.');
+    return;
+  }
   const a = aimFrom(sx, sy);
   // Swing up onto a horse or a camel you're looking at — or one you're standing right beside.
   if (a.who && RIDEABLE[a.who.kind] && !a.who.dead && !a.who.mount && Math.hypot(a.who.x - P.x, a.who.z - P.z) < 5) { mount(a.who); return; }
@@ -972,9 +989,24 @@ function updateHerds(dt) {
 // deserts that would kill a horse; elephants carried kings and fought in battles; yaks and llamas went where carts
 // could not. Each goes at its own pace, and you sit higher on the big ones.
 const RIDEABLE = { horse: 8.4, camel: 6.8, elephant: 5.0, yak: 4.6, llama: 5.4 };
+// No animal lets a stranger climb on its back. Offer it something to eat first, the way people have always
+// made friends with animals: an apple, a handful of wheat, bread, figs or dates.
+const TREATS = ['apple', 'wheat', 'bread', 'figs', 'dates', 'olives', 'carrotCake', 'honeyCake', 'maize'];
+function offerTreat(m) {
+  const s = heldItem();
+  if (!s || !TREATS.includes(s.id)) {
+    message(`The ${SPECIES[m.kind].name} won't let you near. Hold out an apple or some wheat and try again.`);
+    return;
+  }
+  inv.remove(s.id, 1); refreshHotbar(); scheduleSave();
+  m.tame = true; m.flee = 0; m.angry = 0; m.wait = 1;
+  message(`The ${SPECIES[m.kind].name} eats the ${ITEM[s.id].name.toLowerCase()} and lets you stroke it. Press X again to ride.`);
+  if (!G.talked.has('_tame')) { G.talked.add('_tame'); addStars(1, 'You tamed an animal!'); }
+}
 const seatY = (m) => ({ camel: 1.42, elephant: 2.35, yak: 1.32, llama: 1.25 }[m.kind] ?? 1.22) * (m.young ? 0.6 : 1);
 function mount(m) {
   if (m.flee > 0 || m.angry > 0) { message(`The ${SPECIES[m.kind].name} shies away. Come back when it has calmed down.`); return; }
+  if (!m.tame) { offerTreat(m); return; }
   P.ride = m; m.ridden = true; m.wait = 0; m.toSea = null;
   message(`You climbed onto the ${SPECIES[m.kind].name}! W A S D to ride, X to get down.`);
   if (!G.talked.has('_ride')) { G.talked.add('_ride'); addStars(1, 'Your first ride!'); }
@@ -2023,7 +2055,8 @@ function updateDiscovery(dt) {
   if (ns && ns.d < 40 && !G.found.has('ship:' + ns.s.type)) {
     const t = ns.s.t;
     G.found.add('ship:' + ns.s.type); addStars(1);
-    showCard(`You spotted ${t.title.replace(/^An? /, (a) => a.toLowerCase())}!`, `${t.civil ? 'In the port of' : 'Warship ·'} ${SITE_TEXT[ns.s.city]?.name ?? ''}`,
+    const where = t.yours ? 'Yours, and nobody else\'s' : `${t.civil ? 'In the port of' : 'Warship ·'} ${SITE_TEXT[ns.s.city]?.name ?? ''}`;
+    showCard(`You spotted ${t.title.replace(/^An? /, (a) => a.toLowerCase())}!`, where,
       t.body + '\n\nSwim up to its side and press Space (or the jump button) to climb aboard. Then walk to the stern and press X to take the steering oars yourself.');
     return;
   }
@@ -2402,7 +2435,7 @@ function renderPanel() {
       grid.appendChild(el);
     });
     $('invHint').textContent = picked !== null && inv.slots[picked] ? `${ITEM[inv.slots[picked].id].name} — click another slot to move it` : 'Click an item, then another slot to move it. The bottom row is your hotbar.';
-    const cats = ['All', 'Basics', 'Food', 'Building', 'Decor', 'Tools', 'Smelting'];
+    const cats = ['All', 'Basics', 'Food', 'Building', 'Decor', 'Tools', 'Travel', 'Smelting'];
     const chips = $('chips'); chips.innerHTML = '';
     for (const c of cats) { const b = document.createElement('button'); b.className = 'chip' + (c === craftCat ? ' on' : ''); b.textContent = c; b.addEventListener('click', () => { craftCat = c; renderPanel(); }); chips.appendChild(b); }
     const list = RECIPES.filter((r) => craftCat === 'All' || r.cat === craftCat);
@@ -2731,7 +2764,7 @@ function save() {
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
     localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay,
-      animals: mobs.filter((m) => !m.dead && !m.tame && isKept(m)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred })) }));
+      animals: mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame })) }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
 function load() {
@@ -2920,7 +2953,7 @@ function start() {
   if (s && s.animals) for (const a of s.animals) {
     if (!SPECIES[a.kind]) continue;
     const m = resized ? addMob(a.kind, penMid[0] + (Math.random() - 0.5) * 3, penMid[1] + (Math.random() - 0.5) * 2, a.young) : addMob(a.kind, a.x, a.z, a.young);
-    m.home = resized ? [...penMid] : a.home; m.age = a.age || 0; m.bred = a.bred ?? -999;
+    m.home = resized ? [...penMid] : a.home; m.age = a.age || 0; m.bred = a.bred ?? -999; m.tame = !!a.tame;
   }
   else for (let k = 0; k < 3; k++) { const m = addMob('sheep', (pen[0] + pen[2]) / 2 + k - 1 + 0.5, (pen[1] + pen[3]) / 2 + 0.5); m.home = [(pen[0] + pen[2]) / 2 + 0.5, (pen[1] + pen[3]) / 2 + 0.5]; }
   spawnGuides();

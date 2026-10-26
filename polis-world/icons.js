@@ -365,6 +365,27 @@ const ART = {
     }
     p.stroke([[6.4, 29], [9, 26.4]], 1.3, () => ramp(0xe8e0cc)(0.95));
   },
+  raft(p) {
+    // Four logs lashed side by side, with a pole to push along with.
+    for (let k = 0; k < 4; k++) {
+      const y = 11 + k * 3.4;
+      p.stroke([[5, y], [27, y - 1.2]], 1.7, woodPaint(k % 2 ? 0x9a6a3c : 0x8a5a32));
+    }
+    for (const x of [10, 22]) p.stroke([[x, 9.6], [x - 1.2, 25]], 0.9, () => ramp(0x6a5434)(0.7));
+    p.stroke([[6, 7], [26, 4]], 1.1, woodPaint(0x7a4e2a));
+    for (const [x, y] of [[6, 10.4], [26, 9.2], [6, 23.6], [26, 22.4]]) p.set(x, y, ramp(0x5a3a20)(0.35));
+  },
+  sailboat(p) {
+    // A little hull with a square sail, the sort that crossed the Mediterranean.
+    p.poly([[5, 22], [27, 22], [24, 28], [8, 28]], (x, y) => ramp(0x8a5a32)(clamp(0.85 - (y - 22) / 14)));
+    p.stroke([[5, 22], [27, 22]], 1.1, () => ramp(0x6a4228)(0.8));
+    p.stroke([[16, 4], [16, 22]], 1.1, woodPaint(0x7a4e2a));
+    p.stroke([[7, 7], [25, 7]], 0.9, woodPaint(0x7a4e2a));
+    p.poly([[7.5, 7.5], [24.5, 7.5], [23, 19], [9, 19]], (x, y) => ramp(y < 11 || y > 15.5 ? 0xf0e7d2 : 0xb8402e)(clamp(0.95 - (x - 8) / 44)));
+    p.stroke([[9, 19], [7.5, 22]], 0.8, () => ramp(0xcfc8b6)(0.7));
+    p.stroke([[23, 19], [24.5, 22]], 0.8, () => ramp(0xcfc8b6)(0.7));
+    p.stroke([[24, 23.6], [28, 27]], 1, woodPaint(0x6a4228));
+  },
   silk(p) {
     p.poly([[4, 10], [28, 6], [28, 20], [4, 24]], (x, y) => ramp(0x3a6ab8)(clamp(0.82 - (y - 6) / 36 + ((x + y) % 5 === 0 ? 0.12 : 0))));
     for (let k = 0; k < 5; k++) p.stroke([[5 + k * 5.4, 10.6 - k * 0.8], [7.6 + k * 5.4, 22 - k * 0.8]], 1.1, () => ramp(0xe8c24a)(0.75));
@@ -598,6 +619,7 @@ export const PEOPLE_TOOL = { hammer: 'hammer', pick: 'ironPickaxe', chisel: 'chi
 // How big each thing really is, in blocks (a block is about a metre): its longest side, or for a tool its length.
 const TOOL_LEN = { Pickaxe: 0.85, Axe: 0.75, Shovel: 1.1, Sword: 0.85 };
 export const SIZE = {
+  raft: 0.75, sailboat: 0.8,
   ironSpear: 2.2, hammer: 0.45, hoe: 1.3, sickle: 0.5, chisel: 0.25, brush: 0.3, fishingRod: 2.4, oar: 2.6, stick: 0.6, trident: 2.0,
   apple: 0.09, bread: 0.3, wheat: 0.6, wheatSeeds: 0.12, snowball: 0.1, coal: 0.12, charcoal: 0.15,
   copperIngot: 0.22, tinIngot: 0.22, bronzeIngot: 0.22, ironIngot: 0.22, goldIngot: 0.22, ancientMetal: 0.22,
