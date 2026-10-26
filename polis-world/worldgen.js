@@ -665,7 +665,7 @@ function carveTunnel(w, atl, cp, seed) {
 const SITES = [
   { id: 'rome', tile: [17.3, 17.3], fp: [-30, -12, 14, 12], big: [-52, -34, 42, 34] },   // fp decides where Rome goes (don't change it); big is the ground the Colosseum and its square now need
   { id: 'athens', tile: [23.3, 26.3], fp: [-16, -9, 14, 9] },
-  { id: 'giza', tile: [42.0, 26.7], fp: [-27, -11, 11, 27], big: [-66, -20, 42, 62] },   // the pyramids, the Sphinx and the causeway need the whole plateau
+  { id: 'giza', tile: [42.0, 26.7], fp: [-27, -11, 11, 27], big: [-66, -20, 80, 62] },   // the pyramids, the Sphinx away to the east and the causeway between them
   { id: 'alexandria', tile: [34.7, 28.7], fp: [-8, -18, 9, 8] },
   { id: 'babylon', tile: [36.0, 38.3], fp: [-9, -8, 9, 26] },
   { id: 'persepolis', tile: [34.3, 55.3], fp: [-13, -10, 11, 10] },
@@ -823,12 +823,24 @@ class Stamper {
     // The doorway is on the north face, nine courses up, where the real one is.
     const doorY = gy + 9;
     const northZ = cz - Math.round(26 * (1 - 9 / 34));   // where the north face stands at that height
-    // Steps up the face to the doorway, so you can reach it.
+    // A broad stair from the sand up to the doorway, rising one block for every block it goes in, so
+    // every step is a step. (It used to follow the slope of the face, which puts two courses at the same
+    // depth — a two-block wall no one can climb, which is why the door could not be reached.)
     for (let k = 0; k <= 9; k++) {
-      const rr = Math.round(26 * (1 - k / 34));
-      this.fill(cx - 2, gy + k, cz - rr - 2, cx + 2, gy + k, cz - rr - 1, B.sandstone);
-      this.fill(cx - 1, gy + k + 1, cz - rr - 2, cx + 1, gy + k + 3, cz - rr - 1, 0);
+      const z = northZ - 9 + k;
+      this.fill(cx - 4, gy + k, z, cx + 4, gy + k, z, B.sandstone);
+      this.fill(cx - 3, gy + k + 1, z, cx + 3, gy + k + 5, z, 0);
+      if (k % 3 === 0) { this.put(cx - 4, gy + k + 1, z, B.lamp); this.put(cx + 4, gy + k + 1, z, B.lamp); }
     }
+    // The doorway itself: a tall opening in a granite surround, with a band of gold over the lintel that
+    // catches the sun, so you can see from the bottom of the stair that this is the way in.
+    this.fill(cx - 2, doorY, northZ, cx + 2, doorY + 4, northZ, 0);
+    for (let y = doorY - 1; y <= doorY + 5; y++) { this.put(cx - 3, y, northZ, B.granite); this.put(cx + 3, y, northZ, B.granite); }
+    for (let x = cx - 3; x <= cx + 3; x++) { this.put(x, doorY + 5, northZ, B.granite); this.put(x, doorY - 1, northZ, B.granite); }
+    for (let x = cx - 3; x <= cx + 3; x++) this.put(x, doorY + 6, northZ, B.goldBlock);
+    this.put(cx - 4, doorY + 2, northZ, B.lamp); this.put(cx + 4, doorY + 2, northZ, B.lamp);
+    this.put(cx - 2, doorY + 3, northZ - 1, B.lamp); this.put(cx + 2, doorY + 3, northZ - 1, B.lamp);
+
     // ---- the way in ----
     // Every corridor is cut as a proper staircase: the tread under each step is laid as solid stone, so
     // one passage can never hollow out another's floor. (It did, and the whole tomb drained into one pit
@@ -855,7 +867,8 @@ class Stamper {
       }
     };
     // The porch behind the door, then the long descent to the landing deep in the rock.
-    run(cx, doorY, northZ, northZ + 3, 3, 4);
+    this.fill(cx - 2, doorY, northZ, cx + 2, doorY + 4, northZ + 3, 0);
+    this.fill(cx - 2, doorY - 1, northZ, cx + 2, doorY - 1, northZ + 3, B.sandstone);
     climb(cx, doorY, northZ + 4, -1, 7, 3, 3);              // down seven courses
     run(cx, gy + 3, northZ + 10, cz - 6, 3, 3);             // the landing
     for (const z of [northZ + 6, northZ + 9, cz - 7]) this.put(cx + 1, gy + 5, z, B.lamp);
@@ -869,7 +882,7 @@ class Stamper {
     this.fill(cx - 11, gy - 8, cz + 3, cx - 1, gy - 8, cz + 11, B.stone);
     this.fill(cx - 7, gy - 10, cz + 7, cx - 5, gy - 8, cz + 9, 0);      // the pit cut in its floor
     for (const [lx, lz] of [[cx - 10, cz + 4], [cx - 2, cz + 4], [cx - 10, cz + 10], [cx - 2, cz + 10]]) this.put(lx, gy - 3, lz, B.lamp);
-    tomb.push({ id: 'ankh', x: cx - 6.5, y: gy - 7, z: cz + 10.5 });
+    this.put(cx - 6, gy - 7, cz + 10, B.goldBlock);        // gold left in the dark
 
     // Up from the landing: the ascending stair, then the Grand Gallery climbing east.
     climb(cx, gy + 4, cz - 5, 1, 5, 3, 3);                  // up five, to the foot of the gallery
@@ -916,38 +929,114 @@ class Stamper {
     for (const [jx, jz] of [[kx0 + 2, kz0 + 1], [kx0 + 3, kz1 - 1], [kx1 - 3, kz1 - 1]]) this.put(jx, ky, jz, B.terracotta);
     this.put(kx0 + 1, ky, cz, B.scrollShelf);
 
-    // ---- the Sphinx, its temple and the causeway ----
-    const sx = cx - 6, sz = cz + 46;
-    this.fill(sx - 3, gy, sz - 11, sx + 3, gy + 5, sz + 7, B.sandstone);          // the body, lying down
-    this.fill(sx - 4, gy, sz + 3, sx + 4, gy + 2, sz + 7, B.sandstone);           // the haunches
-    this.fill(sx - 3, gy, sz - 16, sx - 2, gy + 1, sz - 11, B.sandstone);         // the forepaws
-    this.fill(sx + 2, gy, sz - 16, sx + 3, gy + 1, sz - 11, B.sandstone);
-    this.fill(sx - 3, gy + 6, sz - 12, sx + 3, gy + 9, sz - 8, B.limestone);      // the head
-    this.fill(sx - 4, gy + 7, sz - 13, sx + 4, gy + 9, sz - 9, B.limestone);      // the headdress
-    this.fill(sx - 4, gy + 4, sz - 13, sx - 3, gy + 7, sz - 10, B.limestone);
-    this.fill(sx + 3, gy + 4, sz - 13, sx + 4, gy + 7, sz - 10, B.limestone);
-    this.put(sx - 1, gy + 8, sz - 12, B.carvedStone); this.put(sx + 1, gy + 8, sz - 12, B.carvedStone);  // the eyes
-    this.fill(sx - 1, gy + 6, sz - 13, sx + 1, gy + 6, sz - 13, B.carvedStone);   // the beard
-    // The temple in front of its paws.
-    this.fill(sx - 9, gy, sz - 26, sx + 9, gy + 4, sz - 18, B.granite);
-    this.fill(sx - 7, gy + 1, sz - 24, sx + 7, gy + 4, sz - 20, 0);
-    this.fill(sx - 1, gy + 1, sz - 20, sx + 1, gy + 3, sz - 18, 0);
-    for (let x = sx - 6; x <= sx + 6; x += 3) { this.put(x, gy + 1, sz - 23, B.column); this.put(x, gy + 2, sz - 23, B.column); this.put(x, gy + 3, sz - 23, B.column); }
-    // The causeway climbing from the valley temple to Khafre's pyramid.
-    for (let k = 0; k < 30; k++) {
-      const x = sx - 10 - k, z = sz - 22 + Math.round(k * 0.6), y = gy + Math.round(k * 0.2);
+    // ---- the Sphinx ----
+    // Moved well east of the pyramids and turned to face the sunrise, the way the real one does, so you
+    // see it in profile from the pyramids and face on from the desert, with the pyramids behind it.
+    const sx = cx + 50, sz = cz + 34;
+    this.sphinx(sx, sz, gy, tomb);
+
+    // The causeway running west from the Sphinx's temple up to Khafre's pyramid.
+    for (let k = 0; k < 44; k++) {
+      const x = sx - 14 - k, z = sz - Math.round(k * 0.18), y = gy + Math.round(k * 0.12);
       this.fill(x, y - 1, z - 2, x, y, z + 2, B.limestone);
-      this.fill(x, y + 1, z - 2, x, y + 3, z - 2, B.sandstone);
-      this.fill(x, y + 1, z + 2, x, y + 3, z + 2, B.sandstone);
+      if (k % 4 === 0) { this.fill(x, y + 1, z - 3, x, y + 3, z - 3, B.sandstone); this.fill(x, y + 1, z + 3, x, y + 3, z + 3, B.sandstone); }
+      if (k % 12 === 0) { this.put(x, y + 4, z - 3, B.lamp); this.put(x, y + 4, z + 3, B.lamp); }
     }
-    // A pair of obelisks either side of the way in.
-    for (const ox of [cx - 7, cx + 7]) {
-      this.fill(ox, gy, northZ - 6, ox, gy + 8, northZ - 6, B.granite);
-      this.put(ox, gy + 9, northZ - 6, B.goldBlock);
+    // A pair of obelisks either side of the way in to the Great Pyramid.
+    for (const ox of [cx - 8, cx + 8]) {
+      this.fill(ox, gy, northZ - 11, ox, gy + 9, northZ - 11, B.granite);
+      this.put(ox, gy + 10, northZ - 11, B.goldBlock);
+      this.put(ox, gy + 1, northZ - 10, B.lamp);
     }
     this.tomb = (this.tomb || []).concat(tomb);
     return gy;
   }
+  /// The Great Sphinx: a lion's body with a pharaoh's head, lying with its forelegs stretched out in
+  /// front, facing the sunrise. Between the paws stands the Dream Stele, and behind that a stair goes
+  /// down into the chamber the legends put beneath it — the Hall of Records.
+  sphinx(sx, sz, gy, tomb) {
+    const stone = B.sandstone, pale = B.limestone, carve = B.carvedStone;
+    // The floor of the quarry it is carved from, and a low wall round the hollow.
+    this.fill(sx - 20, gy - 1, sz - 12, sx + 34, gy - 1, sz + 12, stone);
+    for (const d of [-1, 1]) this.fill(sx - 20, gy, sz + d * 12, sx + 30, gy + 2, sz + d * 12, pale);
+
+    // ---- the lion lying down ----
+    // Haunches at the back, highest point of the body; then the long back; then the shoulders.
+    this.fill(sx - 15, gy, sz - 6, sx - 7, gy + 8, sz + 6, stone);
+    this.fill(sx - 7, gy, sz - 5, sx + 4, gy + 6, sz + 5, stone);
+    this.fill(sx + 4, gy, sz - 6, sx + 9, gy + 10, sz + 6, stone);
+    // A fold of muscle along each flank, and the line of the ribs.
+    for (const d of [-1, 1]) {
+      this.fill(sx - 6, gy + 4, sz + d * 6, sx + 3, gy + 6, sz + d * 6, stone);
+      for (let x = sx - 4; x <= sx + 2; x += 3) this.fill(x, gy + 1, sz + d * 6, x, gy + 3, sz + d * 6, carve);
+    }
+    // The forelegs stretched right out in front, ending in paws with toes.
+    for (const d of [-1, 1]) {
+      this.fill(sx + 9, gy, sz + d * 2, sx + 28, gy + 3, sz + d * 5, stone);
+      this.fill(sx + 26, gy, sz + d * 2, sx + 31, gy + 2, sz + d * 6, stone);
+      for (let t = 0; t < 3; t++) {
+        this.fill(sx + 31, gy, sz + d * (2 + t * 2), sx + 32, gy + 1, sz + d * (2 + t * 2), pale);
+        if (t < 2) this.fill(sx + 31, gy + 1, sz + d * (3 + t * 2), sx + 32, gy + 1, sz + d * (3 + t * 2), 0);
+      }
+    }
+    // The tail, curled up round the right haunch.
+    this.fill(sx - 15, gy + 2, sz + 7, sx - 15, gy + 4, sz + 9, stone);
+    this.fill(sx - 13, gy + 2, sz + 9, sx - 15, gy + 2, sz + 9, stone);
+
+    // ---- the pharaoh's head ----
+    this.fill(sx + 5, gy + 10, sz - 3, sx + 8, gy + 12, sz + 3, pale);                 // the neck
+    this.fill(sx + 4, gy + 12, sz - 3, sx + 9, gy + 17, sz + 3, pale);                 // the head
+    // The nemes headdress: broader than the head, striped, with a lappet down either side of the face.
+    this.fill(sx + 3, gy + 13, sz - 5, sx + 8, gy + 18, sz + 5, pale);
+    for (let z = sz - 5; z <= sz + 5; z += 2) this.fill(sx + 3, gy + 14, z, sx + 8, gy + 18, z, carve);
+    this.fill(sx + 3, gy + 19, sz - 4, sx + 8, gy + 19, sz + 4, pale);
+    for (const d of [-1, 1]) this.fill(sx + 8, gy + 7, sz + d * 4, sx + 9, gy + 14, sz + d * 5, pale);
+    // The face, cut into the front: a brow band, eyes, what is left of the nose, and a wide mouth.
+    this.fill(sx + 10, gy + 16, sz - 3, sx + 10, gy + 16, sz + 3, carve);
+    for (const d of [-1, 1]) { this.put(sx + 10, gy + 15, sz + d * 2, B.blackMarble); this.put(sx + 10, gy + 15, sz + d, carve); }
+    this.put(sx + 10, gy + 14, sz, pale);                                              // the broken nose
+    this.fill(sx + 10, gy + 13, sz - 2, sx + 10, gy + 13, sz + 2, carve);
+    this.fill(sx + 9, gy + 9, sz - 1, sx + 10, gy + 12, sz + 1, pale);                 // the braided beard
+    this.put(sx + 10, gy + 17, sz, B.goldBlock);                                       // the cobra on his brow
+    this.put(sx + 10, gy + 18, sz, carve);
+
+    // ---- the Dream Stele between the paws ----
+    this.fill(sx + 22, gy, sz - 3, sx + 22, gy + 7, sz + 3, B.granite);
+    this.fill(sx + 22, gy + 1, sz - 2, sx + 22, gy + 6, sz + 2, carve);
+    this.put(sx + 22, gy + 8, sz, B.goldBlock);
+    for (const d of [-1, 1]) { this.put(sx + 21, gy + 2, sz + d * 4, B.lamp); this.put(sx + 24, gy + 2, sz + d * 4, B.lamp); }
+
+    // ---- the Hall of Records, in the rock beneath its chest ----
+    const hy = gy - 8;
+    this.fill(sx - 14, hy - 1, sz - 9, sx + 2, hy + 6, sz + 9, B.sandstone);
+    this.fill(sx - 13, hy, sz - 8, sx + 1, hy + 5, sz + 8, 0);
+    this.fill(sx - 13, hy - 1, sz - 8, sx + 1, hy - 1, sz + 8, B.stone);
+    for (const px of [sx - 9, sx - 3]) for (const pz of [sz - 5, sz + 5]) {
+      this.fill(px, hy, pz, px, hy + 5, pz, B.column);
+      this.put(px, hy + 5, pz, B.goldBlock);
+    }
+    for (const [lx, lz] of [[sx - 13, sz - 7], [sx - 13, sz + 7], [sx + 1, sz - 7], [sx + 1, sz + 7], [sx - 6, sz - 8], [sx - 6, sz + 8]]) this.put(lx, hy + 5, lz, B.lamp);
+    for (let z = sz - 6; z <= sz + 6; z += 2) this.put(sx - 13, hy, z, B.scrollShelf);  // the shelves of scrolls
+    this.fill(sx - 12, hy, sz - 1, sx - 12, hy + 1, sz + 1, B.blackMarble);             // a seated Anubis
+    this.put(sx - 12, hy + 2, sz, B.goldBlock);
+    for (const [jx, jz] of [[sx - 7, sz - 4], [sx - 7, sz + 4], [sx - 2, sz - 3], [sx - 2, sz + 3]]) this.put(jx, hy, jz, B.terracotta);
+    for (const [gx, gz] of [[sx - 5, sz - 1], [sx - 5, sz + 1]]) this.put(gx, hy, gz, B.goldBlock);
+    tomb.push({ id: 'ankh', x: sx - 10.5, y: hy, z: sz + 0.5 });
+
+    // ---- the way in ----
+    // A level passage from behind the stele back between the paws, then a stair down. It is cut after the
+    // hall is built, so it opens a doorway through the hall's wall instead of being sealed up by it.
+    this.fill(sx + 10, gy + 1, sz - 1, sx + 21, gy + 4, sz + 1, 0);
+    this.fill(sx + 10, gy, sz - 1, sx + 21, gy, sz + 1, pale);
+    for (let x = sx + 12; x <= sx + 20; x += 4) { this.put(x, gy + 4, sz - 1, B.lamp); this.put(x, gy + 4, sz + 1, B.lamp); }
+    for (let k = 0; k < 10; k++) {
+      const x = sx + 9 - k, y = gy + 1 - k;
+      this.fill(x, y, sz - 1, x, y + 3, sz + 1, 0);
+      this.fill(x, y - 1, sz - 1, x, y - 1, sz + 1, pale);
+      if (k % 3 === 0) this.put(x, y + 3, sz, B.lamp);
+    }
+  }
+
   /// A hollow box: walls, floor and ceiling of `b`, with the inside left as it was.
   shell(x0, y0, z0, x1, y1, z1, b) {
     for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
