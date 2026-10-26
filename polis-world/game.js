@@ -581,8 +581,8 @@ function useOrPlace(sx, sy) {
   }
   const a = aimFrom(sx, sy);
   // Swing up onto a horse or a camel you're looking at — or one you're standing right beside.
-  if (a.who && RIDEABLE[a.who.kind] && !a.who.dead && !a.who.mount && Math.hypot(a.who.x - P.x, a.who.z - P.z) < 5) { mount(a.who); return; }
-  const beside = mobs.find((m) => RIDEABLE[m.kind] && !m.dead && !m.mount && Math.hypot(m.x - P.x, m.z - P.z) < 2.6 && (Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) > 0);
+  if (a.who && (RIDE[a.who.kind] || NO_RIDE[a.who.kind]) && !a.who.dead && !a.who.mount && Math.hypot(a.who.x - P.x, a.who.z - P.z) < 5) { mount(a.who); return; }
+  const beside = mobs.find((m) => RIDE[m.kind] && !m.dead && !m.mount && Math.hypot(m.x - P.x, m.z - P.z) < 2.6 && (Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) > 0);
   if (beside) { mount(beside); return; }
   if (a.who) { interact(a.who); return; }
   const t = a.block;
