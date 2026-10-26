@@ -50,6 +50,12 @@ it('puls', 'Puls (Porridge)', { food: 4 }); it('fishStew', 'Fish Stew', { food: 
 it('tortilla', 'Maize Tortillas', { food: 5 }); it('honeyCake', 'Honey Cake', { food: 6 });
 it('greyRoof', 'Grey Roof Tile', { block: 103 }); it('rammedEarth', 'Rammed Earth', { block: 104 }); it('purpleCloth', 'Purple Cloth', { block: 105 });
 it('paper', 'Paper'); it('silk', 'Silk Brocade'); it('salt', 'Salt'); it('tea', 'Tea', { food: 1 }); it('murex', 'Murex Shell');
+// The pharaoh's grave goods, out of the Great Pyramid of Giza. Darius the trader pays well for them.
+it('goldenMask', 'Golden Funeral Mask', { relic: true, worth: 9 });
+it('canopicJar', 'Canopic Jar', { relic: true, worth: 5 });
+it('scarab', 'Scarab Amulet', { relic: true, worth: 4 });
+it('ankh', 'Golden Ankh', { relic: true, worth: 6 });
+it('shabti', 'Shabti Figure', { relic: true, worth: 4 });
 // The three Atlantean relics.
 it('trident', "Poseidon's Trident", { relic: true }); it('lawTablet', 'Orichalcum Tablet', { relic: true }); it('seahorse', 'Golden Hippocamp', { relic: true });
 for (const k of Object.keys(ITEM)) ITEM[k].max = ITEM[k].tool || ITEM[k].relic ? 1 : 64;

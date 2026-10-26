@@ -75,10 +75,89 @@ function hippocamp(L) {
 
 const cache = new Map();
 /// A relic's sculpture (about a block tall). Also returns a few sparkles to twinkle round it.
+const LAPIS = 0x1f5fa8, FAIENCE = 0x2a9ab0, FAIENCE_DK = 0x123a4a, LINEN = 0xe8dcc0, STONE = 0xe4dcc4, JACKAL = 0x2a2420;
+
+/// The pharaoh's gold death mask: the nemes headdress striped in gold and lapis, and the plaited beard.
+function mask(L) {
+  at(L, 0, 0.62, 0, 0.62, 0.78, 0.46, GOLD);
+  for (let k = -3; k <= 3; k++) at(L, k * 0.09, 0.78, 0.235, 0.05, 0.5, 0.03, k % 2 ? LAPIS : GOLD_LT);
+  at(L, 0, 0.6, 0.24, 0.4, 0.5, 0.06, GOLD_LT);
+  for (const s of [-1, 1]) at(L, s * 0.1, 0.72, 0.29, 0.14, 0.07, 0.03, PEARL);
+  for (const s of [-1, 1]) at(L, s * 0.1, 0.72, 0.305, 0.05, 0.05, 0.02, 0x15121a);
+  at(L, 0, 0.98, 0.22, 0.12, 0.1, 0.08, 0x1a7a5a);          // the cobra on his brow
+  at(L, 0, 0.2, 0.2, 0.1, 0.3, 0.08, GOLD);                  // the beard
+  for (let k = 0; k < 3; k++) at(L, 0, 0.12 + k * 0.08, 0.205, 0.11, 0.03, 0.09, LAPIS);
+  at(L, 0, 0.04, 0, 0.5, 0.08, 0.38, GOLD_DK);
+  return 1.1;
+}
+/// A canopic jar of alabaster, with the jackal-headed lid of Duamutef.
+function jar(L) {
+  at(L, 0, 0.3, 0, 0.44, 0.6, 0.44, STONE);
+  at(L, 0, 0.04, 0, 0.5, 0.08, 0.5, STONE);
+  at(L, 0, 0.52, 0, 0.3, 0.1, 0.3, GOLD);
+  for (const y of [0.22, 0.38]) at(L, 0, y, 0, 0.46, 0.04, 0.46, ORI_DK);
+  at(L, 0, 0.62, 0, 0.26, 0.14, 0.26, JACKAL);
+  at(L, 0, 0.8, 0.04, 0.22, 0.26, 0.3, JACKAL);
+  at(L, 0, 0.74, 0.22, 0.14, 0.12, 0.16, JACKAL);
+  for (const s of [-1, 1]) at(L, s * 0.09, 1.0, -0.02, 0.07, 0.16, 0.05, JACKAL);
+  for (const s of [-1, 1]) at(L, s * 0.06, 0.82, 0.19, 0.04, 0.04, 0.03, GOLD_LT);
+  return 1.2;
+}
+/// A scarab of lapis with gold wings spread behind it.
+function scarabRelic(L) {
+  at(L, 0, 0.3, 0, 0.34, 0.26, 0.46, LAPIS);
+  at(L, 0, 0.44, 0.06, 0.24, 0.12, 0.3, LAPIS);
+  at(L, 0, 0.42, 0.26, 0.2, 0.14, 0.14, 0x1a8a6a);
+  for (const s of [-1, 1]) {
+    for (let k = 0; k < 4; k++) at(L, s * (0.22 + k * 0.1), 0.3 + k * 0.02, 0.1 - k * 0.07, 0.1, 0.03, 0.3 - k * 0.05, k % 2 ? GOLD : GOLD_LT);
+    at(L, s * 0.23, 0.26, 0.2, 0.14, 0.05, 0.05, LAPIS);
+    at(L, s * 0.24, 0.26, 0.0, 0.16, 0.05, 0.05, LAPIS);
+    at(L, s * 0.22, 0.26, -0.2, 0.14, 0.05, 0.05, LAPIS);
+  }
+  at(L, 0, 0.06, 0, 0.5, 0.08, 0.6, GOLD_DK);
+  return 1.25;
+}
+/// The ankh, the sign of life, in gold with a lapis bead at the top of its loop.
+function ankhRelic(L) {
+  at(L, 0, 0.42, 0, 0.1, 0.85, 0.08, GOLD);
+  at(L, 0, 0.78, 0, 0.62, 0.11, 0.08, GOLD);
+  for (let k = 0; k < 14; k++) {
+    const th = (k / 14) * Math.PI * 2;
+    at(L, Math.sin(th) * 0.17, 1.08 + Math.cos(th) * 0.19, 0, 0.09, 0.09, 0.08, k % 2 ? GOLD : GOLD_LT);
+  }
+  at(L, 0, 1.3, 0, 0.09, 0.09, 0.09, LAPIS);
+  for (let k = 0; k < 4; k++) at(L, 0, 0.14 + k * 0.16, 0, 0.12, 0.035, 0.09, ORI);
+  at(L, 0, 0.03, 0, 0.3, 0.06, 0.24, GOLD_DK);
+  return 1.0;
+}
+/// A shabti: a little glazed servant, wrapped like a mummy, to do the pharaoh's work in the next world.
+function shabti(L) {
+  at(L, 0, 0.42, 0, 0.3, 0.72, 0.24, FAIENCE);
+  at(L, 0, 0.08, 0, 0.36, 0.14, 0.3, FAIENCE);
+  at(L, 0, 0.92, 0, 0.28, 0.3, 0.26, FAIENCE_DK);
+  at(L, 0, 0.9, 0.12, 0.2, 0.24, 0.06, FAIENCE);
+  for (const s of [-1, 1]) at(L, s * 0.055, 0.95, 0.155, 0.05, 0.05, 0.02, 0x15121a);
+  at(L, 0, 0.66, 0.12, 0.26, 0.08, 0.05, FAIENCE_DK);
+  at(L, 0, 0.58, 0.12, 0.26, 0.08, 0.05, FAIENCE_DK);
+  for (const s of [-1, 1]) at(L, s * 0.09, 0.62, 0.15, 0.08, 0.1, 0.04, FAIENCE);
+  for (let k = 0; k < 4; k++) at(L, 0, 0.18 + k * 0.1, 0.12, 0.28, 0.03, 0.04, FAIENCE_DK);
+  at(L, 0, 0.74, 0.12, 0.26, 0.05, 0.05, GOLD);
+  return 1.15;
+}
+
+export const TOMB_TEXT = {
+  goldenMask: { name: 'The Golden Funeral Mask', body: "A mask of beaten gold and blue lapis lazuli, made to lie over the pharaoh's face so that the gods would know him. Tutankhamun's mask, found in 1922, is made of eleven kilograms of solid gold." },
+  canopicJar: { name: 'A Canopic Jar', body: 'When a pharaoh was mummified his lungs, liver, stomach and intestines were taken out and kept in four stone jars, each with the head of a god on its lid. The heart was left in place: the Egyptians thought you did your thinking with it.' },
+  scarab: { name: 'A Scarab Amulet', body: 'The dung beetle rolls a ball of dung along the ground, and the Egyptians saw in that the god who rolls the sun across the sky each day. A scarab was laid over the heart of the dead for luck in the next world.' },
+  ankh: { name: 'The Golden Ankh', body: 'The ankh is the sign of life itself. In painting after painting the gods hold one out to the pharaoh, offering him life — which is why it turns up on temple walls all over Egypt.' },
+  shabti: { name: 'A Shabti Figure', body: "A little glazed servant, buried in his hundreds so that he could do the pharaoh's work in the next world. Some tombs held one shabti for every day of the year, and thirty-six overseers to keep them at it." },
+};
+
 export function buildRelic(id) {
   if (!cache.has(id)) {
     const L = [];
-    const scale = id === 'trident' ? trident(L) : id === 'lawTablet' ? tablet(L) : hippocamp(L);
+    const build = { trident, lawTablet: tablet, goldenMask: mask, canopicJar: jar, scarab: scarabRelic, ankh: ankhRelic, shabti }[id] || hippocamp;
+    const scale = build(L);
     cache.set(id, { geo: mergeBoxes(L), scale });
   }
   const { geo, scale } = cache.get(id);

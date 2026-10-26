@@ -11,7 +11,7 @@ import { WILD, buildWild, GROUP, LAND, wildHere } from './animals.js';
 import { createEvents, ARMIES, FLEETS_OF } from './events.js';
 import { PARTS as BODY, JOINTS, isUpper, dress, JOBS, pose, boxModel, toolGeometry, useToolModels, LOADS, PROPS, PROP_DIST } from './people.js';
 import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_GRIP, pixelSize, isLongTool } from './icons.js';
-import { buildRelic } from './relics.js';
+import { buildRelic, TOMB_TEXT } from './relics.js';
 import { Sound, CITY_LAND } from './audio.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
@@ -24,7 +24,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 7;   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum
+const WORLD_VERSION = 8;   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
@@ -1411,10 +1411,18 @@ function takeRelic(r) {
   entityGroup.remove(r.g); relicObjs.splice(relicObjs.indexOf(r), 1);
   G.relics.add(r.id);
   give(r.id, 1);
-  const all = G.relics.size >= 3;
-  addStars(all ? 3 : 1);
-  const t = RELIC_TEXT[r.id];
-  showCard(t.name, `Relic ${G.relics.size} of 3 · Atlantis (a legend)`, t.body + (all ? '\n\nYou found all three relics of Atlantis! Three extra stars for you.' : `\n\n${3 - G.relics.size} more to find in this cave.`));
+  if (TOMB_TEXT[r.id]) {
+    const got = [...G.relics].filter((x) => TOMB_TEXT[x]).length, left = 5 - got;
+    addStars(left ? 1 : 3);
+    const t = TOMB_TEXT[r.id];
+    showCard(t.name, `Out of the tomb · ${got} of 5 · the Great Pyramid of Giza`, t.body
+      + (left ? `\n\n${left} more lie somewhere in the pyramid.` : '\n\nYou have everything the pharaoh was buried with! Darius the trader would give a great deal for these.'));
+  } else {
+    const mine = [...G.relics].filter((x) => RELIC_TEXT[x]).length, all = mine >= 3;
+    addStars(all ? 3 : 1);
+    const t = RELIC_TEXT[r.id];
+    showCard(t.name, `Relic ${mine} of 3 · Atlantis (a legend)`, t.body + (all ? '\n\nYou found all three relics of Atlantis! Three extra stars for you.' : `\n\n${3 - mine} more to find in this cave.`));
+  }
   scheduleSave();
 }
 
@@ -1906,7 +1914,10 @@ let villageClock = 0, refugeeT = 70;   // the first refugee comes along about a 
 // Darius the trader with his llama, and Tarkan the hunter with his horse, iron spear and eagle, camp near your home.
 // (The third, the refugee looking for a new home, arrives on the road now and then: see updateVillage.)
 const TRADES = {
-  darius: [[['planks', 3], ['wheatSeeds', 4]], [['copperOre', 3], ['tea', 2]], [['planks', 8], ['silk', 2]], [['goldIngot', 1], ['blueCloth', 4]], [['tea', 1], ['coal', 4]], [['wool', 4], ['dates', 3]]],
+  darius: [[['planks', 3], ['wheatSeeds', 4]], [['copperOre', 3], ['tea', 2]], [['planks', 8], ['silk', 2]], [['goldIngot', 1], ['blueCloth', 4]], [['tea', 1], ['coal', 4]], [['wool', 4], ['dates', 3]],
+    // What came out of the pharaoh's tomb. Darius has never seen the like, and pays for it.
+    [['goldenMask', 1], ['goldIngot', 9]], [['ankh', 1], ['goldIngot', 6]], [['canopicJar', 1], ['goldIngot', 5]],
+    [['scarab', 1], ['goldIngot', 4]], [['shabti', 1], ['goldIngot', 4]]],
   tarkan: [[['leather', 4], ['ironSpear', 1]], [['leather', 2], ['ironOre', 2]], [['apple', 3], ['leather', 1]], [['rawBeef', 2], ['feather', 3]], [['wool', 2], ['fishingRod', 1]]],
 };
 let eagle = null;
@@ -2086,7 +2097,8 @@ function updateDiscovery(dt) {
     G.found.add(id);
     const t = SITE_TEXT[id];
     addStars(1);
-    showCard(`You found ${['giza', 'greatWall'].includes(id) ? 'the ' : ''}${t.name}!`, `${t.place} · ${t.date}`, `${t.fact}\n\nLook for ${t.guide} (the gold diamond) to learn more and earn another star.` + (id === 'atlantis' ? '\n\nIn this game, a narrow shaft in the floor of Poseidon\'s temple leads down to a hidden cave with three relics. Climb down the ladder!' : ''));
+    showCard(`You found ${['giza', 'greatWall'].includes(id) ? 'the ' : ''}${t.name}!`, `${t.place} · ${t.date}`, `${t.fact}\n\nLook for ${t.guide} (the gold diamond) to learn more and earn another star.` + (id === 'atlantis' ? '\n\nIn this game, a narrow shaft in the floor of Poseidon\'s temple leads down to a hidden cave with three relics. Climb down the ladder!' : '')
+      + (id === 'giza' ? '\n\nThere is a doorway on the north face of the Great Pyramid, nine courses up, with steps leading to it. Inside are the passages to the burial chamber — and the pharaoh\'s treasure. Take a torch.' : ''));
     return;
   }
   // The famous buildings inside each city: a note the first time you walk up to one.
@@ -3017,7 +3029,7 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 6 || s.wv === 5 ? ['rome'] : s.wv === 4 ? ['olympia', 'rome'] : Object.keys(G.cities);
+    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 7 ? ['giza'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza'] : s.wv === 4 ? ['olympia', 'rome', 'giza'] : Object.keys(G.cities);
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);

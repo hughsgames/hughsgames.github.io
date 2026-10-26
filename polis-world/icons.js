@@ -556,6 +556,84 @@ const ART = {
     for (let y = 8; y < 26; y += 4) p.stroke([[11, y], [21, y + 1]], 0.8, () => ramp(0x9a6a5a)(0.4));
     p.ball(16, 20, 2.2, 3.2, ballPaint(0x82348c));
   },
+  // The grave goods of the pharaoh, out of the Great Pyramid.
+  goldenMask(p) {
+    const gold = ramp(MAT.gold), blue = ramp(0x1a5a9a);
+    // The nemes headdress: gold with blue stripes, falling in lappets either side of the face.
+    p.poly([[7, 4], [25, 4], [27, 13], [24, 24], [8, 24], [5, 13]], (x, y) => gold(clamp(0.82 - (x - 6) / 46 - (y - 4) / 60)));
+    for (let k = 0; k < 5; k++) {
+      p.poly([[6 + k * 1.3, 8], [7.2 + k * 1.3, 8], [9 + k * 1.1, 23], [7.8 + k * 1.1, 23]], (x, y) => blue(clamp(0.7 - (y - 8) / 40)));
+      p.poly([[25.4 - k * 1.3, 8], [26.6 - k * 1.3, 8], [24.4 - k * 1.1, 23], [23.2 - k * 1.1, 23]], (x, y) => blue(clamp(0.6 - (y - 8) / 40)));
+    }
+    // The face.
+    p.poly([[11, 7], [21, 7], [22, 17], [16, 22], [10, 17]], (x, y) => gold(clamp(0.92 - (x - 10) / 40 - (y - 7) / 54)));
+    for (const ex of [13.2, 18.8]) {
+      p.ball(ex, 12, 2.1, 1.3, (x, y) => ramp(0xf2ece0)(clamp(0.9 - (y - 11) / 6)));
+      p.ball(ex, 12, 1.0, 1.0, ballPaint(0x15121a, false));
+      p.stroke([[ex - 2.4, 10.4], [ex + 2.4, 10.2]], 0.8, () => ramp(0x15121a)(0.45));
+      p.stroke([[ex + 2.2, 12.2], [ex + 4, 12.6]], 0.7, () => ramp(0x15121a)(0.45));
+    }
+    p.stroke([[14.6, 18.4], [17.4, 18.4]], 1.1, () => gold(0.35));
+    // The cobra and the vulture on the brow, and the plaited beard.
+    p.ball(16, 5.6, 1.5, 1.4, ballPaint(0x1a7a5a));
+    p.poly([[15.2, 22], [16.8, 22], [17.4, 29], [14.6, 29]], (x, y) => gold(clamp(0.8 - (y - 22) / 18)));
+    for (let y = 23; y < 29; y += 1.6) p.stroke([[14.8, y], [17.2, y]], 0.6, () => blue(0.55));
+  },
+  canopicJar(p) {
+    const stone = ramp(0xe4dcc4), gold = ramp(MAT.gold), dark = ramp(0x2a2420);
+    p.poly([[10, 13], [22, 13], [23, 26], [20, 30], [12, 30], [9, 26]], (x, y) => stone(clamp(0.9 - (x - 9) / 34 - (y - 13) / 60)));
+    p.stroke([[10.5, 15.5], [21.5, 15.5]], 1.4, () => gold(0.7));
+    for (let y = 19; y < 27; y += 3) p.stroke([[11, y], [21, y]], 0.8, () => ramp(0x9a6a3c)(0.5));
+    // The jackal's head on the lid: Duamutef, who guarded the stomach.
+    p.poly([[11, 12], [21, 12], [21, 9], [11, 9]], (x, y) => dark(clamp(0.8 - (x - 11) / 30)));
+    p.poly([[12, 9], [20, 9], [19, 3], [13, 3]], (x, y) => dark(clamp(0.85 - (x - 12) / 26 - (y - 3) / 30)));
+    p.poly([[18.5, 5], [20.5, 5], [21, 8], [18.5, 8]], () => dark(0.5));
+    p.poly([[11.5, 5], [13.5, 5], [13.5, 8], [11, 8]], () => dark(0.6));
+    p.poly([[13, 3], [14.6, 3], [14.2, 0.6], [12.6, 0.8]], () => dark(0.7));
+    p.poly([[17.4, 3], [19, 3], [19.4, 0.8], [17.8, 0.6]], () => dark(0.7));
+    p.ball(16, 6.4, 1.1, 1.0, ballPaint(MAT.gold, false));
+  },
+  scarab(p) {
+    const lapis = ramp(0x1f5fa8), green = ramp(0x1a8a6a), gold = ramp(MAT.gold);
+    // The beetle, carved in lapis, with its wings spread in gold behind it.
+    p.poly([[3, 16], [13, 11], [13, 21]], (x, y) => gold(clamp(0.85 - (x - 3) / 24)));
+    p.poly([[29, 16], [19, 11], [19, 21]], (x, y) => gold(clamp(0.7 - (29 - x) / 24)));
+    for (let k = 0; k < 4; k++) { p.stroke([[4 + k, 13.6 + k * 0.5], [12, 13 + k * 1.3]], 0.6, () => gold(0.4)); p.stroke([[28 - k, 13.6 + k * 0.5], [20, 13 + k * 1.3]], 0.6, () => gold(0.4)); }
+    p.ball(16, 18, 5.2, 6.4, (x, y) => lapis(clamp(0.9 - (y - 12) / 18 - Math.abs(x - 16) / 24)));
+    p.stroke([[16, 12], [16, 24]], 0.8, () => lapis(0.3));
+    p.ball(16, 11.4, 3.4, 2.6, (x, y) => green(clamp(0.85 - (y - 9) / 10)));
+    for (const s of [-1, 1]) {
+      p.stroke([[16 + s * 4, 14], [16 + s * 7.6, 11]], 1.0, () => lapis(0.45));
+      p.stroke([[16 + s * 4.6, 18], [16 + s * 8.2, 19]], 1.0, () => lapis(0.45));
+      p.stroke([[16 + s * 4, 21.5], [16 + s * 7.2, 25]], 1.0, () => lapis(0.45));
+      p.ball(16 + s * 2.2, 9.6, 0.9, 0.9, ballPaint(0xf2ece0, false));
+    }
+  },
+  ankh(p) {
+    const gold = metalPaint('gold');
+    p.stroke([[16, 13], [16, 30]], 2.6, gold);
+    p.stroke([[8, 13.5], [24, 13.5]], 2.6, gold);
+    for (let a = 0; a <= 1; a += 1 / 28) {
+      const th = Math.PI * (0.5 + a * 2);
+      p.ball(16 + Math.sin(th) * 4.6, 7.8 - Math.cos(th) * 5.2, 1.5, 1.5, gold);
+    }
+    p.ball(16, 2.8, 1.3, 1.3, ballPaint(0x1f5fa8));
+    for (let y = 17; y < 29; y += 3.6) p.stroke([[14.8, y], [17.2, y]], 0.7, () => ramp(0xb88a20)(0.45));
+  },
+  shabti(p) {
+    const faience = ramp(0x2a9ab0), dark = ramp(0x123a4a), gold = ramp(MAT.gold);
+    // A little servant figure, glazed blue-green, wrapped like a mummy with his arms crossed.
+    p.poly([[11, 10], [21, 10], [22, 24], [20, 30], [12, 30], [10, 24]], (x, y) => faience(clamp(0.9 - (x - 10) / 34 - (y - 10) / 52)));
+    p.poly([[12, 9], [20, 9], [21, 4], [19, 2], [13, 2], [11, 4]], (x, y) => dark(clamp(0.85 - (x - 11) / 28)));
+    p.poly([[13.4, 5], [18.6, 5], [19, 9.5], [13, 9.5]], (x, y) => faience(clamp(0.95 - (y - 5) / 12)));
+    for (const ex of [14.8, 17.2]) p.ball(ex, 7, 0.85, 0.7, ballPaint(0x15121a, false));
+    p.stroke([[11.5, 14], [20.5, 16]], 1.5, () => dark(0.55));
+    p.stroke([[11.5, 17], [20.5, 15]], 1.5, () => dark(0.5));
+    p.ball(13.4, 15.4, 1.2, 1.1, ballPaint(0x2a9ab0, false));
+    p.ball(18.6, 15.4, 1.2, 1.1, ballPaint(0x2a9ab0, false));
+    for (let y = 20; y < 29; y += 2.6) p.stroke([[11.6, y], [20.4, y]], 0.7, () => dark(0.4));
+    p.stroke([[12, 11.4], [20, 11.4]], 1.0, () => gold(0.7));
+  },
   // The relics of Atlantis (a legend).
   trident(p) {
     const gold = metalPaint('gold');
@@ -620,6 +698,7 @@ export const PEOPLE_TOOL = { hammer: 'hammer', pick: 'ironPickaxe', chisel: 'chi
 const TOOL_LEN = { Pickaxe: 0.85, Axe: 0.75, Shovel: 1.1, Sword: 0.85 };
 export const SIZE = {
   raft: 0.75, sailboat: 0.8,
+  goldenMask: 0.6, canopicJar: 0.55, scarab: 0.45, ankh: 0.7, shabti: 0.5,
   ironSpear: 2.2, hammer: 0.45, hoe: 1.3, sickle: 0.5, chisel: 0.25, brush: 0.3, fishingRod: 2.4, oar: 2.6, stick: 0.6, trident: 2.0,
   apple: 0.09, bread: 0.3, wheat: 0.6, wheatSeeds: 0.12, snowball: 0.1, coal: 0.12, charcoal: 0.15,
   copperIngot: 0.22, tinIngot: 0.22, bronzeIngot: 0.22, ironIngot: 0.22, goldIngot: 0.22, ancientMetal: 0.22,
