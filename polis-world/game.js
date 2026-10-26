@@ -12,6 +12,10 @@ import { createEvents, ARMIES, FLEETS_OF } from './events.js';
 import { PARTS as BODY, JOINTS, isUpper, dress, JOBS, pose, boxModel, toolGeometry, useToolModels, LOADS, PROPS, PROP_DIST } from './people.js';
 import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_GRIP, pixelSize, isLongTool } from './icons.js';
 import { buildRelic } from './relics.js';
+import { Sound, CITY_LAND } from './audio.js';
+
+// Every sound in the game is made here in the browser; there are no sound files to download.
+const sound = new Sound();
 
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
@@ -459,10 +463,14 @@ function updateBreaking(dt) {
   crack.visible = !IS_CROSS[breaking.b];
   crack.position.set(breaking.x + 0.5, breaking.y + 0.5, breaking.z + 0.5);
   crack.material.opacity = 0.12 + p * 0.45;
+  // A chip of sound each time the pick lands, in the voice of whatever you're digging.
+  breaking.sfx = (breaking.sfx || 0) + dt;
+  if (breaking.sfx > 0.26) { breaking.sfx = 0; sound.play('dig', soundMat(breaking.b)); }
   if (p >= 1) { const b = breaking; breaking = null; crack.visible = false; finishBreak(b); }
 }
 function finishBreak(j) {
   const info = BLOCKS[j.b];
+  sound.play(LOG_LEAVES[j.b] ? 'chop' : 'break');
   setBlock(j.x, j.y, j.z, IS_WATERY[j.b] ? WATER : 0);
   if (IS_WATERY[j.b]) for (let y = j.y + 1; world.get(j.x, y, j.z) === 65; y++) { setBlock(j.x, y, j.z, WATER); dropItem('kelp', 1, j.x + 0.5, y + 0.5, j.z + 0.5, 0.5); }
   const above = world.get(j.x, j.y + 1, j.z);
@@ -490,6 +498,7 @@ function canPlaceAt(x, y, z) {
   return !mobs.some((m) => Math.floor(m.x) === x && Math.floor(m.z) === z && y < m.y + 1.2 && y + 1 > m.y);
 }
 function placeBlock(t) {
+  sound.play('place');
   const s = heldItem();
   if (!s || !ITEM[s.id].block) return false;
   let x = t.x, y = t.y, z = t.z;
@@ -521,6 +530,7 @@ function placeBlock(t) {
 /// Open or shut a door (both halves) or a gate.
 const DOOR_SWAP = { 110: 114, 111: 115, 112: 116, 113: 117, 114: 110, 115: 111, 116: 112, 117: 113, 118: 120, 119: 121, 120: 118, 121: 119 };
 function toggleDoor(x, y, z) {
+  sound.play('door');
   const info = BLOCKS[world.get(x, y, z)];
   const y0 = info.top ? y - 1 : y, cells = info.door ? [y0, y0 + 1] : [y0];
   // Don't shut a door on yourself.
@@ -862,6 +872,7 @@ function smelt(rc) {
   if (!f) { message('Stand next to a furnace to smelt. Make one from 8 stones (Smelting), place it, then click it.'); return; }
   for (const [ids, c] of rc.inputs) inv.removeAny(ids, c);
   furnaceJobs.push({ f, out: rc.out, n: rc.n, t: rc.out === 'ironIngot' ? 4 : 3 });
+  sound.play('smelt');
   if (world.get(...f) === 59) setBlock(...f, 60);
   toast(`Smelting ${ITEM[rc.out].name}…`, rc.out);
   refreshHotbar(); renderPanel();
@@ -904,6 +915,7 @@ function eat() {
   if (G.hunger >= 9.99) { message("You're full!"); return; }
   inv.remove(s.id, 1);
   G.hunger = Math.min(10, G.hunger + ITEM[s.id].food);
+  sound.play('eat');
   toast(`Ate ${ITEM[s.id].name}`, s.id);
   refreshHotbar();
 }
@@ -1003,6 +1015,7 @@ function offerTreat(m) {
   }
   inv.remove(s.id, 1); refreshHotbar(); scheduleSave();
   m.tame = true; m.flee = 0; m.angry = 0; m.wait = 1;
+  sound.play('tame');
   message(`The ${SPECIES[m.kind].name} eats the ${ITEM[s.id].name.toLowerCase()} and lets you stroke it. Press X again to ride.`);
   if (!G.talked.has('_tame')) { G.talked.add('_tame'); addStars(1, 'You tamed an animal!'); }
 }
@@ -1200,6 +1213,7 @@ function breed() {
   }
 }
 function hitMob(m) {
+  sound.play('hit');
   const dmg = toolDamage(heldTool());
   m.hp -= dmg; P.swing = 0.25;
   // Each animal answers in its own way: some fight back, some run, a parrot flies off, a turtle heads for the sea.
@@ -2102,7 +2116,7 @@ function updateDiscovery(dt) {
     if (Math.hypot(P.x - mx, P.z - mz) < 9 && P.y < rs[0].y + 4) { G.found.add('_cave'); addStars(1); showCard(CAVE_TEXT.name, CAVE_TEXT.place, CAVE_TEXT.body); }
   }
 }
-function addStars(n, why) { G.stars += n; if (why) toast(why); refreshHud(); scheduleSave(); }
+function addStars(n, why) { sound.play('star'); G.stars += n; if (why) toast(why); refreshHud(); scheduleSave(); }
 
 // ---------- the player ----------
 function blockTop(b) { return b === 34 || BLOCKS[b].gate ? 1.5 : BLOCKS[b].shape === 'bed' ? 0.56 : 1; }
@@ -2165,7 +2179,7 @@ function updatePlayer(dt) {
     if (!k.has('Space') && !diving && !(amt > 0.08 && P.pitch < -0.3) && world.get(Math.floor(P.x), Math.floor(P.y + 1.5), Math.floor(P.z)) === 0) P.vy = Math.max(P.vy, 0) * 0.5;
   } else {
     P.vy -= 28 * dt;
-    if (P.ground && k.has('Space')) { P.vy = 8.6; P.ground = false; }
+    if (P.ground && k.has('Space')) { P.vy = 8.6; P.ground = false; sound.play('jump'); }
   }
   // Move one axis at a time; step up one block automatically.
   for (const axis of ['x', 'z']) {
@@ -2308,6 +2322,7 @@ let hungerWarn = 10;
 // with everything you were carrying. Hearts come back by themselves while you're not hungry.
 let regenT = 0;
 function hurt(n, from) {
+  sound.play('hurt');
   G.health = Math.max(0, G.health - n);
   shake = 0.35;
   const f = $('hurt'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
@@ -2338,6 +2353,7 @@ function updateSurvival(dt) {
 let openPanel = null, dialogueOpen = false;
 function selectSlot(i) { selected = i; breaking = null; refreshHotbar(); }
 function give(id, n) {
+  sound.play('pickup');
   const left = inv.add(id, n);
   if (left < n) toast(`+${n - left} ${ITEM[id]?.name ?? id}`, id);
   if (left > 0) message('Your bag is full!');
@@ -2484,6 +2500,7 @@ function renderPanel() {
         if (r.furnace) { smelt(r); return; }
         for (const [ids, c] of r.inputs) inv.removeAny(ids, c);
         give(r.out, r.n);
+        sound.play('craft');
         renderPanel();
       });
       row.appendChild(btn); box.appendChild(row);
@@ -2835,7 +2852,18 @@ function setUpLaunch(note) {
   if (bak) $('btnRestore').textContent = `Bring back my older world (${bak.stars || 0} stars)`;
 }
 function launch() { $('launch').hidden = true; launchGo(); }
+// The browser only lets a page make a sound after a click, so the first touch of mouse or keyboard
+// anywhere starts the music, whichever way the game was opened.
+for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(ev, () => sound.start(), { capture: true });
+$('btnPlay').addEventListener('click', () => sound.start());
 $('btnPlay').addEventListener('click', launch);
+function refreshSoundBtns() {
+  for (const id of ['btnSound', 'btnSound2']) { const b = $(id); if (b) b.textContent = 'Sound: ' + (sound.on ? 'on' : 'off'); }
+  for (const id of ['btnMusic', 'btnMusic2']) { const b = $(id); if (b) b.textContent = 'Music: ' + (sound.musicOn ? 'on' : 'off'); }
+}
+for (const id of ['btnSound', 'btnSound2']) $(id)?.addEventListener('click', () => { sound.start(); sound.setOn(!sound.on, sound.musicOn); refreshSoundBtns(); sound.play('click'); });
+for (const id of ['btnMusic', 'btnMusic2']) $(id)?.addEventListener('click', () => { sound.start(); sound.setOn(sound.on, !sound.musicOn); refreshSoundBtns(); sound.play('click'); });
+refreshSoundBtns();
 $('btnNew').addEventListener('click', () => { $('newConfirm').hidden = false; $('btnNew').hidden = true; });
 $('btnNewNo').addEventListener('click', () => setUpLaunch());
 $('btnNewYes').addEventListener('click', () => {
@@ -3019,6 +3047,56 @@ function start() {
   requestAnimationFrame(loop);
 }
 
+/// What a block sounds like underfoot or under a pick.
+function soundMat(b) {
+  if (b === 1 || b === 2 || b === 51) return 'dirt';
+  if (b === 4 || b === 5 || b === 24) return 'sand';
+  if ([7, 9, 11, 24, 23, 26, 73, 92, 110, 118].includes(b)) return 'wood';
+  return 'stone';
+}
+let soundT = 0, stepDist = 0, lastSx = 0, lastSz = 0, chirpT = 3, wasWet = false;
+/// Everything the world does to your ears, once a frame.
+function updateSound(dt) {
+  if (!sound.started) return;
+  // Footsteps, and hoofbeats when you're in the saddle.
+  const moved = Math.hypot(P.x - lastSx, P.z - lastSz);
+  lastSx = P.x; lastSz = P.z;
+  const underB = world.get(Math.floor(P.x), Math.floor(P.y) - 1, Math.floor(P.z));
+  if (!P.water && (P.ground || P.ride) && moved > 0.0005) {
+    stepDist += moved;
+    if (stepDist > (P.ride ? 1.9 : 1.9)) { stepDist = 0; sound.play(P.ride ? 'hoof' : 'step', soundMat(underB)); }
+  }
+  // Going into the water, and swimming in it.
+  if (P.water && !wasWet) sound.play('splash');
+  if (P.water && moved > 0.02 && Math.random() < dt * 3) sound.play('swim');
+  wasWet = P.water;
+
+  soundT -= dt;
+  if (soundT > 0) return;
+  soundT = 1.1;
+  // Which land's music? The great city you're nearest to, if you're anywhere near one.
+  let best = null, bd = 1e9;
+  for (const [id, c] of Object.entries(G.cities)) {
+    if (!c) continue;
+    const d = Math.hypot(c.center[0] - P.x, c.center[1] - P.z);
+    if (d < c.R + 80 && d < bd) { bd = d; best = id; }
+  }
+  const hour = (G.clock % 1440) / 60, night = hour >= 19.5 || hour < 5.5;
+  sound.setLand(best ? (CITY_LAND[best] || 'wild') : (night ? 'night' : 'wild'));
+  // Wind outside and waves by the sea; both muffled when you're underground or indoors.
+  const surf = world.groundY(Math.floor(P.x), Math.floor(P.z));
+  const roofed = P.y < surf - 2;
+  let sea = false;
+  for (const [ox, oz] of [[8, 0], [-8, 0], [0, 8], [0, -8], [14, 14], [-14, -14]]) if (world.hasWater(Math.floor(P.x + ox), Math.floor(P.z + oz))) sea = true;
+  sound.setBed(roofed ? 0.25 : 1, sea);
+  // Birds by day, crickets at night, both only out of doors.
+  chirpT -= 1.1;
+  if (chirpT <= 0 && !roofed) {
+    chirpT = night ? 1.2 + Math.random() * 2 : 3 + Math.random() * 7;
+    sound.play(night ? 'cricket' : 'bird');
+  }
+}
+
 let last = 0, hudT = 0;
 function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
@@ -3045,6 +3123,7 @@ function loop(now) {
     updateMobs(dt); updateTravellers(dt); updateNpcs(dt); updateHerds(dt); updateCities(dt); updateDiscovery(dt); updateVillage(dt);
     updateFlow(dt); updateSwimmers(dt); updateRelics(dt); updateDesign(dt); updateSpray(dt);
     updateSurvival(dt); updateDaylight(dt);
+    updateSound(dt); sound.tick();
     if (scenery) scenery.update(dt, { P, ...look });
     if (events) events.update(dt, P);
     updateCamera(dt);
@@ -3060,5 +3139,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
 boot();
