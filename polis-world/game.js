@@ -14,6 +14,10 @@ import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_G
 import { buildRelic } from './relics.js';
 import { Sound, CITY_LAND } from './audio.js';
 
+// Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
+// reload the page while holding Shift (or Cmd+Shift+R on a Mac).
+const BUILD = '26 Oct 2026, 15:18 UTC';
+
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
 
@@ -498,9 +502,9 @@ function canPlaceAt(x, y, z) {
   return !mobs.some((m) => Math.floor(m.x) === x && Math.floor(m.z) === z && y < m.y + 1.2 && y + 1 > m.y);
 }
 function placeBlock(t) {
-  sound.play('place');
   const s = heldItem();
   if (!s || !ITEM[s.id].block) return false;
+  sound.play('place');
   let x = t.x, y = t.y, z = t.z;
   if (!IS_CROSS[t.b]) { x += t.face[0]; y += t.face[1]; z += t.face[2]; }
   if (!canPlaceAt(x, y, z)) { message("Something's in the way"); return true; }
@@ -581,8 +585,13 @@ function useOrPlace(sx, sy) {
   }
   const a = aimFrom(sx, sy);
   // Swing up onto a horse or a camel you're looking at — or one you're standing right beside.
-  if (a.who && (RIDE[a.who.kind] || NO_RIDE[a.who.kind]) && !a.who.dead && !a.who.mount && Math.hypot(a.who.x - P.x, a.who.z - P.z) < 5) { mount(a.who); return; }
-  const beside = mobs.find((m) => RIDE[m.kind] && !m.dead && !m.mount && Math.hypot(m.x - P.x, m.z - P.z) < 2.6 && (Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) > 0);
+  if (a.who && (RIDE[a.who.kind] || NO_RIDE[a.who.kind]) && !a.who.dead && !a.who.mount) {
+    const far = Math.hypot(a.who.x - P.x, a.who.z - P.z);
+    if (far < 6.5) { mount(a.who); return; }
+    message(`Walk right up to the ${SPECIES[a.who.kind].name} first, then press X.`);
+    return;
+  }
+  const beside = mobs.find((m) => RIDE[m.kind] && !m.dead && !m.mount && Math.hypot(m.x - P.x, m.z - P.z) < 3.4 && (Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) > 0);
   if (beside) { mount(beside); return; }
   if (a.who) { interact(a.who); return; }
   const t = a.block;
@@ -592,7 +601,15 @@ function useOrPlace(sx, sy) {
   if (t && t.b === 58) { const s = heldItem(); if (s && ITEM[s.id].cooked) { cook(s.id); return; } }
   const s = heldItem();
   if (s && ITEM[s.id].food && !ITEM[s.id].block) { eat(); return; }
-  if (t) placeBlock(t);
+  if (t && placeBlock(t)) return;
+  const nearRide = mobs.filter((m) => RIDE[m.kind] && !m.dead && !m.mount && Math.hypot(m.x - P.x, m.z - P.z) < 14)
+    .sort((m, n) => Math.hypot(m.x - P.x, m.z - P.z) - Math.hypot(n.x - P.x, n.z - P.z))[0];
+  if (nearRide) {
+    const name = SPECIES[nearRide.kind].name;
+    message(nearRide.tame
+      ? `Walk right up to the ${name} and press X to climb on.`
+      : `Walk right up to the ${name}, hold an apple, some wheat or a loaf of bread, and press X to make friends with it.`);
+  }
 }
 function tapAt(sx, sy) {
   if (D.mode) return;
@@ -2864,6 +2881,7 @@ function refreshSoundBtns() {
 for (const id of ['btnSound', 'btnSound2']) $(id)?.addEventListener('click', () => { sound.start(); sound.setOn(!sound.on, sound.musicOn); refreshSoundBtns(); sound.play('click'); });
 for (const id of ['btnMusic', 'btnMusic2']) $(id)?.addEventListener('click', () => { sound.start(); sound.setOn(sound.on, !sound.musicOn); refreshSoundBtns(); sound.play('click'); });
 refreshSoundBtns();
+if ($('buildStamp')) $('buildStamp').textContent = BUILD;
 $('btnNew').addEventListener('click', () => { $('newConfirm').hidden = false; $('btnNew').hidden = true; });
 $('btnNewNo').addEventListener('click', () => setUpLaunch());
 $('btnNewYes').addEventListener('click', () => {
