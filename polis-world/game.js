@@ -24,7 +24,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 8;   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid
+const WORLD_VERSION = 9;   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
@@ -971,6 +971,21 @@ function addMob(kind, x, z, young = false) {
   mobs.push(m);
   return m;
 }
+/// Is there room for a body this wide and this tall to stand at (x, z) with its feet at y?
+/// Animals and people used to be tested at a single point — their middle — so a cow could stand with
+/// half of itself inside a wall. This checks the corners of its footprint as well.
+function roomFor(x, z, y, r, h) {
+  const fy = Math.floor(y + 0.2);
+  for (const [ox, oz] of [[0, 0], [r, r], [-r, r], [r, -r], [-r, -r]]) {
+    const fx = Math.floor(x + ox), fz = Math.floor(z + oz);
+    for (let k = 0; k < h; k++) if (world.solid(fx, fy + k, fz)) return false;
+  }
+  return true;
+}
+/// How wide an animal is, as a radius, and how many blocks tall.
+const mobR = (sp) => Math.max(0.28, Math.min(0.9, Math.max(sp.size ? sp.size[0] : 0.6, sp.size ? sp.size[2] : 0.6) * 0.42));
+const mobH = (sp) => Math.max(1, Math.min(3, Math.ceil((sp.size ? sp.size[1] : 1) * 0.9)));
+
 let herdT = 0;
 function updateHerds(dt) {
   herdT -= dt;
@@ -1115,7 +1130,29 @@ function updateRide(dt, fwd, side) {
   b.arms[0].rotation.x = -0.75; b.arms[1].rotation.x = -0.75;
 }
 
+/// Keeps animals from standing inside each other. Done a few at a time so it costs nothing.
+let nudgeAt = 0;
+function spreadOut(dt) {
+  if (mobs.length < 2) return;
+  for (let k = 0; k < 6; k++) {
+    const m = mobs[nudgeAt % mobs.length];
+    nudgeAt++;
+    if (!m || m.dead || m.ridden) continue;
+    const rm = mobR(SPECIES[m.kind]);
+    for (const o of mobs) {
+      if (o === m || o.dead || o.ridden) continue;
+      const dx = m.x - o.x, dz = m.z - o.z, d = Math.hypot(dx, dz);
+      const want = rm + mobR(SPECIES[o.kind]);
+      if (d > want || d < 0.0001) continue;
+      const push = (want - d) * Math.min(dt * 4, 0.5) / d;
+      const nx = m.x + dx * push, nz = m.z + dz * push;
+      const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + 1.05));
+      if (Math.abs(g - m.y) < 1.2 && roomFor(nx, nz, g, rm, mobH(SPECIES[m.kind]))) { m.x = nx; m.z = nz; }
+    }
+  }
+}
 function updateMobs(dt) {
+  spreadOut(dt);
   for (const m of mobs) {
     if (m.dead || m.ridden) continue;   // the one you're riding is moved by updateRide
     const sp0 = SPECIES[m.kind], dP = Math.hypot(m.x - P.x, m.z - P.z);
@@ -1156,7 +1193,8 @@ function updateMobs(dt) {
       const nx = m.x + dx / dist * Math.min(sp, dist), nz = m.z + dz / dist * Math.min(sp, dist);
       const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + 1.05));
       const wet = world.hasWater(Math.floor(nx), Math.floor(nz)) && g < WL;
-      if ((sp0.swims || !wet) && g <= m.y + 1.05 && (g > m.y - 3.5 || wet) && !world.solid(Math.floor(nx), Math.floor(Math.max(g, WL - 1)), Math.floor(nz))) {
+      if ((sp0.swims || !wet) && g <= m.y + 1.05 && (g > m.y - 3.5 || wet)
+          && roomFor(nx, nz, Math.max(g, wet ? WL - 1 : g), mobR(sp0), mobH(sp0))) {
         m.x = nx; m.z = nz; moving = true;
         m.g.rotation.y = angleLerp(m.g.rotation.y, Math.atan2(dx, dz), Math.min(dt * 6, 1));
       } else { m.tx = m.x; m.tz = m.z; if (m.angry > 0) m.angry = Math.min(m.angry, 0.5); }
@@ -1806,7 +1844,7 @@ function updateNpcs(dt) {
       else {
         const spd = n.seek ? 2.4 : 1.2, nx = n.x + dx / dist * Math.min(spd * dt, dist), nz = n.z + dz / dist * Math.min(spd * dt, dist);
         const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(n.y + 1.05));
-        if (g <= n.y + 1.05 && g > n.y - 2.5 && !world.solid(Math.floor(nx), Math.floor(g), Math.floor(nz)) && !world.solid(Math.floor(nx), Math.floor(g) + 1, Math.floor(nz)) && !(world.hasWater(Math.floor(nx), Math.floor(nz)) && g < WL)) {
+        if (g <= n.y + 1.05 && g > n.y - 2.5 && roomFor(nx, nz, g, 0.34, 2) && !(world.hasWater(Math.floor(nx), Math.floor(nz)) && g < WL)) {
           n.x = nx; n.z = nz; moving = true;
           n.body.g.rotation.y = angleLerp(n.body.g.rotation.y, Math.atan2(dx, dz), Math.min(dt * 8, 1));
         } else { n.tx = n.x; n.tz = n.z; }
@@ -3029,7 +3067,7 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 7 ? ['giza'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza'] : s.wv === 4 ? ['olympia', 'rome', 'giza'] : Object.keys(G.cities);
+    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 8 || s.wv === 7 ? ['giza'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza'] : s.wv === 4 ? ['olympia', 'rome', 'giza'] : Object.keys(G.cities);
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
