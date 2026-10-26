@@ -947,9 +947,9 @@ function updateHerds(dt) {
   herdT -= dt;
   if (herdT > 0) return;
   herdT = 3;
-  for (let i = mobs.length - 1; i >= 0; i--) { const m = mobs[i]; if (!isKept(m) && Math.hypot(m.x - P.x, m.z - P.z) > 90) { entityGroup.remove(m.g); mobs.splice(i, 1); } }
+  for (let i = mobs.length - 1; i >= 0; i--) { const m = mobs[i]; if (!isKept(m) && !m.tame && Math.hypot(m.x - P.x, m.z - P.z) > 90) { entityGroup.remove(m.g); mobs.splice(i, 1); } }
   breed();
-  if (mobs.filter((m) => !isKept(m)).length >= 22) return;
+  if (mobs.filter((m) => !isKept(m) && !m.tame).length >= 22) return;
   const a = Math.random() * Math.PI * 2, d = 28 + Math.random() * 30;
   const [x, z] = world.nearestLand(Math.floor(P.x + Math.cos(a) * d), Math.floor(P.z + Math.sin(a) * d));
   if (Math.hypot(x - P.x, z - P.z) < 20) return;
@@ -969,14 +969,32 @@ function updateHerds(dt) {
   for (let k = 0; k < count; k++) { const [mx, mz] = world.nearestLand(x + k * 2 - 2, z + (k % 2) * 2); addMob(kind, mx + 0.5, mz + 0.5); }
 }
 // ---------- riding ----------
-// Horses, camels, elephants, yaks and llamas can all be ridden or driven. This is how the world really worked: a
-// Persian messenger changed horses along the Royal Road and carried a letter 2,700 km in a week; camels crossed
-// deserts that would kill a horse; elephants carried kings and fought in battles; yaks and llamas went where carts
-// could not. Each goes at its own pace, and you sit higher on the big ones.
-const RIDEABLE = { horse: 8.4, camel: 6.8, elephant: 5.0, yak: 4.6, llama: 5.4 };
+// The same riding as the iPhone game. Each animal has its own pace, the ground it is fastest on, how high you
+// sit, and how big a ledge it can step up. This is how the world really worked: a camel crossed sand that would
+// kill a horse, a yak climbed where nothing else would go, and an elephant stepped over walls.
+const GRASS = [1], SAND = [4, 21], SNOW = [6], ROCK = [3, 5];
+const RIDE = {
+  horse: { speed: 8.4, fast: 9.5, fastOn: GRASS, seat: 1.22, step: 1.05, back: 1.35, blanket: [0.62, 0.7],
+    fact: 'Horses changed history. People on the grassy steppes north of the Black Sea tamed them more than 4,000 years ago, and a rider could suddenly go farther in a day than anyone had ever gone on foot. Feel how fast it is on grass!' },
+  camel: { speed: 6.0, fast: 9.0, fastOn: SAND, seat: 1.42, step: 1.05, back: 1.40, blanket: [0.72, 0.66],
+    fact: 'Camels can go for days without drinking, and their wide feet do not sink into sand. Caravans of camels carried silk, spices and salt across deserts that would have killed a horse. Feel how fast it is on sand!' },
+  elephant: { speed: 5.0, fast: 5.6, fastOn: GRASS, seat: 2.35, step: 2.05, back: 2.12, blanket: [1.34, 1.7],
+    fact: 'Asian elephants have carried people and heavy logs in India and Southeast Asia for thousands of years. Hannibal of Carthage even took elephants over the Alps. An elephant can step straight up a two-block ledge!' },
+  yak: { speed: 5.5, fast: 7.0, fastOn: SNOW.concat(ROCK), seat: 1.32, step: 1.05, back: 1.42, blanket: [0.88, 0.9],
+    fact: 'In the high mountains of Tibet, people ride yaks and live on their milk, wool and strength. The air up there is too thin for a horse. A yak is happiest on cold stone and snow.' },
+};
+// Animals people never rode, and why. (The iPhone game says the same.)
+const NO_RIDE = {
+  llama: 'Llamas carried packs for traders high in the Andes, but they are too small for a person to ride. Try a horse, a camel, an elephant or a yak!',
+  cow: 'Cattle pulled ploughs and carts, but nobody rode them. Try a horse, a camel, an elephant or a yak!',
+  aurochs: 'An aurochs is a wild ox as tall as a grown-up, and far too fierce to ride. Nobody ever tamed one.',
+  deer: 'Deer are far too light and far too shy to carry a person.',
+  ibex: 'An ibex lives on cliffs no rider could follow. It would never carry you.',
+  ostrich: 'An ostrich can outrun a horse, but its back is not strong enough to carry a person.',
+};
 // No animal lets a stranger climb on its back. Offer it something to eat first, the way people have always
 // made friends with animals: an apple, a handful of wheat, bread, figs or dates.
-const TREATS = ['apple', 'wheat', 'bread', 'figs', 'dates', 'olives', 'carrotCake', 'honeyCake', 'maize'];
+const TREATS = ['apple', 'wheat', 'bread', 'figs', 'dates', 'olives', 'honeyCake', 'puls'];
 function offerTreat(m) {
   const s = heldItem();
   if (!s || !TREATS.includes(s.id)) {
@@ -988,19 +1006,37 @@ function offerTreat(m) {
   message(`The ${SPECIES[m.kind].name} eats the ${ITEM[s.id].name.toLowerCase()} and lets you stroke it. Press X again to ride.`);
   if (!G.talked.has('_tame')) { G.talked.add('_tame'); addStars(1, 'You tamed an animal!'); }
 }
-const seatY = (m) => ({ camel: 1.42, elephant: 2.35, yak: 1.32, llama: 1.25 }[m.kind] ?? 1.22) * (m.young ? 0.6 : 1);
+const seatY = (m) => (RIDE[m.kind]?.seat ?? 1.22) * (m.young ? 0.6 : 1);
+/// A saddle blanket, so you can see at a glance which animal is yours to ride.
+function saddle(m, on) {
+  if (!on) { if (m.rug) { m.g.remove(m.rug); m.rug = null; } return; }
+  if (m.rug) return;
+  const r = RIDE[m.kind]; if (!r) return;
+  const g = new THREE.Group(), y = (r.back ?? 1.3) + 0.04, [bw, bl] = r.blanket;
+  g.add(boxMesh(bw, 0.08, bl, 0xa83a2e, 0, y, -0.05));
+  // A gold band along each edge, the way a saddle cloth was woven.
+  g.add(boxMesh(bw + 0.03, 0.06, bl * 0.16, 0xe8c44a, 0, y, -0.05 - bl * 0.42));
+  g.add(boxMesh(bw + 0.03, 0.06, bl * 0.16, 0xe8c44a, 0, y, -0.05 + bl * 0.42));
+  m.g.add(g); m.rug = g;
+}
 function mount(m) {
+  if (NO_RIDE[m.kind]) { message(NO_RIDE[m.kind]); return; }
   if (m.flee > 0 || m.angry > 0) { message(`The ${SPECIES[m.kind].name} shies away. Come back when it has calmed down.`); return; }
   if (!m.tame) { offerTreat(m); return; }
   P.ride = m; m.ridden = true; m.wait = 0; m.toSea = null;
-  message(`You climbed onto the ${SPECIES[m.kind].name}! W A S D to ride, X to get down.`);
+  saddle(m, true);
+  message(`You climbed onto the ${SPECIES[m.kind].name}! W A S D to ride, Shift to go faster, X to get down.`);
   if (!G.talked.has('_ride')) { G.talked.add('_ride'); addStars(1, 'Your first ride!'); }
+  // The first time you ride each kind, it has something to tell you.
+  const key = 'ride:' + m.kind;
+  if (!G.talked.has(key)) { G.talked.add(key); showCard(`Riding ${SPECIES[m.kind].name === 'elephant' ? 'an' : 'a'} ${SPECIES[m.kind].name}`, 'Riding animals', RIDE[m.kind].fact); }
 }
 function dismount() {
   const m = P.ride;
   P.ride = null;
   if (!m) return;
   m.ridden = false; m.tx = m.x; m.tz = m.z; m.wait = 2; m.home = [m.x, m.z];
+  saddle(m, false);
   // Step down beside it, onto whatever ground is there.
   for (const [ox, oz] of [[1.3, 0], [-1.3, 0], [0, 1.3], [0, -1.3], [1.2, 1.2], [-1.2, -1.2], [0, 0]]) {
     const x = m.x + ox, z = m.z + oz, g = world.groundY(Math.floor(x), Math.floor(z), Math.floor(m.y + 1.2));
@@ -1020,16 +1056,20 @@ function updateRide(dt, fwd, side) {
     let vx = sy * fwd - cy * side, vz = cy * fwd + sy * side;
     const l = Math.hypot(vx, vz) || 1; vx /= l; vz /= l;
     const sprint = input.keys.has('ShiftLeft') || input.keys.has('ShiftRight');
-    const step = RIDEABLE[m.kind] * (sprint ? 1.25 : 1) * amt * dt;
+    // Faster on the ground it was made for: a horse on grass, a camel on sand, a yak on snow and stone.
+    const r = RIDE[m.kind] ?? { speed: 6, fast: 6, fastOn: [], step: 1.05 };
+    const under = world.get(Math.floor(m.x), Math.floor(m.y) - 1, Math.floor(m.z));
+    const pace = r.fastOn.includes(under) ? r.fast : r.speed;
+    const step = pace * (sprint ? 1.25 : 1) * amt * dt;
     const nx = m.x + vx * step, nz = m.z + vz * step;
-    const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + 1.05));
+    const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + r.step));
     const wet = world.hasWater(Math.floor(nx), Math.floor(nz)) && g < WL - 0.5;
-    if (!wet && g <= m.y + 1.05 && g > m.y - 3.5 && !world.solid(Math.floor(nx), Math.floor(g), Math.floor(nz)) && !world.solid(Math.floor(nx), Math.floor(g) + 1, Math.floor(nz))) {
+    if (!wet && g <= m.y + r.step && g > m.y - 3.5 && !world.solid(Math.floor(nx), Math.floor(g), Math.floor(nz)) && !world.solid(Math.floor(nx), Math.floor(g) + 1, Math.floor(nz))) {
       m.x = nx; m.z = nz; moved = true;
     }
     m.g.rotation.y = angleLerp(m.g.rotation.y, Math.atan2(vx, vz), Math.min(dt * 7, 1));
   }
-  const g = world.groundY(Math.floor(m.x), Math.floor(m.z), Math.floor(m.y + 1.05));
+  const g = world.groundY(Math.floor(m.x), Math.floor(m.z), Math.floor(m.y + (RIDE[m.kind]?.step ?? 1.05)));
   m.y = m.y < g ? Math.min(g, m.y + dt * 9) : Math.max(g, m.y - dt * 16);
   m.phase = moved ? m.phase + dt * 14 : 0;
   const sw = moved ? Math.sin(m.phase) * 0.75 : 0;
@@ -1049,6 +1089,11 @@ function updateMobs(dt) {
   for (const m of mobs) {
     if (m.dead || m.ridden) continue;   // the one you're riding is moved by updateRide
     const sp0 = SPECIES[m.kind], dP = Math.hypot(m.x - P.x, m.z - P.z);
+    // The first time you come near something you could ride, say so — otherwise you'd never know.
+    if (RIDE[m.kind] && !m.tame && !P.ride && dP < 7 && !G.talked.has('_ridehint')) {
+      G.talked.add('_ridehint');
+      message(`You could ride that ${SPECIES[m.kind].name}! Hold an apple, some wheat or a loaf of bread and press X to make friends with it.`);
+    }
     // How each animal reacts to you. A frightened turtle heads for the sea, and a parrot takes off if you come close.
     if (sp0.temper === 'sea' && !m.inSea && !m.toSea && dP < 5) goToSea(m);
     if (sp0.temper === 'fly' && !m.fly && dP < 3.5 && !P.water) takeOff(m);
@@ -2491,6 +2536,14 @@ function drawMap() {
   home.style.left = `${(G.camp.spawn[0] / n) * 100}%`; home.style.top = `${(G.camp.spawn[1] / n) * 100}%`;
   home.addEventListener('click', () => travel(G.camp.spawn[0], G.camp.spawn[1]));
   pins.appendChild(home);
+  // Every animal you've tamed, so you can always find your horse again (the iPhone game does this too).
+  for (const m of mobs) {
+    if (!m.tame || m.dead) continue;
+    const t = document.createElement('div');
+    t.className = 'pin tamed'; t.title = `Your ${SPECIES[m.kind].name}`;
+    t.style.left = `${(m.x / n) * 100}%`; t.style.top = `${(m.z / n) * 100}%`;
+    pins.appendChild(t);
+  }
   // You: a red dot on top of everything (it used to hide under the Home label).
   const me = document.createElement('div');
   me.className = 'pin you'; me.title = 'You are here';
@@ -3007,5 +3060,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
 boot();
