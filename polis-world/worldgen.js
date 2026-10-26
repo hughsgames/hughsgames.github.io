@@ -842,29 +842,31 @@ class Stamper {
     tomb.push({ id: 'ankh', x: cx + 0.5, y: gy - 7, z: cz + 11.5 });
 
     // Up from the junction: the ascending passage, then the Grand Gallery.
-    this.passage(junction[0], junction[1] + 1, junction[2], cx, gy + 8, cz - 1, 2, 3);
-    // The Grand Gallery: three blocks wide, eight high and climbing, the way the real one soars.
-    this.passage(cx, gy + 8, cz - 1, cx, gy + 15, cz + 8, 3, 8, 4);
-    for (let k = 0; k <= 9; k++) {
-      const y = gy + 8 + Math.round(k * 7 / 9) + 2, z = cz - 1 + k;
+    // Everything up here has to fit inside the stone: at this height the pyramid is only so wide, so the
+    // gallery and both chambers sit close to the middle. (They used to poke out through the south face.)
+    this.passage(junction[0], junction[1] + 1, junction[2], cx, gy + 8, cz - 6, 2, 3);
+    // The Grand Gallery: three blocks wide, seven high and climbing, the way the real one soars.
+    this.passage(cx, gy + 8, cz - 6, cx, gy + 13, cz - 1, 3, 7, 3);
+    for (let k = 0; k <= 5; k++) {
+      const y = gy + 8 + Math.round(k * 5 / 5) + 2, z = cz - 6 + k;
       this.put(cx - 2, y, z, B.lamp); this.put(cx + 2, y, z, B.lamp);
     }
 
     // The Queen's Chamber, off the level passage that leaves the foot of the gallery.
-    this.shell(cx + 10, gy + 7, cz - 3, cx + 18, gy + 13, cz + 5, B.limestone);
-    this.fill(cx + 11, gy + 8, cz - 2, cx + 17, gy + 12, cz + 4, 0);
-    this.passage(cx, gy + 8, cz - 1, cx + 12, gy + 8, cz + 1, 2, 3);
-    this.fill(cx + 17, gy + 9, cz, cx + 17, gy + 11, cz + 1, 0);              // the niche in the east wall
-    for (const [lx, lz] of [[cx + 12, cz - 1], [cx + 16, cz + 3]]) this.put(lx, gy + 12, lz, B.lamp);
-    for (let z = cz - 1; z <= cz + 3; z += 2) { this.put(cx + 10, gy + 10, z, B.lamp); this.put(cx + 18, gy + 10, z, B.lamp); }
-    for (const [jx, jz] of [[cx + 12, cz + 3], [cx + 15, cz - 1], [cx + 16, cz + 2]]) this.put(jx, gy + 8, jz, B.terracotta);
-    tomb.push({ id: 'scarab', x: cx + 16.5, y: gy + 9, z: cz + 0.5 });
+    this.shell(cx + 6, gy + 7, cz - 3, cx + 14, gy + 13, cz + 5, B.limestone);
+    this.fill(cx + 7, gy + 8, cz - 2, cx + 13, gy + 12, cz + 4, 0);
+    this.passage(cx, gy + 8, cz - 6, cx + 8, gy + 8, cz - 1, 2, 3);
+    this.fill(cx + 13, gy + 9, cz, cx + 13, gy + 11, cz + 1, 0);             // the niche in the east wall
+    for (const [lx, lz] of [[cx + 8, cz - 1], [cx + 12, cz + 3]]) this.put(lx, gy + 12, lz, B.lamp);
+    for (let z = cz - 1; z <= cz + 3; z += 2) { this.put(cx + 6, gy + 10, z, B.lamp); this.put(cx + 14, gy + 10, z, B.lamp); }
+    for (const [jx, jz] of [[cx + 8, cz + 3], [cx + 11, cz - 1], [cx + 12, cz + 2]]) this.put(jx, gy + 8, jz, B.terracotta);
+    tomb.push({ id: 'scarab', x: cx + 12.5, y: gy + 9, z: cz + 0.5 });
 
     // The King's Chamber: red granite, under a flat ceiling, at the top of the gallery.
-    const kx0 = cx - 5, kx1 = cx + 5, kz0 = cz + 9, kz1 = cz + 16, ky = gy + 15;
+    const kx0 = cx - 5, kx1 = cx + 5, kz0 = cz + 1, kz1 = cz + 8, ky = gy + 13;
     this.fill(kx0 - 1, ky - 1, kz0 - 1, kx1 + 1, ky + 6, kz1 + 1, B.granite);
     this.fill(kx0, ky, kz0, kx1, ky + 5, kz1, 0);
-    this.passage(cx, ky, cz + 8, cx, ky, kz0, 3, 4, 0);
+    this.passage(cx, ky, cz - 1, cx, ky, kz0, 3, 4, 0);
     for (const [lx, lz] of [[kx0 + 1, kz0 + 1], [kx1 - 1, kz0 + 1], [kx0 + 1, kz1 - 1], [kx1 - 1, kz1 - 1]]) this.put(lx, ky + 5, lz, B.lamp);
     for (let z = kz0 + 1; z <= kz1 - 1; z += 2) { this.put(kx0 - 1, ky + 3, z, B.lamp); this.put(kx1 + 1, ky + 3, z, B.lamp); }
     for (let x = kx0 + 2; x <= kx1 - 2; x += 3) { this.put(x, ky + 3, kz0 - 1, B.lamp); this.put(x, ky + 3, kz1 + 1, B.lamp); }
