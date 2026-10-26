@@ -81,23 +81,129 @@ export function buildWild(kind) {
   const legs4 = (w, l, h, thick, color, hoof, y = h) => { legH = h; for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.push(limb(thick, h, thick, color, sx * w, y, sz * l, hoof)); };
   const eyes = (x, y, z, c = 0x111111) => { cbox(L, -x, y, z, 0.07, 0.07, 0.02, c); cbox(L, x, y, z, 0.07, 0.07, 0.02, c); };
   switch (kind) {
+    // ---------- the animals people keep ----------
+    case 'sheep': {
+      const wool = 0xf0ece2, face = 0x4a4038;
+      legs4(0.2, 0.3, 0.42, 0.11, 0x58504a, 0x332c28);
+      cbox(L, 0, 0.76, 0, 0.6, 0.56, 1.0, wool);
+      // Lumps of fleece, so a sheep looks woolly instead of square.
+      for (const [bx, by, bz] of [[-0.26, 0.98, 0.26], [0.26, 0.98, -0.08], [0, 1.02, 0.08], [-0.2, 0.96, -0.32], [0.24, 1.0, 0.32], [0, 0.94, -0.42], [-0.3, 0.74, 0.0], [0.3, 0.74, 0.14]]) cbox(L, bx, by, bz, 0.3, 0.2, 0.3, wool);
+      cbox(L, 0, 0.88, 0.6, 0.28, 0.32, 0.3, face);
+      cbox(L, 0, 0.82, 0.76, 0.2, 0.18, 0.06, 0x6a5e54);
+      cbox(L, 0, 1.04, 0.54, 0.34, 0.18, 0.26, wool);
+      for (const s of [-1, 1]) cbox(L, s * 0.19, 0.94, 0.58, 0.14, 0.07, 0.1, face);
+      eyes(0.1, 0.94, 0.755);
+      cbox(L, 0, 0.78, -0.54, 0.16, 0.2, 0.1, wool);
+      break;
+    }
+    case 'cow': {
+      const hide = 0x5c3c26, patch = 0xe9e2d5, horn = 0xe8dcc0;
+      legs4(0.28, 0.5, 0.56, 0.16, 0x3a2618, 0x241610);
+      cbox(L, 0, 0.94, 0, 0.78, 0.68, 1.32, hide);
+      for (const s of [-1, 1]) cbox(L, s * 0.4, 0.98, s * 0.24, 0.02, 0.38, 0.5, patch);
+      cbox(L, 0, 1.27, 0.1, 0.48, 0.02, 0.46, patch);
+      cbox(L, 0, 0.62, 0, 0.68, 0.06, 1.2, 0xd8c8b8);
+      cbox(L, 0, 1.04, 0.86, 0.44, 0.44, 0.44, hide);
+      cbox(L, 0, 0.94, 1.1, 0.32, 0.24, 0.1, patch);
+      eyes(0.17, 1.13, 1.085);
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.26, 1.27, 0.82, 0.12, 0.09, 0.09, horn);
+        cbox(L, s * 0.37, 1.33, 0.82, 0.12, 0.08, 0.08, horn);
+        cbox(L, s * 0.29, 1.08, 0.76, 0.16, 0.08, 0.1, hide);
+      }
+      cbox(L, 0, 0.68, -0.44, 0.22, 0.18, 0.18, 0xe8c0b8);
+      cbox(L, 0, 0.94, -0.72, 0.08, 0.42, 0.08, hide);
+      cbox(L, 0, 0.7, -0.74, 0.11, 0.18, 0.11, 0x3a2618);
+      break;
+    }
+    case 'pig': {
+      const skin = 0xe7a6a0, pale = 0xf0bdb6;
+      legs4(0.22, 0.34, 0.3, 0.12, 0xd38f88, 0x8a5a54);
+      cbox(L, 0, 0.58, 0, 0.62, 0.56, 0.96, skin);
+      cbox(L, 0, 0.6, 0.58, 0.4, 0.38, 0.3, pale);
+      cbox(L, 0, 0.54, 0.78, 0.24, 0.2, 0.1, 0xf5cdc6);
+      for (const s of [-1, 1]) cbox(L, s * 0.07, 0.54, 0.835, 0.05, 0.07, 0.02, 0xb07a74);
+      for (const s of [-1, 1]) cbox(L, s * 0.17, 0.8, 0.56, 0.15, 0.15, 0.05, pale);
+      eyes(0.12, 0.7, 0.73);
+      cbox(L, 0, 0.7, -0.5, 0.06, 0.06, 0.12, skin);
+      cbox(L, 0.07, 0.76, -0.56, 0.14, 0.06, 0.06, skin);
+      break;
+    }
+    case 'chicken': {
+      const feather = 0xf2f0ea, comb = 0xd8322a, beak = 0xe5a83a;
+      legH = 0.22;
+      parts.push(limb(0.05, 0.22, 0.05, beak, -0.08, 0.22, 0), limb(0.05, 0.22, 0.05, beak, 0.08, 0.22, 0));
+      cbox(L, 0, 0.42, 0, 0.3, 0.34, 0.42, feather);
+      cbox(L, 0, 0.62, 0.13, 0.2, 0.22, 0.2, feather);
+      cbox(L, 0, 0.615, 0.27, 0.1, 0.08, 0.1, beak);
+      cbox(L, 0, 0.75, 0.11, 0.04, 0.12, 0.15, comb);
+      cbox(L, 0, 0.55, 0.25, 0.06, 0.1, 0.05, comb);
+      eyes(0.07, 0.655, 0.225);
+      for (const s of [-1, 1]) cbox(L, s * 0.16, 0.42, 0, 0.04, 0.24, 0.32, 0xe4e0d2);
+      for (let k = 0; k < 3; k++) cbox(L, (k - 1) * 0.07, 0.55 + k * 0.03, -0.27, 0.06, 0.22, 0.16, feather);
+      break;
+    }
+    case 'goat': {
+      const c = 0xb8ab95, dk = 0x6a5e4c, horn = 0x3a2e1c;
+      legs4(0.2, 0.34, 0.44, 0.1, 0x5c5040, 0x2a241c);
+      cbox(L, 0, 0.72, 0, 0.5, 0.46, 0.9, c);
+      cbox(L, 0, 0.84, 0.54, 0.28, 0.3, 0.34, 0xc9bea9);
+      cbox(L, 0, 0.77, 0.74, 0.18, 0.16, 0.08, dk);
+      eyes(0.1, 0.88, 0.715);
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.16, 0.9, 0.48, 0.16, 0.06, 0.09, c);
+        for (let k = 0; k < 4; k++) cbox(L, s * 0.08, 1.0 + k * 0.09, 0.44 - k * 0.09, 0.06, 0.11, 0.11, horn);
+      }
+      cbox(L, 0, 0.66, 0.76, 0.08, 0.18, 0.08, dk);
+      cbox(L, 0, 0.82, -0.46, 0.1, 0.15, 0.08, c);
+      break;
+    }
+    case 'camel': {
+      const c = 0xc8a36a, dk = 0xa9864f, pale = 0xdcc097;
+      legs4(0.28, 0.5, 0.66, 0.14, dk, 0x6a5436);
+      cbox(L, 0, 1.03, 0, 0.7, 0.74, 1.3, c);
+      cbox(L, 0, 1.6, -0.02, 0.46, 0.4, 0.6, c);
+      cbox(L, 0, 1.78, -0.02, 0.3, 0.1, 0.44, dk);
+      cbox(L, 0, 1.4, 0.64, 0.28, 0.76, 0.3, c);
+      cbox(L, 0, 1.78, 0.78, 0.26, 0.26, 0.44, c);
+      cbox(L, 0, 1.72, 0.98, 0.2, 0.16, 0.1, pale);
+      eyes(0.13, 1.85, 0.985);
+      for (const s of [-1, 1]) cbox(L, s * 0.12, 1.93, 0.7, 0.08, 0.09, 0.06, c);
+      cbox(L, 0, 1.06, -0.7, 0.08, 0.32, 0.08, c);
+      cbox(L, 0, 0.88, -0.72, 0.1, 0.16, 0.1, dk);
+      break;
+    }
     case 'tiger': case 'jaguar': case 'lion': {
       const fur = kind === 'tiger' ? 0xd9822b : kind === 'lion' ? 0xc9a05e : 0xd8a842, mark = kind === 'lion' ? 0x6b4a28 : 0x1d1712, belly = kind === 'lion' ? 0xe4d2ac : 0xf1e6d2;
       legs4(0.2, 0.5, 0.5, 0.16, fur, 0x2a1f16);
       cbox(L, 0, 0.78, 0, 0.6, 0.48, 1.35, fur); cbox(L, 0, 0.56, 0, 0.5, 0.06, 1.2, belly);
-      if (kind === 'tiger') for (let k = 0; k < 7; k++) { const z = -0.55 + k * 0.18; cbox(L, 0, 0.9, z, 0.62, 0.3, 0.05, mark); }
+      if (kind === 'tiger') for (let k = 0; k < 7; k++) { const z = -0.55 + k * 0.18; cbox(L, 0, 0.885, z, 0.615, 0.28, 0.05, mark); }
       else if (kind === 'jaguar') for (let k = 0; k < 14; k++) { const z = -0.55 + (k % 7) * 0.18, x = k < 7 ? -0.31 : 0.31; cbox(L, x, 0.82 + (k % 3) * 0.08, z, 0.02, 0.07, 0.07, mark); cbox(L, 0, 1.025, z + 0.05, 0.08, 0.02, 0.08, mark); }
       cbox(L, 0, 0.95, 0.85, 0.46, 0.42, 0.42, fur); cbox(L, 0, 0.84, 1.08, 0.26, 0.2, 0.12, belly); cbox(L, 0, 0.88, 1.15, 0.08, 0.06, 0.02, 0x2a1a14);
       cbox(L, -0.17, 1.2, 0.8, 0.1, 0.1, 0.06, fur); cbox(L, 0.17, 1.2, 0.8, 0.1, 0.1, 0.06, fur);
       if (kind === 'tiger') { cbox(L, 0, 1.12, 0.92, 0.48, 0.04, 0.04, mark); cbox(L, -0.24, 0.98, 0.85, 0.02, 0.2, 0.05, mark); cbox(L, 0.24, 0.98, 0.85, 0.02, 0.2, 0.05, mark); }
       // A lion's mane: a thick ruff of darker fur all round his head and under his chin.
       if (kind === 'lion') {
-        for (const [x, y, z, w, h, d] of [[0, 1.3, 0.78, 0.78, 0.2, 0.5], [0, 0.62, 0.8, 0.72, 0.2, 0.46], [-0.36, 0.96, 0.78, 0.14, 0.76, 0.5], [0.36, 0.96, 0.78, 0.14, 0.76, 0.5], [0, 0.96, 0.58, 0.7, 0.74, 0.14]]) cbox(L, x, y, z, w, h, d, mark);
-        cbox(L, 0, 0.78, 0.98, 0.3, 0.3, 0.12, mark);
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2, r = 0.34 + (k % 3) * 0.045;
+          cbox(L, Math.sin(a) * r, 0.95 + Math.cos(a) * r * 0.95, 0.74, 0.22, 0.22, 0.4 + (k % 2) * 0.12, k % 2 ? mark : 0x7d5a30);
+        }
+        cbox(L, 0, 0.66, 0.92, 0.3, 0.26, 0.2, mark);
       }
       eyes(0.12, 1.03, 1.065, 0xd8c23a);
       cbox(L, 0, 0.9, -0.85, 0.09, 0.09, 0.5, fur);
       cbox(L, 0, 0.85, -1.1, kind === 'lion' ? 0.16 : 0.1, kind === 'lion' ? 0.16 : 0.1, kind === 'lion' ? 0.2 : 0.12, mark);
+      // Haunches and shoulders, so it looks like a cat gathered to spring rather than a box on legs.
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.3, 0.74, -0.45, 0.14, 0.44, 0.46, fur);
+        cbox(L, s * 0.3, 0.78, 0.42, 0.13, 0.38, 0.4, fur);
+        cbox(L, s * 0.17, 1.195, 0.815, 0.05, 0.05, 0.02, 0xe0a898);     // the pink inside of an ear
+        cbox(L, s * 0.2, 0.88, 1.03, 0.26, 0.012, 0.012, 0xf4efe2);      // whiskers
+        cbox(L, s * 0.2, 0.845, 1.03, 0.24, 0.012, 0.012, 0xf4efe2);
+      }
+      cbox(L, 0, 0.78, 1.1, 0.2, 0.08, 0.1, belly);                       // chin
+      if (kind === 'tiger') for (const s of [-1, 1]) { cbox(L, s * 0.31, 0.74, -0.45, 0.025, 0.3, 0.07, mark); cbox(L, s * 0.31, 0.78, 0.42, 0.025, 0.26, 0.07, mark); }
+      if (kind === 'jaguar') for (const s of [-1, 1]) for (let q = 0; q < 3; q++) cbox(L, s * 0.315, 0.66 + q * 0.14, -0.52 + (q % 2) * 0.14, 0.02, 0.07, 0.07, mark);
       break;
     }
     case 'boar': {
@@ -108,6 +214,11 @@ export function buildWild(kind) {
       cbox(L, -0.15, 0.55, 0.9, 0.05, 0.16, 0.05, 0xf0ead8); cbox(L, 0.15, 0.55, 0.9, 0.05, 0.16, 0.05, 0xf0ead8);
       cbox(L, -0.15, 0.88, 0.62, 0.1, 0.12, 0.05, c); cbox(L, 0.15, 0.88, 0.62, 0.1, 0.12, 0.05, c);
       eyes(0.13, 0.72, 0.83);
+      // The heavy shoulders a boar carries, a pale ring round its snout, and a little curled tail.
+      cbox(L, 0, 0.82, 0.24, 0.52, 0.3, 0.5, 0x3f2c1f);
+      cbox(L, 0, 0.55, 0.955, 0.26, 0.2, 0.03, 0x8a6a58);
+      for (const s of [-1, 1]) { cbox(L, s * 0.15, 0.885, 0.615, 0.05, 0.07, 0.03, 0xa07868); cbox(L, s * 0.26, 0.6, -0.3, 0.12, 0.34, 0.4, c); }
+      cbox(L, 0, 0.72, -0.56, 0.06, 0.06, 0.16, 0x3a281c); cbox(L, 0, 0.8, -0.62, 0.06, 0.14, 0.06, 0x3a281c);
       break;
     }
     case 'elephant': {
@@ -120,6 +231,15 @@ export function buildWild(kind) {
       eyes(0.3, 1.92, 1.505);
       cbox(L, 0, 1.0, -1.05, 0.08, 0.7, 0.08, c);
       parts.push(limb(0.24, 0.95, 0.24, c, 0, 1.55, 1.5, dk));   // the trunk swings too
+      // Great ears that stand out from the head, a tufted tail, and tusks that curve up at the tips.
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.68, 1.72, 0.92, 0.1, 0.92, 0.72, dk);
+        cbox(L, s * 0.62, 1.74, 1.02, 0.08, 0.74, 0.5, 0x7d7a76);
+        cbox(L, s * 0.25, 1.42, 1.82, 0.1, 0.18, 0.1, 0xf2ecdc);
+        cbox(L, s * 0.2, 1.62, 1.44, 0.26, 0.05, 0.06, dk);                 // a wrinkle over each eye
+      }
+      cbox(L, 0, 0.72, -1.05, 0.12, 0.2, 0.12, dk);
+      cbox(L, 0, 1.46, 1.44, 0.36, 0.06, 0.1, dk);                          // the mouth under the trunk
       break;
     }
     case 'crocodile': {
@@ -130,6 +250,11 @@ export function buildWild(kind) {
       cbox(L, 0, 0.32, 0.92, 0.42, 0.22, 0.44, c); cbox(L, 0, 0.27, 1.4, 0.3, 0.12, 0.6, c); cbox(L, 0, 0.21, 1.4, 0.3, 0.02, 0.58, 0xf2ecdc);
       cbox(L, -0.14, 0.46, 0.95, 0.09, 0.08, 0.1, 0xc2b13a); cbox(L, 0.14, 0.46, 0.95, 0.09, 0.08, 0.1, 0xc2b13a);
       cbox(L, 0, 0.3, -1.05, 0.32, 0.18, 0.7, c); cbox(L, 0, 0.27, -1.6, 0.16, 0.12, 0.5, c);
+      // Two more rows of scutes down the tail, a mouthful of teeth, raised eyes and nostrils.
+      for (let k = 0; k < 6; k++) for (const s of [-1, 1]) cbox(L, s * 0.1, 0.44 - k * 0.012, -0.95 - k * 0.14, 0.08, 0.06, 0.07, 0x3a4622);
+      for (let k = 0; k < 7; k++) for (const s of [-1, 1]) cbox(L, s * 0.135, 0.235, 1.14 + k * 0.095, 0.03, 0.05, 0.03, 0xf6f2e4);
+      for (const s of [-1, 1]) { cbox(L, s * 0.14, 0.5, 0.95, 0.13, 0.06, 0.14, c); cbox(L, s * 0.07, 0.34, 1.66, 0.06, 0.05, 0.05, 0x3a4622); }
+      cbox(L, 0, 0.33, 1.4, 0.26, 0.03, 0.55, 0x3a4622);
       break;
     }
     case 'deer': case 'horse': case 'llama': case 'ibex': case 'gazelle': {
@@ -155,6 +280,18 @@ export function buildWild(kind) {
       if (kind === 'gazelle') for (const s of [-1, 1]) for (let k = 0; k < 4; k++) cbox(L, s * (0.08 + k * 0.01), hy + 0.24 + k * 0.1, hz - 0.06 - k * 0.03, 0.05, 0.12, 0.05, 0x3a2e1c);
       if (kind === 'gazelle') { cbox(L, 0, tall + 0.3, -bl / 2 - 0.06, 0.1, 0.16, 0.08, 0xf2ece0); for (const s of [-1, 1]) cbox(L, s * 0.26, tall + 0.2, 0.1, 0.06, 0.1, 0.9, 0x7a5a34); }
       if (kind === 'ibex') cbox(L, 0, hy - 0.16, hz + 0.18, 0.1, 0.16, 0.1, 0x3a2e1c);   // a beard under the chin
+      // Shoulders and haunches, so the body isn't one flat slab, and a few touches each.
+      for (const s of [-1, 1]) {
+        cbox(L, s * (bw / 2 - 0.04), tall + 0.2, -bl / 2 + 0.24, 0.12, 0.42, 0.42, c);
+        cbox(L, s * (bw / 2 - 0.04), tall + 0.24, bl / 2 - 0.26, 0.11, 0.36, 0.34, c);
+        cbox(L, s * 0.09, hy + 0.285, hz - 0.08, 0.05, 0.05, 0.04, 0xe0a898);            // inside of an ear
+      }
+      cbox(L, 0, tall + 0.02, 0, bw - 0.1, 0.05, bl - 0.16, kind === 'horse' ? 0x4a2e1c : 0xe8dcc2);  // a paler belly
+      if (kind === 'horse') { cbox(L, 0, hy + 0.04, hz + 0.3, 0.07, 0.3, 0.03, 0xf2ece0); cbox(L, 0, hy + 0.24, hz + 0.06, 0.16, 0.12, 0.2, dk); }
+      if (kind === 'deer') for (const s of [-1, 1]) for (let q = 0; q < 3; q++) cbox(L, s * (bw / 2 + 0.005), tall + 0.32 - q * 0.02, -0.3 + q * 0.3, 0.02, 0.06, 0.06, 0xf0e2c8);
+      if (kind === 'llama') { cbox(L, 0, ny + neckH * 0.6, nz + 0.1, 0.32, neckH * 0.7, 0.34, 0xf4ece0); for (const s of [-1, 1]) cbox(L, s * 0.1, hy + 0.34, hz - 0.08, 0.05, 0.14, 0.05, c); }
+      if (kind === 'gazelle') cbox(L, 0, tall + 0.3, -bl / 2 - 0.02, 0.26, 0.26, 0.05, 0xf2ece0);     // the white rump
+      if (kind === 'ibex') cbox(L, 0, tall + 0.52, 0, 0.1, 0.06, bl - 0.2, 0x4a3a24);                  // a dark stripe down the back
       break;
     }
     case 'wolf': case 'fox': {
@@ -172,6 +309,14 @@ export function buildWild(kind) {
       eyes(0.1, chy + 0.04, chz + 0.16, 0xd8b23a);
       cbox(L, 0, by + 0.04, -bl / 2 - 0.2, fox ? 0.2 : 0.16, fox ? 0.2 : 0.16, fox ? 0.5 : 0.44, fox ? c : dk);
       if (fox) cbox(L, 0, by + 0.04, -bl / 2 - 0.46, 0.18, 0.18, 0.12, pale);
+      // A ruff at the chest, haunches behind, white cheeks on a fox and a grey saddle on a wolf.
+      cbox(L, 0, chy - 0.12, chz - 0.14, bw + 0.03, fox ? 0.18 : 0.22, 0.12, fox ? pale : 0xa8a196);
+      for (const s of [-1, 1]) {
+        cbox(L, s * (bw / 2 - 0.02), by, -bl / 2 + 0.18, 0.1, fox ? 0.26 : 0.36, 0.3, c);
+        cbox(L, s * 0.1, chy - 0.02, chz + 0.1, 0.07, 0.12, 0.12, pale);
+        cbox(L, s * 0.11, chy + 0.19, chz - 0.015, 0.05, 0.1, 0.04, 0xe0a898);
+      }
+      if (!fox) cbox(L, 0, by + 0.16, 0, bw + 0.015, 0.11, bl - 0.24, dk);
       break;
     }
     case 'aurochs': case 'yak': {
@@ -187,6 +332,14 @@ export function buildWild(kind) {
       for (const s of [-1, 1]) { cbox(L, s * 0.3, by2 + 0.2, bz2 - 0.04, 0.24, 0.1, 0.1, horn); cbox(L, s * 0.46, by2 + 0.32, bz2 - 0.02, 0.1, 0.26, 0.1, horn); cbox(L, s * 0.46, by2 + 0.48, bz2 + 0.12, 0.09, 0.1, 0.22, horn); }
       cbox(L, 0, legH + 0.5, -0.86, 0.12, 0.12, 0.3, c);
       if (yak) cbox(L, 0, legH + 0.3, -1.05, 0.26, 0.5, 0.26, 0x6b5436); else cbox(L, 0, legH + 0.2, -1.0, 0.1, 0.5, 0.1, dk);
+      // The loose fold of skin under the throat, a pale muzzle, and heavy haunches.
+      cbox(L, 0, by2 - 0.34, bz2 - 0.12, 0.34, 0.4, 0.34, c);
+      cbox(L, 0, by2 - 0.16, bz2 + 0.44, 0.26, 0.2, 0.05, yak ? 0x6b5436 : 0x9a7a60);
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.42, legH + 0.36, -0.52, 0.14, 0.52, 0.52, c);
+        cbox(L, s * 0.3, by2 + 0.26, bz2 - 0.1, 0.12, 0.1, 0.14, dk);       // an ear below each horn
+      }
+      if (!yak) cbox(L, 0, legH + 0.84, 0, 0.1, 0.06, 1.5, 0xc9a878);       // the pale line down an aurochs' back
       break;
     }
     case 'hippo': {
@@ -199,6 +352,14 @@ export function buildWild(kind) {
       for (const s of [-1, 1]) { cbox(L, s * 0.3, legH + 0.84, 1.1, 0.16, 0.16, 0.16, c); cbox(L, s * 0.26, legH + 0.76, 1.32, 0.12, 0.1, 0.06, 0x1a1210); }
       for (const s of [-1, 1]) cbox(L, s * 0.26, legH + 0.12, 1.62, 0.1, 0.18, 0.08, 0xf2ece0);
       cbox(L, 0, legH + 0.5, -1.0, 0.12, 0.2, 0.22, dk);
+      // The line of that huge mouth, nostrils on top of the muzzle so it can breathe while it floats, pink ears.
+      cbox(L, 0, legH + 0.2, 1.49, 0.82, 0.04, 0.03, 0x4a3a38);
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.18, legH + 0.48, 1.46, 0.14, 0.1, 0.1, c);
+        cbox(L, s * 0.18, legH + 0.53, 1.47, 0.06, 0.04, 0.06, 0x2a1e1c);
+        cbox(L, s * 0.3, legH + 0.835, 1.115, 0.08, 0.08, 0.08, 0xc29a94);
+        cbox(L, s * 0.44, legH + 0.3, -0.4, 0.14, 0.5, 0.6, c);              // back haunches
+      }
       break;
     }
     case 'monkey': {
@@ -211,6 +372,12 @@ export function buildWild(kind) {
       for (const s of [-1, 1]) cbox(L, s * 0.16, 0.74, 0.08, 0.06, 0.12, 0.1, face);
       eyes(0.06, 0.74, 0.272);
       for (let k = 0; k < 5; k++) cbox(L, Math.sin(k) * 0.08, 0.42 + k * 0.06, -0.26 - k * 0.1, 0.07, 0.07, 0.14, dk);
+      // A pale chest, a brow over its eyes, a little muzzle, and dark hands and feet.
+      cbox(L, 0, 0.44, 0.2, 0.22, 0.26, 0.04, 0xcdbba0);
+      cbox(L, 0, 0.8, 0.235, 0.2, 0.05, 0.05, dk);
+      cbox(L, 0, 0.665, 0.25, 0.13, 0.09, 0.06, face);
+      cbox(L, 0, 0.645, 0.275, 0.06, 0.03, 0.02, 0x3a2a24);
+      for (const s of [-1, 1]) { cbox(L, s * 0.13, 0.17, 0.14, 0.1, 0.06, 0.12, dk); cbox(L, s * 0.13, 0.17, -0.14, 0.1, 0.06, 0.12, dk); }
       break;
     }
     case 'ostrich': {
@@ -224,6 +391,14 @@ export function buildWild(kind) {
       cbox(L, 0, 2.3, 0.4, 0.2, 0.18, 0.24, neck);
       cbox(L, 0, 2.26, 0.54, 0.1, 0.08, 0.12, 0xd8a03a);
       eyes(0.09, 2.34, 0.49);
+      // Feathery thighs over those long bare legs, wing tips, and lashes over the eyes.
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.16, 0.95, 0, 0.22, 0.34, 0.3, body);
+        cbox(L, s * 0.31, 0.95, -0.14, 0.1, 0.26, 0.26, plume);
+        cbox(L, s * 0.09, 2.42, 0.47, 0.11, 0.03, 0.05, 0x2a2420);
+      }
+      cbox(L, 0, 1.26, -0.5, 0.3, 0.26, 0.2, plume);
+      cbox(L, 0, 2.24, 0.6, 0.11, 0.05, 0.06, 0xb87c28);
       break;
     }
     case 'peacock': {
@@ -242,6 +417,13 @@ export function buildWild(kind) {
         cbox(L, Math.sin(a) * r * 0.95, 0.5 + Math.cos(a) * r * 1.02, -0.41, 0.11, 0.12, 0.04, gold);
         for (const u of [0.4, 0.6, 0.78]) cbox(L, Math.sin(a) * r * u, 0.5 + Math.cos(a) * r * u, -0.44, 0.17, 0.22, 0.05, u > 0.6 ? 0x1a7a5a : 0x166a4e);
       }
+      // Folded wings at its sides, a white flash by each eye, and the shimmer down its neck.
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.16, 0.52, -0.02, 0.06, 0.22, 0.34, 0x16486e);
+        cbox(L, s * 0.08, 0.805, 0.255, 0.05, 0.04, 0.03, 0xf2ece0);
+      }
+      for (let k = 0; k < 3; k++) cbox(L, 0, 0.66 + k * 0.07, 0.17, 0.17 - k * 0.02, 0.05, 0.17, k % 2 ? 0x2a7aa8 : blue);
+      cbox(L, 0, 0.98, 0.16, 0.12, 0.03, 0.03, gold);
       break;
     }
     case 'panda': case 'bear': {
@@ -253,6 +435,22 @@ export function buildWild(kind) {
       cbox(L, -0.14, 0.97, 0.935, 0.14, 0.12, 0.02, k); cbox(L, 0.14, 0.97, 0.935, 0.14, 0.12, 0.02, k);
       cbox(L, -0.14, 0.98, 0.945, 0.04, 0.04, 0.01, 0xffffff); cbox(L, 0.14, 0.98, 0.945, 0.04, 0.04, 0.01, 0xffffff);
       cbox(L, 0, 0.84, 0.95, 0.16, 0.1, 0.06, w); cbox(L, 0, 0.87, 0.985, 0.08, 0.05, 0.02, k);
+      // A bear's humped shoulder and claws; a panda's black arms and legs and a stub of a tail.
+      cbox(L, 0, 1.04, 0.22, 0.66, 0.2, 0.46, kind === 'bear' ? 0x7a5634 : w);
+      for (const s of [-1, 1]) {
+        cbox(L, s * 0.3, 0.68, -0.38, 0.16, 0.5, 0.42, kind === 'bear' ? w : k);
+        cbox(L, s * 0.3, 0.72, 0.36, 0.15, 0.44, 0.36, kind === 'bear' ? w : k);
+        for (let q = 0; q < 3; q++) cbox(L, s * (0.16 + q * 0.07), 0.055, 0.42, 0.04, 0.05, 0.1, kind === 'bear' ? 0xe8dcc0 : 0x3a3a3a);
+      }
+      cbox(L, 0, 0.6, -0.57, 0.14, 0.14, 0.12, kind === 'bear' ? 0x4a3420 : w);
+      cbox(L, 0, 0.95, 0.955, 0.3, 0.1, 0.03, kind === 'bear' ? 0xa8865c : w);   // the muzzle bridge
+      // A bear is all one brown, so give it a tan face and ears to tell it apart from its coat.
+      if (kind === 'bear') {
+        cbox(L, 0, 0.86, 0.98, 0.34, 0.26, 0.06, 0xa8865c);
+        cbox(L, 0, 0.9, 1.015, 0.14, 0.09, 0.03, 0x2a1d12);
+        for (const s of [-1, 1]) { cbox(L, s * 0.21, 1.21, 0.68, 0.17, 0.17, 0.11, w); cbox(L, s * 0.21, 1.21, 0.735, 0.09, 0.09, 0.02, 0x3a2718); }
+        cbox(L, 0, 0.62, 0.84, 0.3, 0.28, 0.1, 0x8a6442);
+      }
       break;
     }
     case 'parrot': {
@@ -269,6 +467,11 @@ export function buildWild(kind) {
         const key = 'pwing' + s; if (!geoCache.has(key)) geoCache.set(key, mergeBoxes(list));
         const p = new THREE.Group(); p.position.set(s * 0.11, 0.36, 0); parts.push({ p, geo: geoCache.get(key), wing: s });
       }
+      // A crest of feathers on its head, white cheeks, and bands of colour down the tail.
+      for (let k = 0; k < 3; k++) cbox(L, (k - 1) * 0.05, 0.58 + (k === 1 ? 0.04 : 0), 0.06, 0.03, 0.12, 0.05, k === 1 ? yel : red);
+      for (const s of [-1, 1]) { cbox(L, s * 0.085, 0.46, 0.16, 0.025, 0.1, 0.1, 0xeae4d4); cbox(L, s * 0.085, 0.46, 0.16, 0.03, 0.03, 0.11, 0x2a2a2a); }
+      cbox(L, 0, 0.225, -0.42, 0.06, 0.04, 0.2, yel);
+      cbox(L, 0, 0.34, 0.06, 0.2, 0.1, 0.2, yel);                              // a yellow shoulder patch
       break;
     }
     case 'turtle': {
@@ -280,6 +483,12 @@ export function buildWild(kind) {
       cbox(L, 0, 0.12, 0, 0.6, 0.06, 0.78, 0xd2c89a);
       cbox(L, 0, 0.24, 0.52, 0.24, 0.16, 0.24, skin); eyes(0.1, 0.27, 0.645);
       cbox(L, 0, 0.18, -0.48, 0.08, 0.06, 0.14, skin);
+      // The shell's plates, drawn as a grid of scutes, and a beak and pale throat on the head.
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) cbox(L, a * 0.17, 0.355, b * 0.22, 0.13, 0.02, 0.17, (a + b) % 2 ? 0x6f7d3c : 0x55622d);
+      for (let a = -1; a <= 1; a++) { cbox(L, a * 0.26, 0.3, 0.42, 0.11, 0.02, 0.08, 0x6f7d3c); cbox(L, a * 0.26, 0.3, -0.42, 0.11, 0.02, 0.08, 0x6f7d3c); }
+      cbox(L, 0, 0.2, 0.62, 0.14, 0.06, 0.06, 0xd8cc9c);
+      cbox(L, 0, 0.3, 0.615, 0.18, 0.05, 0.06, 0x6f7d3c);
+      for (const s of [-1, 1]) cbox(L, s * 0.3, 0.2, 0.3, 0.1, 0.03, 0.12, 0xb8c498);
       break;
     }
   }

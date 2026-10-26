@@ -927,25 +927,10 @@ const SPECIES = {
   camel: { body: 0xc8a36a, head: 0xc8a36a, legs: 0xa9864f, size: [0.8, 1.1, 1.6], hp: 14, speed: 1.3, drops: [['leather', 1, 3]], name: 'camel' },
 };
 Object.assign(SPECIES, WILD);   // tigers, elephants, parrots, turtles… (animals.js)
-function makeAnimal(kind) {
-  if (WILD[kind]) return buildWild(kind);
-  const s = SPECIES[kind], g = new THREE.Group();
-  const [w, h, l] = s.size, legH = h * 0.6;
-  g.add(boxMesh(w, h * 0.7, l, s.body, 0, legH + h * 0.35, 0));
-  if (kind === 'camel') g.add(boxMesh(w * 0.6, h * 0.35, l * 0.35, s.body, 0, legH + h * 0.85, 0));
-  const head = boxMesh(w * 0.6, h * 0.55, w * 0.6, s.head, 0, legH + h * 0.75, l / 2 + w * 0.2);
-  g.add(head);
-  g.add(boxMesh(0.06, 0.06, 0.02, 0x111111, -w * 0.18, legH + h * 0.82, l / 2 + w * 0.51));
-  g.add(boxMesh(0.06, 0.06, 0.02, 0x111111, w * 0.18, legH + h * 0.82, l / 2 + w * 0.51));
-  const legs = [];
-  for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    if (kind === 'chicken' && lz < 0) continue;
-    const pivot = new THREE.Group(); pivot.position.set(lx * w * 0.3, legH, lz * l * 0.35);
-    pivot.add(boxMesh(w * 0.22, legH, w * 0.22, s.legs, 0, -legH / 2, 0));
-    g.add(pivot); legs.push(pivot);
-  }
-  return { g, legs };
-}
+// Every animal, wild or kept, is built the same way now: out of boxes in animals.js, with its own
+// horns, ears, fleece or feathers. (Sheep, cows, pigs, chickens, goats and camels used to be plain
+// blocks with two dots for eyes.)
+function makeAnimal(kind) { return buildWild(kind); }
 function addMob(kind, x, z, young = false) {
   const { g, legs, wings } = makeAnimal(kind);
   const y = world.groundY(Math.floor(x), Math.floor(z));
