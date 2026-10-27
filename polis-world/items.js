@@ -58,11 +58,50 @@ it('ankh', 'Golden Ankh', { relic: true, worth: 6 });
 it('shabti', 'Shabti Figure', { relic: true, worth: 4 });
 // The three Atlantean relics.
 it('trident', "Poseidon's Trident", { relic: true }); it('lawTablet', 'Orichalcum Tablet', { relic: true }); it('seahorse', 'Golden Hippocamp', { relic: true });
+// ---------- Hugh's resources (October 26) ----------
+// Soils, stones and the things you dig out of the ground.
+it('mountainSoil', 'Mountain Soil', { block: 122 }); it('blackSand', 'Black Sand', { block: 123 });
+it('mossyCobble', 'Mossy Cobblestone', { block: 27 }); it('tallGrass', 'Tall Grass', { block: 30 });
+it('greenMarble', 'Green Marble', { block: 146 }); it('blueMarble', 'Blue Marble', { block: 147 });
+it('redMarble', 'Red Marble', { block: 148 }); it('purpleMarble', 'Purple Marble', { block: 149 });
+it('obsidian', 'Obsidian', { block: 150 });
+it('diamond', 'Diamond'); it('emerald', 'Emerald'); it('amethyst', 'Amethyst'); it('blackOpal', 'Black Opal');
+// Woods and canes.
+it('jungleLog', 'Jungle Log', { block: 124 }); it('cherryLog', 'Cherry Log', { block: 126 });
+it('ginkgoLog', 'Ginkgo Log', { block: 128 }); it('acaciaLog', 'Acacia Log', { block: 130 });
+it('figLog', 'Fig Log', { block: 132 });
+it('greenVine', 'Green Vine', { block: 135 }); it('stranglerVine', 'Strangler Vine', { block: 136 });
+it('bambooRods', 'Bamboo Rods', { block: 137 }); it('papyrusRods', 'Papyrus Rods', { block: 138 });
+// Food that grows.
+it('cocoaBean', 'Cocoa Bean', { food: 1 }); it('acaiBerry', 'Açaí Berries', { food: 2 });
+it('maize', 'Maize', { food: 3 }); it('maizeSeeds', 'Maize Seeds');
+it('honey', 'Honey', { food: 3 }); it('silkFiber', 'Silk Fibre');
+// Meat and fish. Everything raw can go on a campfire.
+it('venison', 'Venison', { food: 4, cooked: 'roastVenison' }); it('roastVenison', 'Roast Venison', { food: 7 });
+it('rawDuck', 'Raw Duck', { food: 3, cooked: 'roastDuck' }); it('roastDuck', 'Roast Duck', { food: 6 });
+it('rawTurtle', 'Raw Turtle', { food: 3, cooked: 'roastTurtle' }); it('roastTurtle', 'Turtle Soup', { food: 6 });
+it('rawSquid', 'Raw Squid', { food: 2, cooked: 'cookedSquid' }); it('cookedSquid', 'Grilled Squid', { food: 5 });
+it('rawSailfish', 'Raw Sailfish', { food: 3, cooked: 'cookedSailfish' }); it('cookedSailfish', 'Grilled Sailfish', { food: 6 });
+it('rawPufferfish', 'Raw Pufferfish', { food: 1 });
+// Feathers, hides and the prize at the top of the cliff.
+it('yellowFeather', 'Yellow Feather'); it('greenFeather', 'Green Feather'); it('blueFeather', 'Blue Feather');
+it('whiteFeather', 'White Feather'); it('redFeather', 'Red Feather');
+it('crocodileLeather', 'Crocodile Leather'); it('tigerLeather', 'Tiger Skin');
+it('goldenEgg', 'Golden Egg', { relic: true, worth: 8 });
+// The gem tools. All four can dig anything, but each gem is best at one job.
+const GEMS = [['diamond', 'Diamond', 'pickaxe'], ['emerald', 'Emerald', 'axe'], ['amethyst', 'Amethyst', 'shovel'], ['blackOpal', 'Black Opal', 'sword']];
+export const GEM_KINDS = GEMS.map(([k]) => k);
+for (const [k, n, best] of GEMS) {
+  for (const [job, label] of [['pickaxe', 'Pickaxe'], ['axe', 'Axe'], ['shovel', 'Shovel'], ['sword', 'Sword']]) {
+    it(k + label, `${n} ${label}`, { tool: job, tier: 6, best: job === best });
+  }
+}
 for (const k of Object.keys(ITEM)) ITEM[k].max = ITEM[k].tool || ITEM[k].relic ? 1 : 64;
 
-export const SPEED = [1, 2, 3.5, 5, 6.5, 9];
-export const toolDamage = (t) => !t ? 1 : t.tool === 'sword' ? 3 + t.tier : t.tool === 'spear' ? 7 : t.tool === 'axe' ? 2 + t.tier : 1 + Math.floor(t.tier / 2);
-export const LOGS = ['oakLog', 'birchLog', 'spruceLog', 'palmLog'];
+// Tier 6 is the gems: faster than ancient metal, and faster again at the job their gem suits.
+export const SPEED = [1, 2, 3.5, 5, 6.5, 9, 12];
+export const toolDamage = (t) => !t ? 1 : t.tool === 'sword' ? 3 + t.tier + (t.best ? 3 : 0) : t.tool === 'spear' ? 7 : t.tool === 'axe' ? 2 + t.tier : 1 + Math.floor(t.tier / 2);
+export const LOGS = ['oakLog', 'birchLog', 'spruceLog', 'palmLog', 'jungleLog', 'cherryLog', 'ginkgoLog', 'acaciaLog', 'figLog'];
 export const FUEL = ['coal', 'charcoal'];
 export const STONES = ['cobblestone', 'sandstone', 'limestone', 'granite'];
 
@@ -135,6 +174,29 @@ r('jade', 2, 'Decor', [['granite', 2], ['copperIngot', 1]], 'Jade was treasured 
 r('puls', 2, 'Food', [['wheat', 2]], 'Puls, a thick porridge of grain, was what most Romans ate every day.');
 r('fishStew', 1, 'Food', [['cookedFish', 1], ['wheat', 1]], 'Fish stew with grain fed sailors and city people all round the Mediterranean.');
 r('honeyCake', 1, 'Food', [['wheat', 2], ['apple', 1]], 'Sweet cakes with honey and fruit were treats at Greek and Roman festivals.');
+
+// ---------- Hugh's resources: what to make with them ----------
+// The four gem tool sets. Each gem digs anything, and is quicker still at the job it suits:
+// diamond for stone, emerald for wood, amethyst for soil, black opal for a blade.
+for (const [k] of GEMS) {
+  r(k + 'Pickaxe', 1, 'Tools', [[k, 3], ['stick', 2]], k === 'diamond' ? 'The hardest thing there is. A diamond pickaxe goes through stone faster than anything.' : null);
+  r(k + 'Axe', 1, 'Tools', [[k, 3], ['stick', 2]], k === 'emerald' ? 'Emerald takes a long, keen edge: an emerald axe fells a tree in a stroke or two.' : null);
+  r(k + 'Shovel', 1, 'Tools', [[k, 1], ['stick', 2]], k === 'amethyst' ? 'Amethyst is purple quartz. Shaped into a shovel it shifts earth and sand quicker than iron.' : null);
+  r(k + 'Sword', 1, 'Tools', [[k, 2], ['stick', 1]], k === 'blackOpal' ? 'Black opal flashes green and red as it turns. The sharpest blade in the world.' : null);
+}
+r('obsidianBlade', 1, 'Tools', [['obsidian', 2], ['stick', 1]], 'The Aztecs set razor-sharp obsidian flakes into wooden clubs. Volcanic glass takes a finer edge than any metal.');
+// Canes and reeds.
+r('stick', 4, 'Basics', [['bambooRods', 1]], 'Bamboo grows a metre a day and splits into straight rods: scaffolding, pipes, pens and arrows.');
+r('papyrus', 2, 'Decor', [['papyrusRods', 3]], 'Egyptians split papyrus reeds, laid them in two layers and pressed them into sheets — the first paper.');
+r('paper', 3, 'Decor', [['papyrusRods', 4]]);
+r('silk', 1, 'Decor', [['silkFiber', 3]], 'One silkworm cocoon unwinds into a thread nearly a kilometre long. China kept how it was made secret for centuries.');
+// Food from the new crops.
+r('tortilla', 2, 'Food', [['maize', 3]], 'Maize was the heart of every meal in Mexico. Ground on a stone and patted flat, it becomes a tortilla.');
+r('honeyCake', 2, 'Food', [['wheat', 2], ['honey', 1]], 'Real honey makes a better cake. Egyptians kept bees in clay pipes 4,500 years ago.');
+r('fishStew', 1, 'Food', [['cookedSquid', 1], ['wheat', 1]]);
+// Hides and cloth.
+r('parchment', 4, 'Decor', [['crocodileLeather', 2]], 'Crocodile hide is thick and tough: shields, armour and drum skins were made from it.');
+r('redCloth', 2, 'Decor', [['silkFiber', 3], ['poppy', 1]]);
 
 export class Inventory {
   constructor() { this.slots = new Array(36).fill(null); }

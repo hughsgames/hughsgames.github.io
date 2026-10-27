@@ -453,7 +453,9 @@ function startBreak(t) {
   if (breaking && breaking.x === t.x && breaking.y === t.y && breaking.z === t.z) return;
   const tool = heldTool();
   let time = info.hard;
-  if (tool && tool.tool === info.tool) time /= SPEED[tool.tier];
+  // A gem tool is quicker still at the job its gem suits: diamond on stone, emerald on wood,
+  // amethyst on soil and sand, black opal as a blade.
+  if (tool && tool.tool === info.tool) time /= SPEED[tool.tier] * (tool.best ? 1.6 : 1);
   const gets = info.tier === 0 || (tool && tool.tool === 'pickaxe' && tool.tier >= info.tier);
   if (!gets) message(`You need ${['', 'a pickaxe', 'a stone pickaxe', 'a bronze pickaxe', 'an iron pickaxe'][Math.min(info.tier, 4)]} to collect ${info.name}`);
   breaking = { x: t.x, y: t.y, z: t.z, b: t.b, total: Math.max(time, 0.05), t: 0, gets };
@@ -863,8 +865,8 @@ function tileColor(t) {
   if (!tileColors) {
     tileColors = [];
     const c = tileSheet(atlasImg, extraImg);
-    const d = c.getContext('2d').getImageData(0, 0, 80, 140).data;
-    for (let k = 0; k < 104; k++) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    for (let k = 0; k < (c.height / 10) * 8; k++) {
       let r = 0, gg = 0, b = 0, n = 0;
       for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) { const i = ((Math.floor(k / 8) * 10 + y) * 80 + (k % 8) * 10 + x) * 4; if (d[i + 3] > 100) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } }
       tileColors[k] = new THREE.Color(`rgb(${Math.round(r / Math.max(n, 1))},${Math.round(gg / Math.max(n, 1))},${Math.round(b / Math.max(n, 1))})`);
@@ -951,7 +953,9 @@ const SPECIES = {
   sheep: { body: 0xece8e0, head: 0xd7cdbd, legs: 0x5a4f45, size: [0.7, 0.7, 1.1], hp: 8, speed: 1.4, drops: [['rawMutton', 1, 2], ['wool', 1, 3]], name: 'sheep' },
   cow: { body: 0x5c3c26, head: 0xe9e2d5, legs: 0x3a2618, size: [0.85, 0.85, 1.4], hp: 10, speed: 1.3, drops: [['rawBeef', 1, 3], ['leather', 0, 2]], name: 'cow' },
   pig: { body: 0xe7a6a0, head: 0xeab1aa, legs: 0xd38f88, size: [0.65, 0.6, 1.0], hp: 8, speed: 1.4, drops: [['rawPork', 1, 3]], name: 'pig' },
-  chicken: { body: 0xf2f0ea, head: 0xffffff, legs: 0xe5a83a, size: [0.35, 0.4, 0.45], hp: 4, speed: 1.7, drops: [['rawChicken', 1, 1], ['feather', 1, 2]], name: 'chicken' },
+  chicken: { body: 0xf2f0ea, head: 0xffffff, legs: 0xe5a83a, size: [0.35, 0.4, 0.45], hp: 4, speed: 1.7, drops: [['rawChicken', 1, 1], ['whiteFeather', 1, 2], ['yellowFeather', 0, 1]], name: 'chicken' },
+  // Ducks were kept for their eggs, their meat and their down all round the ancient world.
+  duck: { body: 0x8a7a52, head: 0x2f6b3a, legs: 0xe5a83a, size: [0.38, 0.4, 0.55], hp: 4, speed: 1.6, drops: [['rawDuck', 1, 1], ['greenFeather', 1, 2], ['whiteFeather', 0, 1]], name: 'duck' },
   goat: { body: 0xb8ab95, head: 0xc9bea9, legs: 0x5c5040, size: [0.55, 0.6, 0.9], hp: 8, speed: 1.6, drops: [['goatMeat', 1, 2], ['leather', 0, 1]], name: 'goat' },
   camel: { body: 0xc8a36a, head: 0xc8a36a, legs: 0xa9864f, size: [0.8, 1.1, 1.6], hp: 14, speed: 1.3, drops: [['leather', 1, 3]], name: 'camel' },
 };
@@ -1007,6 +1011,7 @@ function updateHerds(dt) {
   const wetBy = [[3, 0], [-3, 0], [0, 3], [0, -3], [5, 5], [-5, -5]].some(([ox, oz]) => world.hasWater(x + ox, z + oz));
   const wild = wildHere(near ? LAND[near] : null, bi, wetBy);
   if (bi === 4 && Math.random() < 0.5) kind = 'turtle';
+  else if (wetBy && bi !== 4 && Math.random() < 0.3) kind = 'duck';   // ducks on every river bank and lake shore
   else if (wild.length && Math.random() < 0.7) kind = wild[Math.floor(Math.random() * wild.length)];
   if (G.camp && Math.hypot(x - G.camp.spawn[0], z - G.camp.spawn[1]) < 45 && WILD[kind]?.temper === 'fight') kind = 'deer';   // nothing fierce right by your camp
   const count = GROUP[kind] ?? (kind === 'chicken' ? 4 : 3);
@@ -1026,6 +1031,12 @@ const RIDE = {
     fact: 'Asian elephants have carried people and heavy logs in India and Southeast Asia for thousands of years. Hannibal of Carthage even took elephants over the Alps. An elephant can step straight up a two-block ledge!' },
   yak: { speed: 5.5, fast: 7.0, fastOn: SNOW.concat(ROCK), seat: 1.32, step: 1.05, back: 1.42, blanket: [0.88, 0.9],
     fact: 'In the high mountains of Tibet, people ride yaks and live on their milk, wool and strength. The air up there is too thin for a horse. A yak is happiest on cold stone and snow.' },
+  // The fastest thing on two legs. An ostrich can keep up 70 km an hour, which no horse can do for long.
+  ostrich: { speed: 9.0, fast: 11.0, fastOn: SAND.concat(GRASS), seat: 1.18, step: 1.05, back: 1.08, blanket: [0.5, 0.56],
+    fact: 'An ostrich is the fastest runner on two legs anywhere — about 70 kilometres an hour, faster than a racehorse, and it can keep going for half an hour. It cannot fly at all. Hold on tight: this is the quickest way to cross the sand!' },
+  // Slow and heavy on land, but in the sea a turtle is suddenly the fastest thing you can ride.
+  turtle: { speed: 1.8, fast: 8.6, fastOn: [], water: true, seat: 0.78, step: 1.05, back: 0.82, blanket: null,
+    fact: 'On land a sea turtle can barely drag itself along — but in the water it flies. Green turtles swim thousands of miles across open ocean and find the very beach they were born on. Take it into the sea and see how it goes!' },
 };
 // Animals people never rode, and why. (The iPhone game says the same.)
 const NO_RIDE = {
@@ -1034,11 +1045,12 @@ const NO_RIDE = {
   aurochs: 'An aurochs is a wild ox as tall as a grown-up, and far too fierce to ride. Nobody ever tamed one.',
   deer: 'Deer are far too light and far too shy to carry a person.',
   ibex: 'An ibex lives on cliffs no rider could follow. It would never carry you.',
-  ostrich: 'An ostrich can outrun a horse, but its back is not strong enough to carry a person.',
 };
 // No animal lets a stranger climb on its back. Offer it something to eat first, the way people have always
 // made friends with animals: an apple, a handful of wheat, bread, figs or dates.
-const TREATS = ['apple', 'wheat', 'bread', 'figs', 'dates', 'olives', 'honeyCake', 'puls'];
+// Sea turtles want seagrass or kelp; an ostrich will take seed corn or a handful of grass.
+const TREATS = ['apple', 'wheat', 'bread', 'figs', 'dates', 'olives', 'honeyCake', 'puls',
+  'kelp', 'seagrass', 'maize', 'maizeSeeds', 'wheatSeeds', 'tallGrass', 'acaiBerry'];
 function offerTreat(m) {
   const s = heldItem();
   if (!s || !TREATS.includes(s.id)) {
@@ -1056,7 +1068,7 @@ const seatY = (m) => (RIDE[m.kind]?.seat ?? 1.22) * (m.young ? 0.6 : 1);
 function saddle(m, on) {
   if (!on) { if (m.rug) { m.g.remove(m.rug); m.rug = null; } return; }
   if (m.rug) return;
-  const r = RIDE[m.kind]; if (!r) return;
+  const r = RIDE[m.kind]; if (!r || !r.blanket) return;   // a turtle is ridden bare-shelled
   const g = new THREE.Group(), y = (r.back ?? 1.3) + 0.04, [bw, bl] = r.blanket;
   g.add(boxMesh(bw, 0.08, bl, 0xa83a2e, 0, y, -0.05));
   // A gold band along each edge, the way a saddle cloth was woven.
@@ -1066,7 +1078,10 @@ function saddle(m, on) {
 }
 function mount(m) {
   if (NO_RIDE[m.kind]) { message(NO_RIDE[m.kind]); return; }
-  if (m.flee > 0 || m.angry > 0) { message(`The ${SPECIES[m.kind].name} shies away. Come back when it has calmed down.`); return; }
+  // A frightened animal won't be caught — unless you're holding out something it wants to eat.
+  const food = heldItem();
+  const coaxing = !!(food && TREATS.includes(food.id));
+  if (m.angry > 0 || (m.flee > 0 && !coaxing)) { message(`The ${SPECIES[m.kind].name} shies away. Come back when it has calmed down.`); return; }
   if (!m.tame) { offerTreat(m); return; }
   P.ride = m; m.ridden = true; m.wait = 0; m.toSea = null;
   saddle(m, true);
@@ -1104,20 +1119,30 @@ function updateRide(dt, fwd, side) {
     // Faster on the ground it was made for: a horse on grass, a camel on sand, a yak on snow and stone.
     const r = RIDE[m.kind] ?? { speed: 6, fast: 6, fastOn: [], step: 1.05 };
     const under = world.get(Math.floor(m.x), Math.floor(m.y) - 1, Math.floor(m.z));
-    const pace = r.fastOn.includes(under) ? r.fast : r.speed;
+    // A turtle is quick once it's in the sea; the land animals are quick on the ground they suit.
+    const afloat = r.water && world.hasWater(Math.floor(m.x), Math.floor(m.z));
+    const pace = afloat || r.fastOn.includes(under) ? r.fast : r.speed;
     const step = pace * (sprint ? 1.25 : 1) * amt * dt;
     const nx = m.x + vx * step, nz = m.z + vz * step;
     const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + r.step));
     const wet = world.hasWater(Math.floor(nx), Math.floor(nz)) && g < WL - 0.5;
-    if (!wet && g <= m.y + r.step && g > m.y - 3.5 && !world.solid(Math.floor(nx), Math.floor(g), Math.floor(nz)) && !world.solid(Math.floor(nx), Math.floor(g) + 1, Math.floor(nz))) {
+    if (r.water && wet) {
+      // Swimming: glide over the surface, so long as nothing solid stands in the way.
+      if (!world.solid(Math.floor(nx), Math.floor(WL - 0.5), Math.floor(nz))) { m.x = nx; m.z = nz; moved = true; }
+    } else if (!wet && g <= m.y + r.step && g > m.y - 3.5 && !world.solid(Math.floor(nx), Math.floor(g), Math.floor(nz)) && !world.solid(Math.floor(nx), Math.floor(g) + 1, Math.floor(nz))) {
       m.x = nx; m.z = nz; moved = true;
     }
     m.g.rotation.y = angleLerp(m.g.rotation.y, Math.atan2(vx, vz), Math.min(dt * 7, 1));
   }
-  const g = world.groundY(Math.floor(m.x), Math.floor(m.z), Math.floor(m.y + (RIDE[m.kind]?.step ?? 1.05)));
-  m.y = m.y < g ? Math.min(g, m.y + dt * 9) : Math.max(g, m.y - dt * 16);
-  m.phase = moved ? m.phase + dt * 14 : 0;
-  const sw = moved ? Math.sin(m.phase) * 0.75 : 0;
+  const ride = RIDE[m.kind] ?? { step: 1.05 };
+  const g = world.groundY(Math.floor(m.x), Math.floor(m.z), Math.floor(m.y + (ride.step ?? 1.05)));
+  // A swimming mount rides at the surface rather than walking the sea bed.
+  const swimming = ride.water && world.hasWater(Math.floor(m.x), Math.floor(m.z)) && g < WL - 0.5;
+  if (swimming) { const top = WL - 0.62; m.y = m.y < top ? Math.min(top, m.y + dt * 7) : Math.max(top, m.y - dt * 7); }
+  else m.y = m.y < g ? Math.min(g, m.y + dt * 9) : Math.max(g, m.y - dt * 16);
+  m.phase = moved ? m.phase + dt * (swimming ? 7 : 14) : 0;
+  // Flippers sweep in slow strokes; legs trot.
+  const sw = moved ? Math.sin(m.phase) * (swimming ? 0.55 : 0.75) : 0;
   m.legs.forEach((l, i) => { l.rotation.x = sw * (i === 0 || i === 3 ? 1 : -1); });
   m.g.position.set(m.x, m.y, m.z);
   // You sit astride, legs forward, reins in both hands, rising a little to the trot.
@@ -1153,6 +1178,10 @@ function spreadOut(dt) {
 }
 function updateMobs(dt) {
   spreadOut(dt);
+  // Hold out something an animal likes and it won't bolt. It's the only way to get near a shy one —
+  // a sea turtle makes for the water as soon as you come within five blocks, and a parrot takes off.
+  const held = heldItem();
+  const coaxing = !!(held && TREATS.includes(held.id));
   for (const m of mobs) {
     if (m.dead || m.ridden) continue;   // the one you're riding is moved by updateRide
     const sp0 = SPECIES[m.kind], dP = Math.hypot(m.x - P.x, m.z - P.z);
@@ -1162,8 +1191,8 @@ function updateMobs(dt) {
       message(`You could ride that ${SPECIES[m.kind].name}! Hold an apple, some wheat or a loaf of bread and press X to make friends with it.`);
     }
     // How each animal reacts to you. A frightened turtle heads for the sea, and a parrot takes off if you come close.
-    if (sp0.temper === 'sea' && !m.inSea && !m.toSea && dP < 5) goToSea(m);
-    if (sp0.temper === 'fly' && !m.fly && dP < 3.5 && !P.water) takeOff(m);
+    if (sp0.temper === 'sea' && !m.inSea && !m.toSea && dP < 5 && !m.tame && !coaxing) goToSea(m);
+    if (sp0.temper === 'fly' && !m.fly && dP < 3.5 && !P.water && !m.tame && !coaxing) takeOff(m);
     if (m.fly) { flyMob(m, dt); continue; }
     if (m.angry > 0) {
       // Fighting back: it chases you and bites (twice at most), then gives up and slinks off.
@@ -1298,6 +1327,10 @@ const FISH = {
   sardine: { body: 0xaebccb, stripe: 0x4f6a85, len: 0.26, speed: 2.6, school: [8, 14], name: 'sardine' },
   turtle: { body: 0x7d8f45, shell: 0x5c4a2a, len: 1.0, speed: 0.8, school: [1, 1], name: 'sea turtle' },
   jellyfish: { body: 0xf2a6d8, len: 0.55, speed: 0.35, school: [2, 4], name: 'jellyfish' },
+  // Hugh's catches. `catch` says what you get when you take one.
+  squid: { body: 0xe8c0c8, stripe: 0xc98fa0, len: 0.5, speed: 1.4, school: [2, 4], name: 'squid', catch: 'rawSquid' },
+  pufferfish: { body: 0xd8bc46, stripe: 0x8a7a2a, len: 0.34, speed: 0.9, school: [1, 2], name: 'pufferfish', catch: 'rawPufferfish' },
+  sailfish: { body: 0x4a6f9a, stripe: 0x2f4f8a, len: 1.5, speed: 3.4, school: [1, 2], name: 'sailfish', catch: 'rawSailfish' },
 };
 const fishMat = new Map();
 function fmat(color, opts = {}) { const k = color + JSON.stringify(opts); let m = fishMat.get(k); if (!m) { m = new THREE.MeshLambertMaterial({ color, ...opts }); fishMat.set(k, m); } return m; }
@@ -1315,6 +1348,38 @@ function makeSwimmer(kind) {
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), fmat(f.body, { transparent: true, opacity: 0.6, emissive: 0x552244 }));
     g.add(bell); tail = bell;
     for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; g.add(fbox(0.025, 0.5, 0.025, 0xf7c6e6, Math.cos(a) * 0.14, -0.25, Math.sin(a) * 0.14, { transparent: true, opacity: 0.5 })); }
+  } else if (kind === 'squid') {
+    // A squid: a pointed mantle, two side fins and a crown of tentacles trailing behind.
+    g.add(fbox(L * 0.42, L * 0.42, L * 0.9, f.body, 0, 0, -L * 0.1));
+    g.add(fbox(L * 0.26, L * 0.26, L * 0.3, f.body, 0, 0, -L * 0.68));
+    for (const s of [-1, 1]) g.add(fbox(L * 0.3, L * 0.06, L * 0.34, f.stripe, s * L * 0.3, 0, -L * 0.5));
+    for (const s of [-1, 1]) g.add(fbox(0.045, 0.05, 0.03, 0x111111, s * L * 0.19, L * 0.1, L * 0.3));
+    tail = new THREE.Group(); tail.position.z = L * 0.34;
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2;
+      tail.add(fbox(L * 0.05, L * 0.05, L * 0.55, f.stripe, Math.cos(a) * L * 0.12, Math.sin(a) * L * 0.12, L * 0.26));
+    }
+    g.add(tail);
+  } else if (kind === 'pufferfish') {
+    // Blown up into a prickly ball.
+    g.add(fbox(L * 0.9, L * 0.85, L * 0.95, f.body, 0, 0, 0));
+    for (const [sx, sy, sz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, -1], [0.7, 0.7, 0], [-0.7, 0.7, 0], [0.7, -0.7, 0], [-0.7, -0.7, 0]])
+      g.add(fbox(L * 0.1, L * 0.1, L * 0.1, f.stripe, sx * L * 0.5, sy * L * 0.48, sz * L * 0.52));
+    for (const s of [-1, 1]) g.add(fbox(0.05, 0.055, 0.03, 0x111111, s * L * 0.26, L * 0.14, L * 0.46));
+    tail = new THREE.Group(); tail.position.z = -L * 0.48;
+    tail.add(fbox(L * 0.06, L * 0.34, L * 0.26, f.stripe, 0, 0, -L * 0.12));
+    g.add(tail);
+  } else if (kind === 'sailfish') {
+    // The fastest fish in the sea, with a great sail along its back and a bill like a spear.
+    g.add(fbox(L * 0.2, L * 0.3, L * 0.78, f.body, 0, 0, 0));
+    g.add(fbox(L * 0.1, L * 0.16, L * 0.26, f.body, 0, 0, L * 0.46));
+    g.add(fbox(L * 0.04, L * 0.04, L * 0.36, f.stripe, 0, 0, L * 0.72));
+    g.add(fbox(L * 0.03, L * 0.34, L * 0.58, f.stripe, 0, L * 0.3, -L * 0.02));
+    for (const s of [-1, 1]) { const p = new THREE.Group(); p.position.set(s * L * 0.1, -L * 0.08, L * 0.1); p.add(fbox(L * 0.22, L * 0.03, L * 0.14, f.stripe, s * L * 0.11, 0, 0)); g.add(p); fins.push(p); }
+    for (const s of [-1, 1]) g.add(fbox(0.05, 0.05, 0.03, 0x111111, s * L * 0.1, L * 0.06, L * 0.55));
+    tail = new THREE.Group(); tail.position.z = -L * 0.4;
+    tail.add(fbox(L * 0.04, L * 0.42, L * 0.24, f.stripe, 0, 0, -L * 0.1));
+    g.add(tail);
   } else {
     g.add(fbox(L * 0.32, L * 0.55, L, f.body, 0, 0, 0));
     if (kind === 'clownfish') for (const z of [-0.18, 0.12]) g.add(fbox(L * 0.34, L * 0.57, L * 0.12, f.stripe, 0, 0, z * L * 2));
@@ -1329,6 +1394,36 @@ function makeSwimmer(kind) {
 }
 function waterDepthAt(x, z) { let d = 0; for (let y = WL - 1; y > 0 && IS_WATERY[world.get(x, y, z)]; y--) d++; return d; }
 let swimT = 0;
+// ---------- the griffons that guard their nests ----------
+// There are only a handful of nests in the world, all on the highest peaks. Climb up to one and the
+// griffon comes for you. Get past it and the golden egg is yours.
+let nestT = 0;
+function guardNests(dt) {
+  nestT -= dt;
+  if (nestT > 0) return;
+  nestT = 2;
+  if (P.y < WL + 16) return;                       // nests are only found high in the mountains
+  if (mobs.some((m) => m.kind === 'griffon' && !m.dead && Math.hypot(m.x - P.x, m.z - P.z) < 80)) return;
+  const px = Math.floor(P.x), pz = Math.floor(P.z);
+  for (let dz = -22; dz <= 22; dz += 2) for (let dx = -22; dx <= 22; dx += 2) {
+    const x = px + dx, z = pz + dz;
+    if (!world.inb(x, z)) continue;
+    const gy = world.groundY(x, z);
+    if (world.get(x, gy - 1, z) !== 156 && world.get(x, gy, z) !== 156) continue;
+    const [mx, mz] = world.nearestLand(x + 5, z + 5);
+    const g = addMob('griffon', mx + 0.5, mz + 0.5);
+    if (g) {
+      g.angry = 40; g.bites = 0; g.tx = P.x; g.tz = P.z;
+      message('A griffon comes screaming down off the rocks — you are too near its nest!');
+      sound.play('hurt');
+      if (!G.talked.has('_griffon')) {
+        G.talked.add('_griffon');
+        showCard('A griffon!', 'The guardian of the nest', SPECIES.griffon.fact + '\n\nIts nest holds a golden egg. Break the nest open and the egg is yours — but you will have to get past the griffon first.');
+      }
+    }
+    return;
+  }
+}
 function spawnSwimmers(dt) {
   swimT -= dt;
   if (swimT > 0) return;
@@ -1342,8 +1437,12 @@ function spawnSwimmers(dt) {
   if (depth < 2) return;
   const warm = z > world.n * 0.5, r = Math.random();
   let kind = 'sardine';
-  if (warm) kind = r < 0.25 ? 'clownfish' : r < 0.47 ? 'blueTang' : r < 0.66 ? 'yellowTang' : r < 0.76 && depth >= 4 ? 'turtle' : r < 0.86 && depth >= 5 ? 'jellyfish' : 'sardine';
-  else kind = r < 0.12 && depth >= 5 ? 'jellyfish' : 'sardine';
+  // Warm seas: reef fish, turtles, jellyfish, and now squid, pufferfish and the odd sailfish out in the deep.
+  if (warm) {
+    kind = r < 0.2 ? 'clownfish' : r < 0.38 ? 'blueTang' : r < 0.54 ? 'yellowTang' : r < 0.63 && depth >= 4 ? 'turtle'
+      : r < 0.71 && depth >= 5 ? 'jellyfish' : r < 0.8 ? 'squid' : r < 0.87 && depth >= 4 ? 'pufferfish'
+        : r < 0.92 && depth >= 6 ? 'sailfish' : 'sardine';
+  } else kind = r < 0.1 && depth >= 5 ? 'jellyfish' : r < 0.22 ? 'squid' : r < 0.28 && depth >= 6 ? 'sailfish' : 'sardine';
   const f = FISH[kind], count = f.school[0] + Math.floor(Math.random() * (f.school[1] - f.school[0] + 1));
   const y = WL - 1.5 - Math.random() * Math.max(0, depth - 2);
   let leader = null;
@@ -1401,8 +1500,11 @@ function touchSwimmer(f) {
   P.swing = 0.25;
   if (Math.random() < 0.6) {
     entityGroup.remove(f.g); swimmers.splice(swimmers.indexOf(f), 1);
-    give('rawFish', 1);
-    if (!G.found.has('_fish')) { G.found.add('_fish'); message(`You caught a ${FISH[f.kind].name}! Cook fish on a campfire.`); }
+    const got = FISH[f.kind].catch ?? 'rawFish';
+    give(got, 1);
+    if (f.kind === 'pufferfish') message('You caught a pufferfish! Cook it carefully — a raw one is no good to eat.');
+    else if (f.kind === 'sailfish') message('A sailfish! The fastest fish in the sea — it can swim at 100 kilometres an hour.');
+    else if (!G.found.has('_fish')) { G.found.add('_fish'); message(`You caught a ${FISH[f.kind].name}! Cook fish on a campfire.`); }
   } else { f.tx = f.x + (f.x - P.x) * 3; f.tz = f.z + (f.z - P.z) * 3; f.wait = 1; message('It got away!'); }
 }
 
@@ -3019,6 +3121,10 @@ async function makeIcons() {
       face(info.top, [14 / 16, 7 / 16, -14 / 16, 7 / 16, 16, 2], 0);
       face(info.side, [14 / 16, 7 / 16, 0, 1, 2, 9], 0.22);
       face(info.side, [14 / 16, -7 / 16, 0, 1, 16, 16], 0.4);
+    } else if (it.block) {
+      // Anything that isn't a cube — grass, vines, bamboo, papyrus, a ladder — can't be drawn as a
+      // little box, so its picture is shown flat instead. Without this it had no picture at all.
+      g.drawImage(tileCanvas(BLOCKS[it.block].side), 0, 0, 10, 10, 0, 0, 32, 32);
     } else continue;
     ICONS[id] = c.toDataURL();
     if (!it.block || IS_CROSS[it.block]) ICON_CANVAS.set(id, c);
@@ -3199,7 +3305,7 @@ function loop(now) {
     }
     updateBreaking(dt);
     updateFx(dt); updateDrops(dt); updateParticles(dt); updateFurnaces(dt);
-    updateMobs(dt); updateTravellers(dt); updateNpcs(dt); updateHerds(dt); updateCities(dt); updateDiscovery(dt); updateVillage(dt);
+    updateMobs(dt); guardNests(dt); updateTravellers(dt); updateNpcs(dt); updateHerds(dt); updateCities(dt); updateDiscovery(dt); updateVillage(dt);
     updateFlow(dt); updateSwimmers(dt); updateRelics(dt); updateDesign(dt); updateSpray(dt);
     updateSurvival(dt); updateDaylight(dt);
     updateSound(dt); sound.tick();
@@ -3218,5 +3324,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
 boot();

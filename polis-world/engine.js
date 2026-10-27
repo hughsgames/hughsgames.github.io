@@ -19,8 +19,19 @@ export const T = {
   yellowRoof: 80, greenRoof: 81, redLacquer: 82, glass: 83, terracotta: 84, mosaic: 85, plaster: 86, bronze: 87,
   redCloth: 88, blueCloth: 89, jerusalemStone: 90, scrollShelf: 91, gateWood: 92, doorLower: 93, doorUpper: 94, jade: 95,
   greyRoof: 96, rammedEarth: 97, purpleCloth: 98,
+  // Hugh's resources: new woods, plants, crops, coloured marble, gems, and the griffon's nest.
+  jungleSide: 99, cherrySide: 100, ginkgoSide: 101, acaciaSide: 102, figSide: 103,
+  jungleLeaves: 104, cherryBlossom: 105, ginkgoLeaves: 106, acaciaLeaves: 107, figLeaves: 108,
+  greenVine: 109, stranglerVine: 110, bamboo: 111, papyrus: 112,
+  cocoaPod: 113, acaiBunch: 114, maizeYoung: 115, maizeRipe: 116,
+  greenMarble: 117, blueMarble: 118, redMarble: 119, purpleMarble: 120,
+  obsidian: 121, diamondOre: 122, emeraldOre: 123, amethystOre: 124, opalOre: 125,
+  mountainSoil: 126, blackSand: 127, rockSalt: 128,
+  nestTop: 129, nestSide: 130, hive: 131, cocoon: 132, appleLeaves: 133,
 };
-export const TILE_ROWS = 16;
+// 32 rows of 8 pictures. The padded atlas built from this is 128 × 512, which stays a power of two
+// so the blur used on far-away blocks still works. Rows 10 upwards are drawn by paintTiles below.
+export const TILE_ROWS = 32;
 
 // Every block: name, tiles (top, side, bottom), how hard it is, the right tool, the tool tier needed, what it drops, its shape.
 export const BLOCKS = [];
@@ -54,8 +65,8 @@ def(23, 'Planks', T.planks, T.planks, T.planks, 2, 'axe', 0, 'planks');
 def(24, 'Palm Log', T.logTop, T.palmSide, T.logTop, 2.5, 'axe', 0, 'palmLog');
 def(25, 'Palm Fronds', T.palmLeaves, T.palmLeaves, T.palmLeaves, 0.3, '', 0, null, 'cube', true);
 def(26, 'Snowy Grass', T.snow, T.snowSide, T.dirt, 0.6, 'shovel', 0, 'dirt');
-def(27, 'Mossy Cobblestone', T.mossyCobble, T.mossyCobble, T.mossyCobble, 4, 'pickaxe', 1, 'cobblestone');
-def(30, 'Tall Grass', T.tallGrass, T.tallGrass, T.tallGrass, 0.05, '', 0, null, 'cross', true);
+def(27, 'Mossy Cobblestone', T.mossyCobble, T.mossyCobble, T.mossyCobble, 4, 'pickaxe', 1, 'mossyCobble');
+def(30, 'Tall Grass', T.tallGrass, T.tallGrass, T.tallGrass, 0.05, '', 0, 'tallGrass', 'cross', true);
 def(31, 'Poppy', T.redFlower, T.redFlower, T.redFlower, 0.05, '', 0, 'poppy', 'cross', true);
 def(32, 'Dandelion', T.yellowFlower, T.yellowFlower, T.yellowFlower, 0.05, '', 0, 'dandelion', 'cross', true);
 def(33, 'Dead Bush', T.deadBush, T.deadBush, T.deadBush, 0.05, '', 0, 'stick', 'cross', true);
@@ -130,6 +141,51 @@ for (const [id, axis, open] of [[118, 'x', 0], [119, 'z', 0], [120, 'x', 1], [12
   def(id, 'Gate', T.gateWood, T.gateWood, T.gateWood, 2, 'axe', 0, 'gate', 'gate');
   Object.assign(BLOCKS[id], { axis, open, gate: true });
 }
+// ---------- Hugh's resources (October 26): more to find, dig up and gather ----------
+// Soils.
+def(122, 'Mountain Soil', T.mountainSoil, T.mountainSoil, T.mountainSoil, 0.6, 'shovel', 0, 'mountainSoil');
+def(123, 'Black Sand', T.blackSand, T.blackSand, T.blackSand, 0.5, 'shovel', 0, 'blackSand');
+// Woods, each with its own leaves. Fig leaves give figs and apple boughs give apples.
+def(124, 'Jungle Log', T.logTop, T.jungleSide, T.logTop, 2.6, 'axe', 0, 'jungleLog');
+def(125, 'Jungle Leaves', T.jungleLeaves, T.jungleLeaves, T.jungleLeaves, 0.3, '', 0, null, 'cube', true);
+def(126, 'Cherry Log', T.logTop, T.cherrySide, T.logTop, 2.5, 'axe', 0, 'cherryLog');
+def(127, 'Cherry Blossom', T.cherryBlossom, T.cherryBlossom, T.cherryBlossom, 0.3, '', 0, null, 'cube', true);
+def(128, 'Ginkgo Log', T.logTop, T.ginkgoSide, T.logTop, 2.5, 'axe', 0, 'ginkgoLog');
+def(129, 'Ginkgo Leaves', T.ginkgoLeaves, T.ginkgoLeaves, T.ginkgoLeaves, 0.3, '', 0, null, 'cube', true);
+def(130, 'Acacia Log', T.logTop, T.acaciaSide, T.logTop, 2.5, 'axe', 0, 'acaciaLog');
+def(131, 'Acacia Leaves', T.acaciaLeaves, T.acaciaLeaves, T.acaciaLeaves, 0.3, '', 0, null, 'cube', true);
+def(132, 'Fig Log', T.logTop, T.figSide, T.logTop, 2.4, 'axe', 0, 'figLog');
+def(133, 'Fig Leaves', T.figLeaves, T.figLeaves, T.figLeaves, 0.3, '', 0, 'figs', 'cube', true);
+def(134, 'Apple Boughs', T.appleLeaves, T.appleLeaves, T.appleLeaves, 0.3, '', 0, 'apple', 'cube', true);
+// Climbers and canes.
+def(135, 'Green Vine', T.greenVine, T.greenVine, T.greenVine, 0.1, '', 0, 'greenVine', 'cross', true);
+def(136, 'Strangler Vine', T.stranglerVine, T.stranglerVine, T.stranglerVine, 0.4, 'axe', 0, 'stranglerVine', 'cross', true);
+def(137, 'Bamboo', T.bamboo, T.bamboo, T.bamboo, 0.4, 'axe', 0, 'bambooRods', 'cross', true);
+def(138, 'Papyrus', T.papyrus, T.papyrus, T.papyrus, 0.2, '', 0, 'papyrusRods', 'cross', true);
+// Things that grow on trees.
+def(139, 'Cocoa Pod', T.cocoaPod, T.cocoaPod, T.cocoaPod, 0.4, '', 0, 'cocoaBean');
+def(140, 'Açaí Berries', T.acaiBunch, T.acaiBunch, T.acaiBunch, 0.2, '', 0, 'acaiBerry', 'cross', true);
+def(141, 'Beehive', T.hive, T.hive, T.hive, 0.6, '', 0, 'honey');
+def(142, 'Silkworm Cocoons', T.cocoon, T.cocoon, T.cocoon, 0.2, '', 0, 'silkFiber', 'cross', true);
+// Maize, which grows like wheat: three stages, then a ripe cob.
+def(143, 'Maize Sprouts', T.maizeYoung, T.maizeYoung, T.maizeYoung, 0.05, '', 0, 'maizeSeeds', 'cross', true);
+def(144, 'Growing Maize', T.maizeYoung, T.maizeYoung, T.maizeYoung, 0.05, '', 0, 'maizeSeeds', 'cross', true);
+def(145, 'Ripe Maize', T.maizeRipe, T.maizeRipe, T.maizeRipe, 0.05, '', 0, 'maize', 'cross', true);
+// Coloured marble, quarried in different lands.
+def(146, 'Green Marble', T.greenMarble, T.greenMarble, T.greenMarble, 3.6, 'pickaxe', 1, 'greenMarble');
+def(147, 'Blue Marble', T.blueMarble, T.blueMarble, T.blueMarble, 3.6, 'pickaxe', 1, 'blueMarble');
+def(148, 'Red Marble', T.redMarble, T.redMarble, T.redMarble, 3.6, 'pickaxe', 1, 'redMarble');
+def(149, 'Purple Marble', T.purpleMarble, T.purpleMarble, T.purpleMarble, 3.6, 'pickaxe', 1, 'purpleMarble');
+// Volcanic glass: nearly as hard as black marble, and it takes a good pick to win it.
+def(150, 'Obsidian', T.obsidian, T.obsidian, T.obsidian, 10, 'pickaxe', 3, 'obsidian');
+// The gems. Diamond and opal are deep and stubborn; amethyst is nearer the surface.
+def(151, 'Diamond Ore', T.diamondOre, T.diamondOre, T.diamondOre, 6.5, 'pickaxe', 3, 'diamond');
+def(152, 'Emerald Ore', T.emeraldOre, T.emeraldOre, T.emeraldOre, 6, 'pickaxe', 3, 'emerald');
+def(153, 'Amethyst Ore', T.amethystOre, T.amethystOre, T.amethystOre, 5, 'pickaxe', 2, 'amethyst');
+def(154, 'Black Opal Ore', T.opalOre, T.opalOre, T.opalOre, 7, 'pickaxe', 4, 'blackOpal');
+def(155, 'Rock Salt', T.rockSalt, T.rockSalt, T.rockSalt, 2.5, 'pickaxe', 1, 'salt');
+// A griffon's nest, high on the cliffs. Break it open and the golden egg is yours — if its mother lets you.
+def(156, "Griffon's Nest", T.nestTop, T.nestSide, T.nestSide, 1.2, '', 0, 'goldenEgg');
 // Flowing water: 81–87 are thinner and thinner sheets spreading out, 88 is water falling straight down.
 for (let a = 1; a <= 8; a++) def(80 + a, 'Water', T.water, T.water, T.water, -1, '', 0, null, 'liquid');
 for (let i = 0; i < 256; i++) if (!BLOCKS[i]) def(i, 'Air', 0, 0, 0, 0, '', 0, null, 'none');
@@ -234,7 +290,7 @@ export function buildAtlas(img, extra) {
   g.imageSmoothingEnabled = false;
   const sheet = tileSheet(img, extra);
   const out = new ImageData(c.width, c.height);
-  for (let t = 0; t < 104; t++) {
+  for (let t = 0; t < 8 * TILE_ROWS; t++) {
     const cx = (t % 8) * CELL, cy = Math.floor(t / 8) * CELL, sx = (t % 8) * TILE, sy = Math.floor(t / 8) * TILE;
     for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) {
       const tx = ((x - PAD) % TILE + TILE) % TILE, ty = ((y - PAD) % TILE + TILE) % TILE;
@@ -260,7 +316,7 @@ export function tileUV(t, u, v) {
 let sheetCache = null;
 export function tileSheet(img, extra) {
   if (sheetCache) return sheetCache;
-  const c = document.createElement('canvas'); c.width = 80; c.height = 140;
+  const c = document.createElement('canvas'); c.width = 80; c.height = 10 * TILE_ROWS;
   const g = c.getContext('2d'); g.drawImage(img, 0, 0); if (extra) g.drawImage(extra, 0, 80);
   paintTiles(g);
   sheetCache = c;
@@ -271,7 +327,7 @@ function paintTiles(g) {
   const rnd = (t, x, y, k = 0) => { let h = (t * 7919 + x * 374761393 + y * 668265263 + k * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   const hex = (v) => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
   const shade = (c, f) => c.map((v) => Math.max(0, Math.min(255, Math.round(v * f))));
-  const img = g.createImageData(80, 40);
+  const img = g.createImageData(80, 10 * TILE_ROWS - 100);
   const set = (t, x, y, c, a = 255) => { const i = ((Math.floor((t - 80) / 8) * 10 + y) * 80 + ((t - 80) % 8) * 10 + x) * 4; img.data[i] = c[0]; img.data[i + 1] = c[1]; img.data[i + 2] = c[2]; img.data[i + 3] = a; };
   const each = (t, fn) => { for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) { const r = fn(x, y, rnd(t, x, y)); if (r) set(t, x, y, r[0], r[1] ?? 255); } };
   // Glazed roof tiles: rows of round tiles with a shiny top and a shadow underneath.
@@ -300,6 +356,131 @@ function paintTiles(g) {
   // Rammed earth: layers of packed soil, each pounded down inside a wooden frame.
   each(97, (x, y, r) => [shade(hex(0xa88a62), (y % 3 === 2 ? 0.86 : 1) * (0.93 + r * 0.12))]);
   cloth(98, 0x6a2a6a);
+
+  // ----- Hugh's resources -----
+  const clear = [[0, 0, 0], 0];
+  // Bark: vertical streaks, a different colour for each tree.
+  const bark = (t, base) => each(t, (x, y, r) => [shade(hex(base), (x % 4 === 0 ? 0.78 : x % 4 === 2 ? 1.1 : 1) * (0.93 + r * 0.13))]);
+  bark(T.jungleSide, 0x5b6b38); bark(T.cherrySide, 0x6e3b46); bark(T.ginkgoSide, 0x8d8169);
+  bark(T.acaciaSide, 0x8a6a3c); bark(T.figSide, 0x9d9382);
+  // Leaves: a mottled canopy with a few gaps you can see the sky through.
+  const canopy = (t, base, spot) => each(t, (x, y, r) => {
+    if (r < 0.07) return clear;
+    if (spot && rnd(t, x >> 1, y >> 1, 3) < 0.16) return [hex(spot)];
+    return [shade(hex(base), 0.82 + r * 0.36)];
+  });
+  canopy(T.jungleLeaves, 0x2c6b28); canopy(T.cherryBlossom, 0xf2a9c4, 0xfff0f5);
+  canopy(T.ginkgoLeaves, 0xd8c445, 0xa8b03a); canopy(T.acaciaLeaves, 0x7d9a4c);
+  canopy(T.figLeaves, 0x3d7a37, 0x6a3a6e);
+  canopy(T.appleLeaves, 0x3f7a2f, 0xc43a2a);
+  // Vines hang down in strands; the strangler's are thick woody ropes.
+  each(T.greenVine, (x, y, r) => {
+    const strand = x === 2 || x === 5 || x === 8;
+    if (!strand && !(r < 0.1 && x > 0)) return clear;
+    return [shade(hex(0x3f8a36), 0.82 + r * 0.4)];
+  });
+  each(T.stranglerVine, (x, y, r) => {
+    const w = x === 3 + (y % 3 === 0 ? 1 : 0) || x === 4 + (y % 3 === 0 ? 1 : 0) || x === 7 - (y % 4 === 0 ? 1 : 0);
+    if (!w) return clear;
+    return [shade(hex(0x7d6a46), 0.8 + r * 0.42)];
+  });
+  // Bamboo: bright green canes with a darker knuckle every few blocks.
+  each(T.bamboo, (x, y, r) => {
+    const cane = (x >= 2 && x <= 4) || (x >= 6 && x <= 7);
+    if (!cane) return clear;
+    const node = y % 4 === 0;
+    return [shade(hex(0x9ec748), (node ? 0.72 : x === 2 || x === 6 ? 1.14 : 1) * (0.95 + r * 0.1))];
+  });
+  // Papyrus: tall stems with the feathery burst at the top that Egypt made paper from.
+  each(T.papyrus, (x, y, r) => {
+    if (y <= 3) { if (rnd(T.papyrus, x, y, 5) < 0.45) return [shade(hex(0xa8c45a), 0.85 + r * 0.4)]; return clear; }
+    const stem = x === 3 || x === 6;
+    return stem ? [shade(hex(0x6f9a38), 0.9 + r * 0.2)] : clear;
+  });
+  // A cocoa pod on the trunk, and a hanging bunch of açaí berries.
+  each(T.cocoaPod, (x, y, r) => {
+    const d = Math.hypot(x - 4.5, (y - 4.5) * 0.62);
+    if (d > 4.2) return [shade(hex(0x5b4a2a), 0.9 + r * 0.14)];
+    return [shade(hex(0xc8752a), (x < 4 ? 1.12 : 0.9) * (0.94 + r * 0.1) * (y % 3 === 0 ? 0.88 : 1))];
+  });
+  each(T.acaiBunch, (x, y, r) => {
+    if (y < 2) return x === 4 || x === 5 ? [hex(0x6a5a3a)] : clear;
+    if (rnd(T.acaiBunch, x, y, 7) < 0.3) return clear;
+    return [shade(hex(0x3c2b50), 0.8 + r * 0.5)];
+  });
+  // Maize: a green stalk, then the same stalk with a ripe golden cob.
+  each(T.maizeYoung, (x, y, r) => {
+    const stalk = x === 4 || x === 5, leaf = (y === 4 || y === 7) && x >= 2 && x <= 7;
+    if (!stalk && !leaf) return clear;
+    return [shade(hex(0x5f9a35), 0.88 + r * 0.26)];
+  });
+  each(T.maizeRipe, (x, y, r) => {
+    const cob = x >= 5 && x <= 7 && y >= 3 && y <= 7;
+    if (cob) return [shade(hex(0xe8c03a), (y % 2 ? 1.08 : 0.9) * (0.95 + r * 0.1))];
+    const stalk = x === 3 || x === 4, leaf = (y === 2 || y === 8) && x >= 1 && x <= 6;
+    if (!stalk && !leaf) return clear;
+    return [shade(hex(0x6f9a3a), 0.88 + r * 0.24)];
+  });
+  // Coloured marble: polished stone with paler veins running through it.
+  const veined = (t, base, vein) => each(t, (x, y, r) => {
+    const v = Math.abs((x * 3 + y * 2) % 11 - 5) < 1 || Math.abs((x * 2 - y * 3 + 20) % 13 - 6) < 1;
+    return [shade(hex(v ? vein : base), 0.94 + r * 0.12)];
+  });
+  veined(T.greenMarble, 0x3c6b4c, 0x8fc0a0); veined(T.blueMarble, 0x37578c, 0x9ab6de);
+  veined(T.redMarble, 0x8a3732, 0xd8a098); veined(T.purpleMarble, 0x66386e, 0xc0a0cc);
+  // Obsidian: volcanic glass, almost black, with a purple sheen where it catches the light.
+  each(T.obsidian, (x, y, r) => {
+    const sheen = rnd(T.obsidian, x >> 1, y >> 1, 11) < 0.2;
+    return [shade(hex(sheen ? 0x3a2a52 : 0x15111f), 0.9 + r * 0.3)];
+  });
+  // Gems and ores in stone: speckles of colour in a grey rock face.
+  const ore = (t, gem, k = 7) => each(t, (x, y, r) => {
+    const stone = shade(hex(0x7f7f7f), 0.9 + r * 0.2);
+    const d = (cx, cy) => Math.hypot(x - cx, y - cy);
+    const near = d(2.5, 3) < 1.6 || d(7, 6.5) < 1.6 || (k > 5 && d(5.5, 1.5) < 1.2);
+    if (!near) return [stone];
+    return [shade(hex(gem), 0.85 + r * 0.42)];
+  });
+  ore(T.diamondOre, 0x9fe6f2); ore(T.emeraldOre, 0x2fc46a); ore(T.amethystOre, 0x9d55cf);
+  each(T.opalOre, (x, y, r) => {
+    const d = (cx, cy) => Math.hypot(x - cx, y - cy);
+    if (!(d(3, 3) < 1.8 || d(6.5, 6.5) < 1.8)) return [shade(hex(0x7f7f7f), 0.9 + r * 0.2)];
+    // black opal: dark, but every fleck a different colour of the rainbow
+    const fire = [0x1a1a22, 0x1a4a6a, 0x2a6a3a, 0x7a2a4a, 0x6a5a1a][Math.floor(rnd(T.opalOre, x, y, 13) * 5)];
+    return [shade(hex(fire), 0.88 + r * 0.36)];
+  });
+  // Mountain soil is thin and stony; black sand is ground-up lava.
+  each(T.mountainSoil, (x, y, r) => {
+    const pebble = rnd(T.mountainSoil, x >> 1, y >> 1, 17) < 0.28;
+    return [shade(hex(pebble ? 0x8a8378 : 0x6b5a46), 0.9 + r * 0.22)];
+  });
+  each(T.blackSand, (x, y, r) => [shade(hex(0x2b2b31), 0.82 + r * 0.42)]);
+  // Rock salt: pale crystals with the faint pink of desert salt.
+  each(T.rockSalt, (x, y, r) => {
+    const face = (x + y) % 4 < 2;
+    return [shade(hex(r < 0.14 ? 0xe8c0bc : 0xeee8e0), (face ? 1.04 : 0.92) * (0.95 + r * 0.1))];
+  });
+  // The griffon's nest: a great ring of woven sticks, seen from above and from the side.
+  each(T.nestTop, (x, y, r) => {
+    const d = Math.hypot(x - 4.5, y - 4.5);
+    if (d < 2.4) return [shade(hex(0x3a2a18), 0.88 + r * 0.2)];
+    return [shade(hex(0x7a5f38), ((x + y) % 3 === 0 ? 0.78 : 1.06) * (0.92 + r * 0.14))];
+  });
+  each(T.nestSide, (x, y, r) => {
+    const stick = (y + Math.floor(x / 3)) % 3 !== 2;
+    return [shade(hex(stick ? 0x7a5f38 : 0x4a3a22), 0.9 + r * 0.22)];
+  });
+  // A beehive, and the silkworm cocoons that China spun into silk.
+  each(T.hive, (x, y, r) => {
+    const cx = (x + (y % 4 < 2 ? 0 : 2)) % 4, cell = cx < 2 && y % 2 === 0;
+    return [shade(hex(cell ? 0xb8862a : 0xe2b64e), 0.94 + r * 0.12)];
+  });
+  each(T.cocoon, (x, y, r) => {
+    if (x === 0 || x === 9) return [shade(hex(0x5a4a2a), 0.9 + r * 0.2)];
+    const pod = Math.hypot((x - 4.5) * 0.9, (y % 5 - 2) * 1.5) < 2.2;
+    if (!pod) return clear;
+    return [shade(hex(0xf0ece0), 0.86 + r * 0.26)];
+  });
   g.putImageData(img, 0, 100);
 }
 

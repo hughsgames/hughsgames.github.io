@@ -16,8 +16,13 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 const MAT = {
   wood: 0x9a6a3c, darkWood: 0x6f4722, stone: 0x9a9a98, bronze: 0xcf8d40, iron: 0xb5bcc4, ancient: 0x3cc4b4, gold: 0xe8c040,
   copper: 0xc8703a, tin: 0xcfd3d8, obsidian: 0x2c2638, leather: 0x6e4428, cord: 0xb9a06a, cloth: 0xe9dfc8,
+  // The four gems, each with its own tool set.
+  diamond: 0xa8e4f2, emerald: 0x1fae5c, amethyst: 0x9a4fd0, blackOpal: 0x2a2634,
 };
-const TIER = { wooden: 'wood', stone: 'stone', bronze: 'bronze', iron: 'iron', ancient: 'ancient' };
+const TIER = {
+  wooden: 'wood', stone: 'stone', bronze: 'bronze', iron: 'iron', ancient: 'ancient',
+  diamond: 'diamond', emerald: 'emerald', amethyst: 'amethyst', blackOpal: 'blackOpal',
+};
 
 // ---------- a tiny painter ----------
 // Art coordinates run 0…32 across the picture; every primitive is drawn at pixel precision inside that.
@@ -297,6 +302,67 @@ const bowl = (p, food) => {
   p.poly([[4, 18], [28, 18], [25, 26], [20, 28], [12, 28], [7, 26]], litPoly(0xb06a3a, 4, 18, 28, 28, 0.35, 0.95));
   p.stroke([[5, 18.5], [27, 18.5]], 1.4, () => ramp(0xd8865a)(0.9));
 };
+// ---------- painters shared by Hugh's resources ----------
+/// A feather: the shaft, then the vanes combed out either side of it.
+const plume = (p, shaft, a, b) => {
+  p.stroke([[7, 28], [24, 5]], (t) => 1.5 - t * 0.6, () => ramp(shaft)(0.75));
+  for (let k = 0; k < 17; k++) {
+    const t = k / 16, x = 7 + (24 - 7) * t, y = 28 + (5 - 28) * t, w = Math.sin(Math.min(1, t * 1.15) * Math.PI) * 5.2;
+    p.stroke([[x, y], [x - w * 0.5, y - w * 0.72]], 1, () => ramp(a)(0.9));
+    p.stroke([[x, y], [x + w * 0.62, y + w * 0.4]], 1, () => ramp(b)(0.6));
+  }
+  p.stroke([[6.4, 29], [9, 26.4]], 1.3, () => ramp(a)(0.95));
+};
+/// A cut gem. `fire` gives black opal its flecks of every colour.
+const gem = (p, h, fire = null) => {
+  const r = ramp(h);
+  p.poly([[9, 12], [23, 12], [16, 28]], (x, y) => r(clamp(0.76 - (y - 12) / 36)));
+  p.poly([[9, 12], [16, 28], [4, 15.5]], (x, y) => r(clamp(0.44 - (y - 12) / 48)));
+  p.poly([[23, 12], [28, 15.5], [16, 28]], (x, y) => r(clamp(0.6 - (y - 12) / 42)));
+  p.poly([[12, 7], [20, 7], [23, 12], [9, 12]], () => r(0.98));
+  p.poly([[9, 12], [12, 7], [4, 15.5]], () => r(0.66));
+  p.poly([[20, 7], [23, 12], [28, 15.5]], () => r(0.82));
+  if (fire) for (let k = 0; k < 18; k++) {
+    const x = 6 + noise(k, 1, 41) * 20, y = 12 + noise(k, 2, 42) * 14;
+    if (Math.abs(x - 16) > (28 - y) * 0.6) continue;
+    p.set(x, y, ramp(fire[k % fire.length])(0.78));
+  }
+  p.stroke([[12.6, 8.6], [18.6, 8.6]], 1.2, () => mix(r(1), [255, 255, 255], 0.6));
+};
+/// A squid: the mantle, two fins and a fringe of tentacles.
+const squid = (p, h) => {
+  const r = ramp(h);
+  p.ball(16, 12.5, 6.2, 7.6, ballPaint(h));
+  p.poly([[9.6, 7], [6, 4], [8.4, 11]], litPoly(h, 6, 4, 10, 11, 0.4, 0.8));
+  p.poly([[22.4, 7], [26, 4], [23.6, 11]], litPoly(h, 22, 4, 26, 11, 0.4, 0.8));
+  for (let k = 0; k < 7; k++) {
+    const x = 11 + k * 1.7, w = (k % 2) * 2 - 1;
+    p.stroke([[x, 18.5], [x + w, 24], [x + w * 2, 29.5]], 1.2, (t) => r(clamp(0.74 - t * 0.34)));
+  }
+  p.ball(13.2, 11.4, 1.7, 1.7, ballPaint(0xf4f0e4)); p.dot(13.2, 11.4, [22, 20, 28]);
+  p.ball(18.8, 11.4, 1.7, 1.7, ballPaint(0xf4f0e4)); p.dot(18.8, 11.4, [22, 20, 28]);
+};
+/// A sailfish: the long body, the great dorsal sail it raises, and its spear of a bill.
+const sailfish = (p, h, fin) => {
+  const r = ramp(h);
+  p.poly([[11, 13.5], [14, 3.5], [21, 4.5], [23.5, 13.5]], litPoly(fin, 11, 3, 24, 14, 0.32, 0.9));
+  p.poly([[5, 18], [12, 13], [22, 13], [27, 17], [22, 23], [12, 23]], (x, y) => r(clamp(0.95 - (y - 13) / 24 + (noise(x, y, 33) > 0.78 ? 0.08 : 0))));
+  p.poly([[5, 18], [1, 12], [1, 24]], litPoly(fin, 1, 12, 6, 24, 0.38, 0.9));
+  p.poly([[14, 23], [17, 28], [20, 23]], litPoly(fin, 14, 23, 20, 28, 0.38, 0.85));
+  p.stroke([[26.4, 17], [31.4, 15.4]], (t) => 1.4 - t * 0.7, () => r(0.82));
+  p.ball(24.4, 16.4, 1.7, 1.7, ballPaint(0xf4f0e4)); p.dot(24.4, 16.4, [22, 20, 28]);
+};
+/// A pufferfish, blown up into a spiky ball.
+const puffer = (p) => {
+  for (let k = 0; k < 18; k++) {
+    const a = k / 18 * Math.PI * 2, cx = 16 + Math.cos(a) * 8.2, cy = 18 + Math.sin(a) * 7.6;
+    p.stroke([[cx, cy], [16 + Math.cos(a) * 11.6, 18 + Math.sin(a) * 10.8]], 0.9, () => ramp(0x8a7a2a)(0.5));
+  }
+  p.ball(16, 18, 9, 8.4, (lit, u, v, x, y) => (noise(x, y, 37) > 0.84 ? ramp(0x4a4216)(0.5) : ramp(0xd8bc46)(clamp(0.2 + lit * 0.8))));
+  p.ball(11.4, 15, 2.2, 2.2, ballPaint(0xf4f0e4)); p.dot(11.2, 15, [22, 20, 28]);
+  p.stroke([[12, 22.5], [19, 23]], 1.1, () => ramp(0x7a6a24)(0.4));
+};
+
 const ART = {
   stick(p) {
     p.stroke([[7, 27], [16, 17], [25, 6]], (t) => 2.8 - t * 0.9, woodPaint(0x8a5a32));
@@ -356,14 +422,89 @@ const ART = {
     for (const [x, y, r] of [[12, 18, 7], [20, 15, 6.5], [19, 22, 6], [12, 12, 5.5]]) p.ball(x, y, r, r * 0.92, (lit, u, v, xx, yy) => ramp(0xf2efe6)(clamp(0.3 + lit * 0.7 + (noise(xx, yy, 23) - 0.5) * 0.12)));
     for (let k = 0; k < 10; k++) { const a = k * 1.9, x = 16 + Math.cos(a) * 7.5, y = 18 + Math.sin(a) * 6.5; p.stroke([[x, y], [x + 1.4, y - 1.2]], 0.7, () => ramp(0xd8d2c4)(0.5)); }
   },
-  feather(p) {
-    p.stroke([[7, 28], [24, 5]], (t) => 1.5 - t * 0.6, () => ramp(0xd8cdb4)(0.75));
-    for (let k = 0; k < 17; k++) {
-      const t = k / 16, x = 7 + (24 - 7) * t, y = 28 + (5 - 28) * t, w = Math.sin(Math.min(1, t * 1.15) * Math.PI) * 5.2;
-      p.stroke([[x, y], [x - w * 0.5, y - w * 0.72]], 1, () => ramp(0xf2efe6)(0.9));
-      p.stroke([[x, y], [x + w * 0.62, y + w * 0.4]], 1, () => ramp(0xcfc8b6)(0.6));
+  feather(p) { plume(p, 0xd8cdb4, 0xf2efe6, 0xcfc8b6); },
+  // ---------- Hugh's resources (October 26) ----------
+  // The same feather in the colours of the birds you meet.
+  yellowFeather(p) { plume(p, 0xc8a82a, 0xf2d64a, 0xd0ac2e); },
+  greenFeather(p) { plume(p, 0x2a7a3a, 0x4cc45a, 0x2f8a40); },
+  blueFeather(p) { plume(p, 0x24528a, 0x4a92d8, 0x2a5f9a); },
+  whiteFeather(p) { plume(p, 0xdcdcdc, 0xfbfbf8, 0xcccccc); },
+  redFeather(p) { plume(p, 0x9a2420, 0xd8423a, 0xa82c26); },
+  // Cut gems: a flat table on top, facets falling away below, and a white glint.
+  diamond(p) { gem(p, 0xa8e4f2); },
+  emerald(p) { gem(p, 0x1fae5c); },
+  amethyst(p) { gem(p, 0x9a4fd0); },
+  blackOpal(p) { gem(p, 0x26232f, [0x2a7ab0, 0x2aa05a, 0xc03a5a, 0xd0a030, 0x7a3ac0]); },
+  // Meat and fish.
+  venison(p) { meat(p, true, true); }, roastVenison(p) { meat(p, false, true); },
+  rawDuck(p) { meat(p, true, false); }, roastDuck(p) { meat(p, false, false); },
+  rawTurtle(p) { meat(p, true, false); },
+  roastTurtle(p) { bowl(p, (x, y, lit) => (noise(x * 2, y * 2, 8) > 0.84 ? [96, 140, 74] : ramp(0x6f7a3a)(clamp(0.34 + lit * 0.56)))); },
+  rawSquid(p) { squid(p, 0xe8c0c8); }, cookedSquid(p) { squid(p, 0xd09a62); },
+  rawSailfish(p) { sailfish(p, 0x4a6f9a, 0x2f4f8a); }, cookedSailfish(p) { sailfish(p, 0xc08a4a, 0x9a6a38); },
+  rawPufferfish(p) { puffer(p); },
+  // Hides: crocodile is scaled, the tiger's skin is striped.
+  crocodileLeather(p) {
+    p.poly([[5, 9], [27, 7], [28, 22], [20, 26], [8, 25], [4, 18]], (x, y) => ramp(0x4a6a3a)(clamp(0.9 - (x - 4) / 56 - (y - 7) / 46)));
+    for (let gy = 0; gy < 6; gy++) for (let gx = 0; gx < 7; gx++) {
+      const x = 7 + gx * 3 + (gy % 2) * 1.5, y = 9.5 + gy * 2.8;
+      if (x > 26 || y > 24) continue;
+      p.ball(x, y, 1.3, 1.1, ballPaint(0x6a8a4a, false));
     }
-    p.stroke([[6.4, 29], [9, 26.4]], 1.3, () => ramp(0xe8e0cc)(0.95));
+  },
+  tigerLeather(p) {
+    p.poly([[5, 9], [27, 7], [28, 22], [20, 26], [8, 25], [4, 18]], (x, y) => ramp(0xd8923a)(clamp(0.92 - (x - 4) / 56 - (y - 7) / 46)));
+    for (let k = 0; k < 6; k++) p.stroke([[7.5 + k * 3.4, 8.6], [6.5 + k * 3.4, 24.4]], (t) => 1.5 - Math.abs(t - 0.5), () => ramp(0x241c16)(0.5));
+  },
+  // Maize: a cob of golden kernels in its husk, and a handful of seed corn.
+  maize(p) {
+    p.poly([[9, 6], [14, 4], [15, 26], [10, 24]], litPoly(0x5f9a35, 9, 4, 15, 26, 0.3, 0.9));
+    p.ball(19, 16, 5.2, 11.4, (lit) => ramp(0xd8a832)(clamp(0.26 + lit * 0.72)));
+    for (let gy = 0; gy < 10; gy++) for (let gx = 0; gx < 3; gx++) {
+      const x = 16.4 + gx * 2.4 + (gy % 2) * 1.2, y = 6.5 + gy * 2.1;
+      p.ball(x, y, 1.1, 1, ballPaint(0xf2d44a, false));
+    }
+    p.stroke([[19, 4.6], [21.5, 1.4]], 1.1, () => ramp(0xcfc08a)(0.8));
+  },
+  maizeSeeds(p) {
+    p.poly([[7, 17], [25, 17], [23, 27], [9, 27]], litPoly(0x8a6a44, 7, 17, 25, 27, 0.35, 0.8));
+    p.stroke([[7, 17.5], [25, 17.5]], 2, (t, s) => ramp(0x6a4e30)(clamp(0.6 - s * 0.3)));
+    for (let k = 0; k < 12; k++) { const x = 9.5 + (k % 6) * 2.4, y = 10 + Math.floor(k / 6) * 3.2 + (k % 2) * 1.2; p.ball(x, y, 1.3, 1.5, ballPaint(0xe8c03a)); }
+  },
+  // Honey in a clay pot, and the silk fibre wound off a cocoon.
+  honey(p) {
+    p.poly([[9, 13], [23, 13], [25, 24], [20, 28], [12, 28], [7, 24]], litPoly(0xb07a44, 7, 13, 25, 28, 0.35, 0.95));
+    p.ball(16, 13, 8.4, 3, (lit, u, v, x, y) => ramp(0xe8a62a)(clamp(0.4 + lit * 0.6)));
+    p.stroke([[16, 12], [16.6, 5]], (t) => 1.8 - t * 0.7, () => ramp(0xf0b434)(0.92));
+    p.ball(16.8, 4.2, 2.3, 2.2, ballPaint(0xf6c24a));
+    p.stroke([[8, 13.4], [24, 13.4]], 1.3, () => ramp(0xd89a52)(0.95));
+  },
+  silkFiber(p) {
+    for (let k = 0; k < 7; k++) p.stroke([[6, 11 + k * 1.6], [26, 9 + k * 1.6]], 1.5, (t, s) => ramp(0xf2eee2)(clamp(0.92 - s * 0.3 - k * 0.02)));
+    p.stroke([[14, 8], [13, 26]], 2.6, (t, s) => ramp(0xe0d8c4)(clamp(0.7 - s * 0.26)));
+    for (let k = 0; k < 9; k++) p.dot(7 + k * 2.2, 10.6 + Math.sin(k) * 0.8, [255, 255, 250]);
+  },
+  // Cocoa beans and a bunch of açaí.
+  cocoaBean(p) {
+    for (const [x, y, a] of [[12, 19, -0.5], [20, 15, 0.4]]) {
+      p.ball(x, y, 5, 7.4, (lit, u, v) => ramp(0x7a4a22)(clamp(0.2 + lit * 0.78)));
+      p.stroke([[x - 3 * Math.cos(a), y - 5 * Math.sin(a) - 4], [x + 3 * Math.cos(a), y + 5]], 0.9, () => ramp(0x4a2a12)(0.45));
+    }
+  },
+  acaiBerry(p) {
+    p.stroke([[16, 4], [16, 11]], 1.2, () => ramp(0x6a5a32)(0.6));
+    for (const [x, y, r] of [[12, 15, 4], [20, 15, 4], [16, 21, 4.2], [16, 12.5, 3.4], [10, 21, 3.2], [22, 21, 3.2]]) {
+      p.ball(x, y, r, r, (lit, u, v) => (Math.hypot(u + 0.4, v + 0.42) < 0.24 ? [168, 150, 200] : ramp(0x3c2b50)(clamp(0.18 + lit * 0.8))));
+    }
+  },
+  // The golden egg out of the griffon's nest.
+  goldenEgg(p) {
+    p.ball(16, 18, 8.4, 11, (lit, u, v, x, y) => {
+      if (Math.hypot(u + 0.4, v + 0.5) < 0.2) return [255, 252, 220];
+      const band = noise(0, Math.round(y), 23) > 0.72 ? 0.08 : 0;
+      return ramp(0xe8c040)(clamp(0.16 + lit * 0.82 + band));
+    });
+    p.stroke([[11.6, 10.4], [14.6, 8.2]], 1.3, () => [255, 250, 214]);
   },
   raft(p) {
     // Four logs lashed side by side, with a pole to push along with.
@@ -709,6 +850,13 @@ export const SIZE = {
   parchment: 0.3, paper: 0.3, papyrus: 0.35, amphora: 0.75, clayPot: 0.3, beads: 0.3, obsidianBlade: 0.18, glassBottle: 0.15,
   statuette: 0.3, sealStone: 0.05, figs: 0.12, dates: 0.2, olives: 0.15, puls: 0.18, fishStew: 0.2, riceBowl: 0.16,
   tortilla: 0.2, honeyCake: 0.16, salt: 0.14, tea: 0.1, murex: 0.1, lawTablet: 0.6, seahorse: 0.35,
+  // Hugh's resources.
+  diamond: 0.1, emerald: 0.1, amethyst: 0.11, blackOpal: 0.1,
+  yellowFeather: 0.25, greenFeather: 0.25, blueFeather: 0.25, whiteFeather: 0.25, redFeather: 0.25,
+  venison: 0.26, roastVenison: 0.26, rawDuck: 0.22, roastDuck: 0.22, rawTurtle: 0.24, roastTurtle: 0.2,
+  rawSquid: 0.3, cookedSquid: 0.3, rawSailfish: 0.9, cookedSailfish: 0.9, rawPufferfish: 0.24,
+  crocodileLeather: 0.55, tigerLeather: 0.6, goldenEgg: 0.16,
+  maize: 0.22, maizeSeeds: 0.12, honey: 0.2, silkFiber: 0.3, cocoaBean: 0.08, acaiBerry: 0.1,
 };
 export const isLongTool = (id) => /(Pickaxe|Axe|Shovel|Sword)$/.test(id) || ['ironSpear', 'hammer', 'hoe', 'sickle', 'chisel', 'brush', 'fishingRod', 'oar', 'stick', 'trident'].includes(id);
 export function realSize(id) { const t = Object.keys(TOOL_LEN).find((k) => id.endsWith(k)); return SIZE[id] ?? (t ? TOOL_LEN[t] : 0.3); }

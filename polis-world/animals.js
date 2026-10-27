@@ -7,7 +7,7 @@ import { mergeBoxes } from './scenery.js';
 // temper: 'fight' bites back when hit · 'flee' runs · 'fly' takes off · 'sea' heads for the water.
 // bite: how many hearts a bite costs (out of 10); fast: speed when angry or frightened.
 export const WILD = {
-  tiger: { hp: 16, speed: 1.6, fast: 4.1, temper: 'fight', bite: 2, drops: [['leather', 1, 2]], name: 'tiger', size: [0.62, 0.62, 1.5],
+  tiger: { hp: 16, speed: 1.6, fast: 4.1, temper: 'fight', bite: 2, drops: [['tigerLeather', 1, 2]], name: 'tiger', size: [0.62, 0.62, 1.5],
     fact: 'Tigers live in the forests of India, China and Southeast Asia. They are the biggest cats in the world, and each tiger\'s stripes are different, like fingerprints.' },
   jaguar: { hp: 14, speed: 1.6, fast: 4.0, temper: 'fight', bite: 2, drops: [['leather', 1, 2]], name: 'jaguar', size: [0.55, 0.55, 1.3],
     fact: 'The people of Teotihuacan and the Maya admired the jaguar for its strength. Warriors dressed in jaguar skins.' },
@@ -15,9 +15,9 @@ export const WILD = {
     fact: 'Wild boars are the wild ancestors of farm pigs. In Greek myths, the hero Heracles caught the fierce Erymanthian Boar.' },
   elephant: { hp: 30, speed: 1.0, fast: 3.4, temper: 'fight', bite: 3, push: 9, drops: [['leather', 1, 3]], name: 'elephant', size: [1.4, 1.5, 2.3],
     fact: 'Asian elephants were trained to carry loads and even fight in battles. Hannibal of Carthage took elephants over the Alps!' },
-  crocodile: { hp: 16, speed: 0.8, fast: 3.6, temper: 'fight', bite: 2, drops: [['leather', 1, 2]], name: 'crocodile', size: [0.6, 0.35, 2.3], swims: true,
+  crocodile: { hp: 16, speed: 0.8, fast: 3.6, temper: 'fight', bite: 2, drops: [['crocodileLeather', 1, 2]], name: 'crocodile', size: [0.6, 0.35, 2.3], swims: true,
     fact: 'Nile crocodiles were sacred to the Egyptian god Sobek. Some temples kept tame crocodiles wearing golden earrings!' },
-  deer: { hp: 8, speed: 1.6, fast: 5.2, temper: 'flee', drops: [['rawBeef', 1, 2], ['leather', 0, 1]], name: 'deer', size: [0.55, 0.75, 1.15],
+  deer: { hp: 8, speed: 1.6, fast: 5.2, temper: 'flee', drops: [['venison', 1, 2], ['leather', 0, 1]], name: 'deer', size: [0.55, 0.75, 1.15],
     fact: 'Deer were hunted all over the ancient world. Artemis, the Greek goddess of hunting, is often shown with a deer.' },
   horse: { hp: 12, speed: 1.5, fast: 5.6, temper: 'flee', drops: [['leather', 1, 2]], name: 'horse', size: [0.6, 0.85, 1.5],
     fact: 'Horses pulled chariots in Egypt, Persia and Rome. The Persian royal road had stations with fresh horses for messengers.' },
@@ -25,9 +25,9 @@ export const WILD = {
     fact: 'Giant pandas live in the bamboo forests of Sichuan, the land of Shu. They eat bamboo for up to 14 hours a day.' },
   llama: { hp: 10, speed: 1.3, fast: 4.4, temper: 'flee', drops: [['wool', 1, 3]], name: 'llama', size: [0.5, 0.75, 1.0],
     fact: 'Llamas come from the Andes mountains of South America, where the Inca later used them to carry loads.' },
-  parrot: { hp: 3, speed: 1.1, fast: 6.5, temper: 'fly', drops: [['feather', 1, 2]], name: 'parrot', size: [0.25, 0.3, 0.35],
+  parrot: { hp: 3, speed: 1.1, fast: 6.5, temper: 'fly', drops: [['redFeather', 1, 1], ['blueFeather', 0, 1], ['greenFeather', 0, 1]], name: 'parrot', size: [0.25, 0.3, 0.35],
     fact: 'Bright macaw feathers were traded hundreds of kilometres across ancient Mexico. Rich Romans kept parrots that could talk!' },
-  turtle: { hp: 8, speed: 0.6, fast: 1.5, temper: 'sea', drops: [], name: 'sea turtle', size: [0.75, 0.35, 0.95], swims: true,
+  turtle: { hp: 8, speed: 0.6, fast: 1.5, temper: 'sea', drops: [['rawTurtle', 1, 1]], name: 'sea turtle', size: [0.75, 0.35, 0.95], swims: true,
     fact: 'Sea turtles come ashore to lay their eggs on sandy beaches, then head back to the sea. Some live for more than 50 years.' },
   // Added later: the rest of the ancient world's wildlife, each kind where it really lived.
   lion: { hp: 18, speed: 1.5, fast: 4.2, temper: 'fight', bite: 2, drops: [['leather', 1, 2]], name: 'lion', size: [0.66, 0.7, 1.6],
@@ -42,18 +42,21 @@ export const WILD = {
     fact: 'Ibex are wild mountain goats with long curved horns. They walk on cliffs so steep nothing can follow them, which is why hunters admired them so much.' },
   gazelle: { hp: 7, speed: 1.8, fast: 6.0, temper: 'flee', drops: [['rawBeef', 1, 2], ['leather', 0, 1]], name: 'gazelle', size: [0.45, 0.7, 1.0],
     fact: 'Gazelles live where there is very little water, in the deserts of Egypt and Arabia. Egyptian tomb paintings show them being hunted, and some were kept almost like pets.' },
-  ostrich: { hp: 12, speed: 1.6, fast: 6.2, temper: 'flee', drops: [['feather', 2, 3]], name: 'ostrich', size: [0.6, 1.5, 0.8],
+  ostrich: { hp: 12, speed: 1.6, fast: 6.2, temper: 'flee', drops: [['whiteFeather', 2, 3]], name: 'ostrich', size: [0.6, 1.5, 0.8],
     fact: 'The ostrich is the biggest bird in the world and cannot fly, but it can run faster than a horse. Egyptians used its feathers as a symbol of truth, and its eggs as cups.' },
   hippo: { hp: 30, speed: 0.9, fast: 3.6, temper: 'fight', bite: 3, push: 8, drops: [['leather', 1, 3]], name: 'hippopotamus', size: [1.1, 0.95, 2.2], swims: true,
     fact: 'Hippos filled the Nile in ancient times. Egyptians feared them, because a hippo could smash a reed boat, and the goddess Taweret, who protected mothers and babies, had a hippo\'s body.' },
   monkey: { hp: 6, speed: 1.6, fast: 5.0, temper: 'flee', drops: [], name: 'macaque', size: [0.35, 0.5, 0.5],
     fact: 'Macaques live all through the forests of India and Southeast Asia, and around temples like Angkor. Egyptians kept baboons, and the god Thoth was sometimes shown as one.' },
-  peacock: { hp: 5, speed: 1.2, fast: 4.4, temper: 'flee', drops: [['feather', 2, 3]], name: 'peacock', size: [0.4, 0.7, 0.6],
+  peacock: { hp: 5, speed: 1.2, fast: 4.4, temper: 'flee', drops: [['blueFeather', 1, 2], ['greenFeather', 1, 2]], name: 'peacock', size: [0.4, 0.7, 0.6],
     fact: 'Peacocks come from India. Traders carried them west along the trade routes, and in Greece and Rome they were so rare and so expensive that keeping one showed how rich you were.' },
   yak: { hp: 20, speed: 1.0, fast: 3.4, temper: 'flee', drops: [['rawBeef', 1, 3], ['wool', 1, 3]], name: 'yak', size: [0.85, 1.0, 1.6],
     fact: 'Yaks carry loads high in the mountains of Tibet and western China, where the air is too thin for most animals. Their long shaggy hair keeps out the cold, and they give milk, wool and butter.' },
   fox: { hp: 5, speed: 1.7, fast: 5.2, temper: 'flee', drops: [['leather', 0, 1]], name: 'fox', size: [0.3, 0.38, 0.8],
     fact: 'Foxes live nearly everywhere, from Egypt to Britain. Aesop, who told fables in Greece, made the fox the clever trickster of his stories.' },
+  // The one creature here that never lived: a griffon, guarding its nest on the highest peaks.
+  griffon: { hp: 40, speed: 1.9, fast: 6.4, temper: 'fight', bite: 4, push: 8, drops: [['yellowFeather', 2, 4], ['whiteFeather', 1, 2], ['leather', 1, 2]], name: 'griffon', size: [0.9, 1.25, 1.9],
+    fact: 'A griffon has the head and wings of an eagle and the body of a lion. The Greeks said griffons lived in the far mountains and dug gold out of the ground, and guarded it fiercely. Nobody has ever found one — but people told stories about them for more than 3,000 years.' },
 };
 
 const box = (list, x0, y0, z0, x1, y1, z1, color) => {
@@ -129,6 +132,21 @@ export function buildWild(kind) {
       cbox(L, 0.07, 0.76, -0.56, 0.14, 0.06, 0.06, skin);
       break;
     }
+    // A mallard: brown body, a bottle-green head and a broad flat bill.
+    case 'duck': {
+      const feather = 0x8a7a52, head = 0x2f6b3a, beak = 0xe5a83a, wing = 0x6f6242;
+      legH = 0.18;
+      parts.push(limb(0.06, 0.18, 0.07, beak, -0.08, 0.18, 0), limb(0.06, 0.18, 0.07, beak, 0.08, 0.18, 0));
+      cbox(L, 0, 0.36, 0, 0.32, 0.3, 0.52, feather);
+      cbox(L, 0, 0.3, -0.3, 0.2, 0.16, 0.14, feather);          // the tail, tipped up
+      cbox(L, 0, 0.58, 0.18, 0.2, 0.22, 0.2, head);
+      cbox(L, 0, 0.44, 0.1, 0.17, 0.05, 0.14, 0xf0ead8);        // the white ring round its neck
+      cbox(L, 0, 0.555, 0.33, 0.14, 0.07, 0.14, beak);          // the flat bill
+      eyes(0.07, 0.625, 0.235);
+      for (const s of [-1, 1]) cbox(L, s * 0.17, 0.38, -0.02, 0.05, 0.2, 0.38, wing);
+      for (const s of [-1, 1]) cbox(L, s * 0.17, 0.42, -0.12, 0.055, 0.07, 0.12, 0x3a5a9a);   // the blue flash
+      break;
+    }
     case 'chicken': {
       const feather = 0xf2f0ea, comb = 0xd8322a, beak = 0xe5a83a;
       legH = 0.22;
@@ -171,6 +189,30 @@ export function buildWild(kind) {
       for (const s of [-1, 1]) cbox(L, s * 0.12, 1.93, 0.7, 0.08, 0.09, 0.06, c);
       cbox(L, 0, 1.06, -0.7, 0.08, 0.32, 0.08, c);
       cbox(L, 0, 0.88, -0.72, 0.1, 0.16, 0.1, dk);
+      break;
+    }
+    // A griffon: an eagle in front, a lion behind, and wings folded along its back.
+    case 'griffon': {
+      const lionFur = 0xc89a52, plume = 0xe8dcc0, wing = 0xbfa877, beak = 0xe0a832, dark = 0x6a5430;
+      legs4(0.26, 0.6, 0.62, 0.19, lionFur, 0x3a2c18);
+      cbox(L, 0, 0.95, -0.3, 0.66, 0.58, 1.04, lionFur);                       // the lion's barrel and haunches
+      cbox(L, 0, 1.0, 0.48, 0.68, 0.62, 0.76, plume);                          // the eagle's feathered chest
+      for (let k = 0; k < 5; k++) cbox(L, 0, 0.76 + k * 0.1, 0.84, 0.46 - k * 0.06, 0.08, 0.12, k % 2 ? wing : plume);
+      cbox(L, 0, 1.36, 0.66, 0.3, 0.42, 0.3, plume);                           // a long eagle neck, held up
+      cbox(L, 0, 1.66, 0.78, 0.38, 0.36, 0.42, plume);                         // the head, well clear of the chest
+      cbox(L, 0, 1.62, 1.04, 0.18, 0.18, 0.2, beak);
+      cbox(L, 0, 1.52, 1.12, 0.12, 0.14, 0.12, beak);                          // the hooked tip of the beak
+      cbox(L, 0, 1.82, 0.94, 0.34, 0.07, 0.12, dark);                          // the stern eagle brow
+      eyes(0.15, 1.72, 0.99, 0xf0c838);
+      // Great wings, sweeping up and back off the shoulders.
+      for (const s of [-1, 1]) for (let k = 0; k < 5; k++) {
+        const t = k / 4;
+        cbox(L, s * (0.34 + t * 0.62), 1.14 + t * 0.66, 0.26 - t * 0.78, 0.15, 0.4 - t * 0.12, 0.78 - t * 0.2, k % 2 ? wing : plume);
+      }
+      for (const s of [-1, 1]) cbox(L, s * 0.9, 1.72, -0.62, 0.1, 0.16, 0.46, dark);   // the dark tips of the flight feathers
+      for (const s of [-1, 1]) cbox(L, s * 0.22, 0.1, 0.74, 0.22, 0.09, 0.28, beak);   // taloned front feet
+      cbox(L, 0, 1.0, -0.92, 0.11, 0.11, 0.48, lionFur);                       // a lion's tail…
+      cbox(L, 0, 1.0, -1.2, 0.17, 0.17, 0.2, plume);                           // …with a tuft of feathers
       break;
     }
     case 'tiger': case 'jaguar': case 'lion': {
@@ -558,5 +600,5 @@ export function wildHere(land, biome, byWater) {
 export const GROUP = {
   tiger: 1, jaguar: 1, lion: 2, wolf: 3, bear: 1, fox: 1, crocodile: 1, hippo: 2, elephant: 2, panda: 1,
   parrot: 3, peacock: 2, ostrich: 2, monkey: 4, turtle: 2, boar: 2, deer: 3, horse: 3, llama: 2,
-  aurochs: 2, yak: 2, ibex: 3, gazelle: 4, camel: 2,
+  aurochs: 2, yak: 2, ibex: 3, gazelle: 4, camel: 2, griffon: 1, duck: 4,
 };

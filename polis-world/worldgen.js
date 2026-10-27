@@ -14,6 +14,15 @@ const B = {
   yellowRoof: 90, greenRoof: 91, redLacquer: 92, glass: 93, terracotta: 94, mosaic: 95, plaster: 96, bronzeBlock: 97,
   redCloth: 98, blueCloth: 99, jerusalemStone: 100, scrollShelf: 101, jade: 102, greyRoof: 103, rammedEarth: 104, purpleCloth: 105,
   doorXLower: 110, doorXUpper: 111, doorZLower: 112, doorZUpper: 113, gateX: 118, gateZ: 119,
+  // Hugh's resources (October 26). These must match the block numbers in engine.js.
+  mountainSoil: 122, blackSand: 123,
+  jungleLog: 124, jungleLeaves: 125, cherryLog: 126, cherryBlossom: 127, ginkgoLog: 128, ginkgoLeaves: 129,
+  acaciaLog: 130, acaciaLeaves: 131, figLog: 132, figLeaves: 133, appleLeaves: 134,
+  greenVine: 135, stranglerVine: 136, bamboo: 137, papyrus: 138,
+  cocoaPod: 139, acaiBunch: 140, hive: 141, cocoon: 142,
+  maize0: 143, maize1: 144, maize2: 145,
+  greenMarble: 146, blueMarble: 147, redMarble: 148, purpleMarble: 149, obsidian: 150,
+  diamondOre: 151, emeraldOre: 152, amethystOre: 153, opalOre: 154, rockSalt: 155, nest: 156,
 };
 const flow = (a) => 80 + a;
 const BIOMES = ['ocean', 'sea', 'lake', 'river', 'beach', 'oasis', 'desert', 'plain', 'forest', 'hill', 'mountain'];
@@ -202,8 +211,9 @@ function generate(mapRows, seed, spawn) {
         if (depth < 4) bl = B.sand; else if (depth < 9 && b !== BI.beach) bl = B.sandstone;
       } else if (b === BI.mountain || (b === BI.hill && h >= WL + 13)) {
         if (h >= WL + 30) { if (depth === 0) bl = B.snow; else if (depth === 1 && hash3(x, y, z, seed) < 0.5) bl = B.snow; }
-        else if (h >= WL + 18) { if (depth === 0 && hash(x, z, seed + 31) < 0.15) bl = B.gravel; }
-        else { if (depth === 0) bl = h >= WL + 25 ? B.snowyGrass : B.grass; else if (depth < 3) bl = B.dirt; }
+        else if (h >= WL + 18) { if (depth === 0) bl = hash(x, z, seed + 31) < 0.15 ? B.gravel : hash(x, z, seed + 32) < 0.55 ? B.mountainSoil : bl; }
+        // Thin stony soil on the high slopes, where little grows.
+        else { if (depth === 0) bl = h >= WL + 25 ? B.snowyGrass : B.grass; else if (depth < 3) bl = h >= WL + 20 ? B.mountainSoil : B.dirt; }
       } else { if (depth === 0) bl = B.grass; else if (depth < 4) bl = B.dirt; }
       if (banded[i] && bl === B.stone && depth >= 2) {
         // The hidden canyon's walls: stripes of rock laid down over millions of years.
@@ -241,6 +251,13 @@ function ore(x, y, z, seed) {
   t += 0.016; if (r < t && y < WL + 4) return B.ironOre;
   t += 0.008; if (r < t && y < 22) return B.goldOre;
   t += 0.005; if (r < t && y < 9) return B.blackMarble;
+  // The gems. Amethyst grows in hollows not far down, so there's something to find early; diamond and
+  // black opal lie deepest of all, and are worth the climb down.
+  t += 0.0038; if (r < t && y < WL - 2 && y > 6) return B.amethystOre;
+  t += 0.0017; if (r < t && y < 24) return B.obsidian;
+  t += 0.0027; if (r < t && y < 19) return B.emeraldOre;
+  t += 0.0016; if (r < t && y < 13) return B.diamondOre;
+  t += 0.0008; if (r < t && y < 8) return B.opalOre;
   return 0;
 }
 
@@ -379,10 +396,12 @@ function cypress(w, x, h, z, seed) {
 /// An acacia: a bare trunk holding a flat umbrella of leaves over the dry country.
 function acacia(w, x, h, z, seed) {
   const t = 3 + Math.floor(hash(x, z, seed + 105) * 2.99);
-  for (let y = h; y < h + t; y++) w.set(x, y, z, B.oakLog);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.acaciaLog);
   const top = h + t;
-  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dz) <= 3) put(w, x + dx, top, z + dz, B.oakLeaves);
-  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top - 1, z + dz, B.oakLeaves);
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dz) <= 3) put(w, x + dx, top, z + dz, B.acaciaLeaves);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top - 1, z + dz, B.acaciaLeaves);
+  // Wild bees nest in the crown of an acacia.
+  if (hash(x, z, seed + 106) < 0.16) put(w, x + 1, top - 1, z, B.hive);
 }
 /// A clump of bamboo: tall thin stems of different heights, the food of Shu's pandas.
 function bamboo(w, x, h, z, seed) {
@@ -391,8 +410,133 @@ function bamboo(w, x, h, z, seed) {
     const t = 4 + Math.floor(hash(x + k * 3, z + k, seed + 111) * 3.99);
     const gy = heightAt(w, x + dx, z + dz, h);
     if (gy === null) continue;
-    for (let y = gy; y < gy + t; y++) put(w, x + dx, y, z + dz, B.spruceLeaves);
+    for (let y = gy; y < gy + t; y++) put(w, x + dx, y, z + dz, B.bamboo);
   }
+}
+
+// ---------- Hugh's resources: the plants of each land ----------
+/// A jungle giant: a tall trunk under a broad crown, with vines trailing from the branches and
+/// sometimes a cocoa pod on the trunk or a bunch of açaí hanging underneath.
+function jungle(w, x, h, z, seed) {
+  const t = 6 + Math.floor(hash(x, z, seed + 141) * 4.99);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.jungleLog);
+  const top = h + t;
+  for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+    const d = Math.abs(dx) + Math.abs(dz);
+    if (d <= 4) put(w, x + dx, top, z + dz, B.jungleLeaves);
+    if (d <= 2) put(w, x + dx, top + 1, z + dz, B.jungleLeaves);
+  }
+  put(w, x, top + 2, z, B.jungleLeaves);
+  for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, -2]]) {
+    if (hash(x + dx * 7, z + dz * 7, seed + 143) > 0.45) continue;
+    const len = 1 + Math.floor(hash(x + dx, z + dz, seed + 145) * 3.99);
+    for (let k = 1; k <= len; k++) put(w, x + dx, top - k, z + dz, B.greenVine);
+  }
+  if (hash(x, z, seed + 147) < 0.3) put(w, x + 1, h + 1 + Math.floor(hash(x, z, seed + 149) * 2.99), z, B.cocoaPod);
+  // A strangler fig climbs the trunk and slowly squeezes the tree to death.
+  if (hash(x, z, seed + 151) < 0.18) for (let y = h; y < h + Math.min(t, 5); y++) put(w, x - 1, y, z, B.stranglerVine);
+  if (hash(x, z, seed + 153) < 0.22) put(w, x, top - 1, z + 1, B.acaiBunch);
+  if (hash(x, z, seed + 154) < 0.1) put(w, x - 1, top - 1, z, B.hive);
+}
+/// A cherry in blossom. China and Japan have made a festival of these for more than a thousand years.
+function cherry(w, x, h, z, seed) {
+  const t = 3 + Math.floor(hash(x, z, seed + 155) * 2.99);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.cherryLog);
+  const top = h + t;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dz) <= 3) put(w, x + dx, top, z + dz, B.cherryBlossom);
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top + 1, z + dz, B.cherryBlossom);
+  // Silkworms spin their cocoons in the branches: unwind one and you have silk.
+  if (hash(x, z, seed + 157) < 0.5) put(w, x + 1, top - 1, z, B.cocoon);
+}
+/// A ginkgo: the oldest kind of tree on earth, and bright gold in autumn.
+function ginkgo(w, x, h, z, seed) {
+  const t = 5 + Math.floor(hash(x, z, seed + 159) * 3.99);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.ginkgoLog);
+  const top = h + t;
+  for (let k = 0; k < 3; k++) {
+    const r = k === 0 ? 2 : k === 1 ? 2 : 1;
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.abs(dx) + Math.abs(dz) > r + 1) continue;
+      put(w, x + dx, top - 1 + k, z + dz, B.ginkgoLeaves);
+    }
+  }
+  if (hash(x, z, seed + 161) < 0.42) put(w, x - 1, top, z, B.cocoon);
+}
+/// A fig tree: low and spreading, with fruit tucked in among the big leaves.
+function fig(w, x, h, z, seed) {
+  const t = 2 + (hash(x, z, seed + 163) < 0.5 ? 1 : 0);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.figLog);
+  const top = h + t;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dz) <= 3) put(w, x + dx, top, z + dz, B.figLeaves);
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top + 1, z + dz, B.figLeaves);
+  if (hash(x, z, seed + 165) < 0.14) put(w, x + 1, top, z + 1, B.hive);
+}
+/// An apple tree: an oak-shaped head with apples among the leaves.
+function appleTree(w, x, h, z, seed) {
+  const t = 3 + Math.floor(hash(x, z, seed + 167) * 1.99);
+  for (let y = h; y < h + t; y++) w.set(x, y, z, B.oakLog);
+  const top = h + t;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    if (Math.abs(dx) + Math.abs(dz) > 3) continue;
+    put(w, x + dx, top, z + dz, hash(x + dx, z + dz, seed + 169) < 0.35 ? B.appleLeaves : B.oakLeaves);
+  }
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) put(w, x + dx, top + 1, z + dz, B.oakLeaves);
+  put(w, x, top + 1, z, B.appleLeaves);
+}
+/// A stand of papyrus along the Nile, which Egypt cut and pressed into the first paper.
+function papyrusBed(w, x, h, z, seed) {
+  const t = 2 + (hash(x, z, seed + 171) < 0.5 ? 1 : 0);
+  for (let y = h; y < h + t; y++) put(w, x, y, z, B.papyrus);
+}
+/// A patch of maize, the grain that fed all of ancient Mexico.
+function maizePatch(w, x, h, z, seed) {
+  for (let k = 0; k < 8; k++) {
+    const dx = Math.floor(hash(x + k * 5, z, seed + 173) * 5) - 2, dz = Math.floor(hash(x, z + k * 5, seed + 175) * 5) - 2;
+    const gy = heightAt(w, x + dx, z + dz, h);
+    if (gy === null) continue;
+    put(w, x + dx, gy, z + dz, hash(x + dx, z + dz, seed + 177) < 0.55 ? B.maize2 : B.maize1);
+  }
+}
+/// An outcrop of coloured marble, the kind each land quarried for its grandest buildings.
+function outcrop(w, x, h, z, seed, block) {
+  const r = 1 + Math.floor(hash(x, z, seed + 179) * 2.99);
+  for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (dx * dx + dz * dz > r * r + 1) continue;
+    const gy = heightAt(w, x + dx, z + dz, h);
+    if (gy === null) continue;
+    const tall = 1 + Math.floor(hash(x + dx, z + dz, seed + 181) * 2.99);
+    for (let k = 0; k < tall; k++) put(w, x + dx, gy + k, z + dz, block);
+  }
+}
+/// A salt pan: a crust of rock salt where a desert lake dried up. Salt was once worth its weight in gold.
+function saltPan(w, x, h, z, seed) {
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    if (Math.abs(dx) + Math.abs(dz) > 3) continue;
+    const gy = heightAt(w, x + dx, z + dz, h);
+    if (gy === null) continue;
+    w.set(x + dx, gy - 1, z + dz, B.rockSalt);
+  }
+}
+/// A beach of black volcanic sand, ground down from lava.
+function blackBeach(w, x, h, z, seed) {
+  for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+    if (dx * dx + dz * dz > 10) continue;
+    const gy = heightAt(w, x + dx, z + dz, h);
+    if (gy === null) continue;
+    w.set(x + dx, gy - 1, z + dz, B.blackSand);
+  }
+}
+/// A griffon's nest on a mountain top: a great ring of sticks, with a golden egg in the middle.
+function griffonNest(w, x, h, z, seed) {
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    if (Math.abs(dx) + Math.abs(dz) > 3) continue;
+    const gy = heightAt(w, x + dx, z + dz, h);
+    if (gy === null) continue;
+    w.set(x + dx, gy - 1, z + dz, B.mountainSoil);
+    if (Math.abs(dx) + Math.abs(dz) > 1) put(w, x + dx, gy, z + dz, B.nest);
+  }
+  const c = heightAt(w, x, z, h);
+  if (c !== null) put(w, x, c, z, B.nest);
 }
 /// Reeds and papyrus along the water's edge. Egypt made its paper, its boats and its baskets out of them.
 function reeds(w, x, h, z, seed) {
@@ -444,9 +588,22 @@ function plantTrees(w, heights, seed, spawn, placed) {
         else if (med && r4 < 0.019) want = cypress;
         else if ((afr || land === 'levant') && r4 < 0.014) want = acacia;
         else if (east && r4 < 0.009) want = bamboo;
+        // Figs round the Mediterranean, cherry and ginkgo in China, jungle in the east,
+        // maize in Mexico, and apple trees in the open country.
+        else if (med && r4 < 0.027) want = fig;
+        else if (land === 'china' && r4 < 0.017) want = cherry;
+        else if (land === 'china' && r4 < 0.024) want = ginkgo;
+        else if ((land === 'seasia' || land === 'india') && r4 < 0.016) want = jungle;
+        else if (land === 'america' && r4 < 0.04) want = maizePatch;
+        else if (r4 < 0.031) want = appleTree;
       } else if (b === BI.forest && grassy) {
         if (east && r4 < 0.012) want = bamboo;
         else if (med && r4 < 0.012) want = olive;
+        else if ((land === 'seasia' || land === 'india') && r4 < 0.085) want = jungle;
+        else if (land === 'china' && r4 < 0.03) want = cherry;
+        else if (land === 'china' && r4 < 0.046) want = ginkgo;
+        else if (med && r4 < 0.03) want = fig;
+        else if (r4 < 0.03) want = appleTree;
       } else if (b === BI.desert && sandy && afr && r4 < 0.003) want = acacia;
       else if (b === BI.oasis && (grassy || sandy) && r4 < 0.022) want = acacia;
       if (want) {
@@ -461,8 +618,25 @@ function plantTrees(w, heights, seed, spawn, placed) {
           const j = (z + dz) * n + (x + dx);
           if (j >= 0 && j < n * n && isWaterBiome(w.bio[j])) { byWater = true; break; }
         }
-        if (byWater && hash(x, z, seed + 133) < (land === 'egypt' || land === 'mesopotamia' ? 0.5 : 0.3)) { reeds(w, x, h, z, seed); continue; }
+        if (byWater && hash(x, z, seed + 133) < (land === 'egypt' || land === 'mesopotamia' ? 0.5 : 0.3)) {
+          // Along the Nile and the rivers of Mesopotamia the reeds are papyrus, which Egypt made paper from.
+          if (land === 'egypt' || land === 'mesopotamia') papyrusBed(w, x, h, z, seed); else reeds(w, x, h, z, seed);
+          continue;
+        }
       }
+      // Things lying in the ground that you can spot from the surface: salt pans where a desert lake dried
+      // up, black volcanic sand on the shore, and outcrops of the coloured marble each land quarried.
+      if (b === BI.desert && sandy && hash(x, z, seed + 183) < 0.0016) { saltPan(w, x, h, z, seed); continue; }
+      if (b === BI.beach && sandy && land === 'medit' && hash(x, z, seed + 185) < 0.0022) { blackBeach(w, x, h, z, seed); continue; }
+      if ((b === BI.hill || b === BI.mountain) && hash(x, z, seed + 187) < 0.0022) {
+        const stone = land === 'medit' ? B.greenMarble
+          : land === 'persia' || land === 'mesopotamia' ? B.blueMarble
+            : land === 'egypt' || land === 'africa' ? B.redMarble
+              : land === 'india' || land === 'seasia' ? B.purpleMarble : null;
+        if (stone) { outcrop(w, x, h, z, seed, stone); continue; }
+      }
+      // A griffon's nest, on the highest and loneliest peaks. There are only a handful in the whole world.
+      if (b === BI.mountain && h > WL + 22 && hash(x, z, seed + 189) < 0.004) { griffonNest(w, x, h, z, seed); continue; }
       // Low bushes in the woods and on the hillsides.
       if (grassy && (b === BI.forest || b === BI.hill) && hash(x, z, seed + 139) < 0.02) { w.set(x, h, z, B.oakLeaves); continue; }
     }
