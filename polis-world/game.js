@@ -2513,7 +2513,10 @@ function showDialogue(name, title, text, choices) {
   refreshPaused();
 }
 function closeDialogue(who) {
+  // Without a particular person (Escape, or any window closing), nobody is left mid-conversation:
+  // a townsperson still marked "talking" stands rooted to the spot, and the flag below stops X working.
   if (who) who.talking = false;
+  else for (const n of npcs) n.talking = false;
   dialogueOpen = false; $('dialogue').hidden = true;
   if (input.mode === 'desk') requestLock();
 }
@@ -2522,7 +2525,12 @@ function togglePanel(name) { if (openPanel === name) closePanels(); else { close
 function closePanels(keepUnlocked) {
   for (const id of ['inventory', 'map', 'help', 'card', 'designs']) $(id).hidden = true;
   if (designer && designer.isOpen()) designer.close();
-  const was = openPanel;
+  const was = openPanel || dialogueOpen;
+  // Shutting the windows shuts a conversation too. Before this, Escape left the talk box up with the
+  // game still thinking you were talking, and X (build, ride, feed, doors, furnaces) quietly stopped working.
+  // (done here rather than through closeDialogue, so this function keeps charge of the mouse itself)
+  if (dialogueOpen) { for (const n of npcs) n.talking = false; dialogueOpen = false; $('dialogue').hidden = true; }
+  if (!$('nameBox').hidden) { $('nameBox').hidden = true; D.pending = null; }
   openPanel = null;
   if (!keepUnlocked && was && input.mode === 'desk' && G.started) requestLock();
   refreshPaused();
@@ -3169,6 +3177,9 @@ let last = 0, hudT = 0;
 function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  // A safety net: if the game still thinks you're in a conversation but no talk box is showing,
+  // let go of it. X does nothing at all while that flag is stuck, which looks like the key is broken.
+  if (dialogueOpen && $('dialogue').hidden) { dialogueOpen = false; for (const n of npcs) n.talking = false; }
   if (world) {
     if (ships) {
       const k = input.keys, atHelm = !!ships.helm, canSteer = atHelm && !openPanel && !dialogueOpen;
