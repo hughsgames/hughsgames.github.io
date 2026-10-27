@@ -127,6 +127,20 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   const flies = Array.from({ length: FLY }, (_, i) => ({ x: 0, y: -100, z: 0, hx: 0, hz: 0, hy: 0, a: Math.random() * 6.28, ph: Math.random() * 6.28, set: false, i }));
   flies.forEach((f, i) => { birdCol.setHex(flyCols[i % flyCols.length]); flyWing.setColorAt(i * 2, birdCol); flyWing.setColorAt(i * 2 + 1, birdCol); });
 
+  // Rain: a column of falling streaks that keeps up with you, and a ring of splashes where they land.
+  // A drop only gets a place if the sky is open above it, so it never rains indoors or underground.
+  const RAIN = 1100, RAIN_R = 15;
+  const rainMat = new THREE.MeshBasicMaterial({ color: 0xbcd8ee, transparent: true, opacity: 0.6, depthWrite: false, fog: false });
+  const rainMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.048, 0.95, 0.048), rainMat, RAIN);
+  rainMesh.frustumCulled = false; rainMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); rainMesh.visible = false; scene.add(rainMesh);
+  const splashMat = new THREE.MeshBasicMaterial({ color: 0xcfe4f4, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const SPLASH = 90;
+  const splashMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), splashMat, SPLASH);
+  splashMesh.frustumCulled = false; splashMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); splashMesh.visible = false; scene.add(splashMesh);
+  const drops = Array.from({ length: RAIN }, () => ({ x: 0, y: -1000, z: 0, v: 0, set: false }));
+  const splashes = Array.from({ length: SPLASH }, () => ({ x: 0, y: -1000, z: 0, t: 0 }));
+  let splashAt = 0;
+
   // Fireflies by night and halos round lamps and torches after dark.
   const fireflies = glowPoints(48, 0xd8ff6a); fireflies.material.uniforms.uBlink.value = 1; scene.add(fireflies);
   const ffs = Array.from({ length: 48 }, () => ({ x: 0, y: -100, z: 0, hx: 0, hz: 0, hy: 0, a: Math.random() * 6.28, set: false }));
@@ -144,8 +158,60 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   };
   const M = new THREE.Matrix4(), R = new THREE.Matrix4(), S = new THREE.Matrix4(), Z = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  function update(dt, { P, day, warm, under, horizon }) {
+  const _grey = new THREE.Color(0.34, 0.36, 0.40);
+  const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _sc = new THREE.Vector3(1, 1, 1);
+  let rainK = 0;
+  /// Rain falling round the player. `rain` is how hard it is coming down, 0 to 1.
+  function updateRain(dt, P, rain, under) {
+    rainK += (rain - rainK) * Math.min(dt * 0.6, 1);     // the sky takes its time to change its mind
+    const on = rainK > 0.015 && !under;
+    rainMesh.visible = on; splashMesh.visible = on;
+    if (!on) return;
+    const want = Math.round(RAIN * Math.min(rainK, 1));
+    for (let i = 0; i < RAIN; i++) {
+      const d = drops[i];
+      if (i >= want) { _m4.makeScale(0, 0, 0); rainMesh.setMatrixAt(i, _m4); continue; }
+      if (!d.set || d.y < d.floor) {
+        // A new drop somewhere round the player, but only where it can see the sky.
+        let placed = false;
+        for (let k = 0; k < 3 && !placed; k++) {
+          const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * RAIN_R;
+          const x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r;
+          const fx = Math.floor(x), fz = Math.floor(z);
+          const top = groundY(fx, fz);
+          if (!skyOpen(fx, Math.max(top, Math.floor(P.y) + 6), fz)) continue;
+          d.x = x; d.z = z; d.floor = top; d.y = Math.max(top, P.y) + 9 + Math.random() * 7;
+          d.v = 17 + Math.random() * 7; d.set = placed = true;
+        }
+        if (!placed) { _m4.makeScale(0, 0, 0); rainMesh.setMatrixAt(i, _m4); continue; }
+        // Where the last one landed, leave a splash.
+        const sp = splashes[splashAt % SPLASH]; splashAt++;
+        sp.x = d.x; sp.z = d.z; sp.y = d.floor + 0.03; sp.t = 0.34;
+      }
+      d.y -= d.v * dt;
+      _m4.compose(_v.set(d.x, d.y, d.z), _q.set(0, 0, 0, 1), _sc);
+      rainMesh.setMatrixAt(i, _m4);
+    }
+    rainMesh.instanceMatrix.needsUpdate = true;
+    rainMat.opacity = 0.26 + 0.34 * Math.min(rainK, 1);
+    // The splashes: a flat ring that spreads and fades where each drop hit.
+    for (let i = 0; i < SPLASH; i++) {
+      const sp = splashes[i];
+      if (sp.t <= 0) { _m4.makeScale(0, 0, 0); splashMesh.setMatrixAt(i, _m4); continue; }
+      sp.t -= dt;
+      const k = Math.max(0, sp.t) / 0.34, grow = 1.6 - k;
+      _q.setFromAxisAngle(_v.set(1, 0, 0), -Math.PI / 2);
+      _m4.compose(_v.set(sp.x, sp.y, sp.z), _q, _sc.set(grow, grow, grow));
+      splashMesh.setMatrixAt(i, _m4);
+      _sc.set(1, 1, 1);
+    }
+    splashMesh.instanceMatrix.needsUpdate = true;
+    splashMat.opacity = 0.45 * Math.min(rainK, 1);
+  }
+
+  function update(dt, { P, day, warm, under, horizon, rain = 0 }) {
     if (horizon) cloudU.uHor.value.copy(horizon);
+    updateRain(dt, P, rain, under);
     state.t += dt; state.wind += dt * 1.1;
     // Clouds: white by day, glowing pink and orange at sunrise and sunset, dark blue-grey at night.
     const tx = Math.floor((P.x - state.wind) / CLOUD_TILE), tz = Math.floor(P.z / CLOUD_TILE);
@@ -153,6 +219,13 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
     cloudMat.color.setRGB(0.25 + 0.75 * day, 0.28 + 0.72 * day, 0.38 + 0.62 * day).lerp(new THREE.Color(1, 0.7, 0.62), Math.min(warm, 1) * 0.55);
     cloudMat.emissive.setRGB(0.1 + 0.25 * day, 0.11 + 0.25 * day, 0.15 + 0.25 * day);
     cloudMat.opacity = 0.55 + 0.33 * day;
+    // Rain clouds are low, heavy and grey, and they close over the sky.
+    if (rainK > 0.01) {
+      const k = Math.min(rainK, 1);
+      cloudMat.color.lerp(_grey, k * 0.75);
+      cloudMat.emissive.multiplyScalar(1 - k * 0.5);
+      cloudMat.opacity = Math.min(1, cloudMat.opacity + k * 0.42);
+    }
 
     // Birds circle in the daytime sky (they roost at night).
     flocks.forEach((f, fi) => {

@@ -11,12 +11,12 @@ import { WILD, buildWild, GROUP, LAND, wildHere } from './animals.js';
 import { createEvents, ARMIES, FLEETS_OF } from './events.js';
 import { PARTS as BODY, JOINTS, isUpper, dress, JOBS, pose, boxModel, toolGeometry, useToolModels, LOADS, PROPS, PROP_DIST } from './people.js';
 import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_GRIP, pixelSize, isLongTool } from './icons.js';
-import { buildRelic, TOMB_TEXT } from './relics.js';
+import { buildRelic, TOMB_TEXT, JADE_TEXT } from './relics.js';
 import { Sound, CITY_LAND } from './audio.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '26 Oct 2026, 15:18 UTC';
+const BUILD = '27 Oct 2026, 23:55 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -24,7 +24,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 10;   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
+const WORLD_VERSION = 11;   // 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
@@ -73,10 +73,14 @@ resize();
 
 // ---------- game state ----------
 let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null;
-const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color() };   // the light right now, for the sky and its life
+const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color(), rain: 0 };   // the light right now, for the sky and its life
+// The weather. It clouds over, rains for a while, then clears, and does it again later in the day.
+// `now` is how hard it is raining this instant; `until` is the clock reading when this spell ends.
+const W = { now: 0, want: 0, next: -1 };
 const G = {
   clock: 7 * 60, stars: 0, found: new Set(), talked: new Set(), relics: new Set(), hunger: 10, health: 10, placed: {}, cities: {}, camp: null, villagers: [], giftDay: 0,
   edits: new Map(), firstPerson: true, camDist: 5.5, started: false, paused: true,
+  worn: { body: null, head: null, neck: null },   // what you have on
 };
 const inv = new Inventory();
 let selected = 0;
@@ -232,16 +236,43 @@ function person(look) {
   const g = new THREE.Group(), joints = {};
   const colors = { eye: 0x1e2a44, white: 0xf2efe8, nose: new THREE.Color(look.skin).offsetHSL(0, 0, -0.06).getHex(), mouth: 0x8a3a32, shoes: 0x5a3a22, belt: 0x6b4a2b, gold: 0xe0b84a, sleeves: look.shirt, ...look };
   for (const [j, at] of Object.entries(JOINTS)) { const q = new THREE.Group(); q.position.set(...at); (j === 'upper' || j === 'root' ? g : g).add(q); joints[j] = q; }
+  const pupils = [];
   for (const [name, joint, ctr, size, key] of BODY) {
     let cc = ctr, sz = size, col = colors[key];
     if (name.startsWith('hat')) { const piece = look.hat?.find((q) => q[0] === name); if (!piece) continue; sz = piece[1]; cc = piece[2]; col = piece[3]; }
     if ((name === 'robe' && !look.robe) || (name === 'beard' && !look.beard) || (name === 'hairBack' && !look.longHair) || (name === 'neck' && !look.necklace)) continue;
-    joints[joint].add(boxMesh(sz[0], sz[1], sz[2], col, cc[0], cc[1], cc[2]));
+    const mesh = boxMesh(sz[0], sz[1], sz[2], col, cc[0], cc[1], cc[2]);
+    // The pupils are kept, so the eyes can follow something instead of staring straight ahead.
+    if (name === 'pupilL' || name === 'pupilR') { mesh.userData.x = cc[0]; mesh.userData.y = cc[1]; pupils.push(mesh); }
+    joints[joint].add(mesh);
   }
-  return { g, legs: [joints.legL, joints.legR], arms: [joints.armL, joints.armR], head: joints.head };
+  return { g, legs: [joints.legL, joints.legR], arms: [joints.armL, joints.armR], head: joints.head, pupils };
 }
-const playerBody = person({ skin: 0xdcae86, shirt: 0xa83226, sleeves: 0xa83226, pants: 0x5a4632, hair: 0x3a2716, belt: 0x3a2a1a });
+// How you look with nothing on but your own clothes. Anything you wear is laid over the top of this.
+const BASE_LOOK = { skin: 0xdcae86, shirt: 0xa83226, sleeves: 0xa83226, pants: 0x5a4632, hair: 0x3a2716, belt: 0x3a2a1a };
+/// Your base look with whatever you're wearing layered on: body first, then the collar, then the hat.
+function outfitLook(worn = G.worn) {
+  let look = { ...BASE_LOOK };
+  for (const slot of ['body', 'neck', 'head']) {
+    const id = worn && worn[slot];
+    if (id && ITEM[id] && ITEM[id].wear) look = { ...look, ...ITEM[id].wear };
+  }
+  return look;
+}
+let playerBody = person(outfitLook());
 scene.add(playerBody.g);
+/// Build your body again in what you're wearing now, keeping where you were standing and what you held.
+function redressPlayer() {
+  const old = playerBody;
+  const pos = old.g.position.clone(), rotY = old.g.rotation.y, vis = old.g.visible;
+  scene.remove(old.g);
+  heldMesh = null;
+  playerBody = person(outfitLook());
+  playerBody.g.position.copy(pos); playerBody.g.rotation.y = rotY; playerBody.g.visible = vis;
+  scene.add(playerBody.g);
+  refreshHotbar();
+  dressPreview.rebuild();
+}
 let heldMesh = null;
 // In first person you see your own right arm and whatever is in your hand, at the bottom right of the screen.
 scene.add(camera);
@@ -282,6 +313,19 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyH') togglePanel('help');
   if (e.code === 'KeyB') { if (D.mode) endDesign(); togglePanel('designs'); }
   if (e.code === 'KeyR' && D.mode === 'place') { D.rot = (D.rot + 1) % 4; buildGhost(); }
+  // T makes a twin of the animal you're looking at, if it's one of yours.
+  if (e.code === 'KeyT' && !openPanel && !dialogueOpen && !D.mode) {
+    const a = aimFrom();
+    // Pick the one you mean: the animal with twins left in it today comes first, then any of yours,
+    // then anything at all (so a wild one can still tell you why it won't). Otherwise the twin you
+    // just made stands closest and answers for its parent.
+    const score = (m) => (canTwin(m) ? 0 : m.tame ? 1 : 2);
+    const list = mobs.filter((m) => !m.dead && Math.hypot(m.x - P.x, m.z - P.z) < 4.5);
+    if (a.who && !list.includes(a.who)) list.push(a.who);
+    const near = list.sort((p, q) => score(p) - score(q) || Math.hypot(p.x - P.x, p.z - P.z) - Math.hypot(q.x - P.x, q.z - P.z))[0];
+    if (near) cloneAnimal(near);
+    else message('Stand close to one of your own tamed animals and press T to make a twin of it.');
+  }
   if (e.code === 'KeyZ') G.camDist = Math.max(2.5, G.camDist - 1);
   if (e.code === 'KeyC') G.camDist = Math.min(14, G.camDist + 1);
   // X builds, the same as right-click: places the block in your hand (or builds the design you're placing).
@@ -1296,6 +1340,66 @@ function breed() {
     return;   // one at a time
   }
 }
+// ---------- making a twin of an animal that is yours ----------
+// Only an animal you have tamed, never a wild one, and only three twins from the same animal in one day.
+// The twin arrives full-grown, already tame, and keeps its own count, so a herd grows quickly but not endlessly.
+const CLONES_A_DAY = 3;
+const today = () => Math.floor(G.clock / 1440);
+/// Has this animal got a twin left in it today?
+const canTwin = (m) => !!m.tame && !m.dead && !m.young && (m.cloneDay !== today() || (m.clones || 0) < CLONES_A_DAY);
+function cloneAnimal(m) {
+  const name = SPECIES[m.kind].name;
+  if (!m.tame) { message(`The ${name} is wild. Only animals you have tamed will stand still for this — hold out some food and press X first.`); return; }
+  if (m.dead || m.young) { message(`Wait until the ${name} has grown up.`); return; }
+  if (m.cloneDay !== today()) { m.cloneDay = today(); m.clones = 0; }
+  if (m.clones >= CLONES_A_DAY) { message(`That ${name} has had its ${CLONES_A_DAY} twins for today. It can make more tomorrow morning.`); return; }
+  // A kindness to the frame rate, not a rule: don't pile forty of one animal into one field.
+  if (mobs.length >= 48 || mobs.filter((o) => !o.dead && o.kind === m.kind && Math.hypot(o.x - m.x, o.z - m.z) < 14).length >= 12) {
+    message(`There are too many ${name}s here already. Take one somewhere else first.`);
+    return;
+  }
+  // Stand the twin beside its parent, on the first clear spot going round it.
+  const sp = SPECIES[m.kind], r = mobR(sp), h = mobH(sp);
+  let spot = null;
+  for (let k = 0; k < 12 && !spot; k++) {
+    const a = (k / 12) * Math.PI * 2, nx = m.x + Math.cos(a) * 1.6, nz = m.z + Math.sin(a) * 1.6;
+    const gy = world.groundY(Math.floor(nx), Math.floor(nz));
+    if (Math.abs(gy - m.y) <= 1.2 && roomFor(nx, nz, gy, r, h)) spot = [nx, nz];
+  }
+  if (!spot) { message(`There is no room beside the ${name} for another one.`); return; }
+  m.clones++;
+  const twin = addMob(m.kind, spot[0], spot[1]);
+  twin.tame = true; twin.home = [...m.home]; twin.flee = 0; twin.angry = 0;
+  // A twin has used up its own day the moment it arrives, so pressing T over and over doesn't
+  // turn one horse into a field of them in twenty seconds. Tomorrow it can make three of its own.
+  twin.cloneDay = today(); twin.clones = CLONES_A_DAY;
+  saddle(twin, false);
+  sound.play('tame');
+  hearts(m);
+  const left = CLONES_A_DAY - m.clones;
+  message(`A twin ${name}! ${left ? `This one can make ${left} more today.` : 'That is its three for today.'}`);
+  if (!G.talked.has('_clone')) { G.talked.add('_clone'); addStars(1, 'You made a twin!'); }
+  scheduleSave();
+}
+/// A little puff of hearts over an animal, so you can see something happened.
+function hearts(m) {
+  const g = new THREE.Group();
+  for (let k = 0; k < 5; k++) {
+    const s = boxMesh(0.12, 0.12, 0.02, 0xe8427a, (Math.random() - 0.5) * 0.7, Math.random() * 0.3, (Math.random() - 0.5) * 0.7);
+    g.add(s);
+  }
+  g.position.set(m.x, m.y + (SPECIES[m.kind].size ? SPECIES[m.kind].size[1] : 1) + 0.5, m.z);
+  entityGroup.add(g);
+  const t0 = performance.now();
+  const rise = () => {
+    const k = (performance.now() - t0) / 900;
+    if (k >= 1) { entityGroup.remove(g); return; }
+    g.position.y += 0.009;
+    g.children.forEach((c, i) => { c.material.opacity = 1 - k; c.material.transparent = true; c.rotation.z = Math.sin(k * 6 + i) * 0.4; });
+    requestAnimationFrame(rise);
+  };
+  rise();
+}
 function hitMob(m) {
   sound.play('hit');
   const dmg = toolDamage(heldTool());
@@ -1551,7 +1655,13 @@ function takeRelic(r) {
   entityGroup.remove(r.g); relicObjs.splice(relicObjs.indexOf(r), 1);
   G.relics.add(r.id);
   give(r.id, 1);
-  if (TOMB_TEXT[r.id]) {
+  if (JADE_TEXT[r.id]) {
+    const got = [...G.relics].filter((x) => JADE_TEXT[x]).length, left = 3 - got;
+    addStars(left ? 1 : 3);
+    const t = JADE_TEXT[r.id];
+    showCard(t.name, `Out of the ruins · ${got} of 3 · Liangzhu`, t.body
+      + (left ? `\n\n${left} more lie somewhere in the ruins.` : '\n\nYou have all three great jades of Liangzhu! Darius the trader has never seen anything like them.'));
+  } else if (TOMB_TEXT[r.id]) {
     const got = [...G.relics].filter((x) => TOMB_TEXT[x]).length, left = 5 - got;
     addStars(left ? 1 : 3);
     const t = TOMB_TEXT[r.id];
@@ -1599,7 +1709,7 @@ function addNpc(kind, name, title, x, z, look, extra = {}) {
 function spawnGuides() {
   for (const [id, p] of Object.entries(G.placed)) {
     const t = SITE_TEXT[id];
-    if (!t) continue;
+    if (!t || t.guide === 'nobody') continue;      // a ruin has nobody standing about in it
     const [gx, gz] = world.nearestLand(p.x + (id === 'greatWall' ? 3 : -14), p.z + 3);
     addNpc('guide', t.guide, t.title, gx + 0.5, gz + 0.5, [0xd2a07a, 0xd9b34a, 0x6b4e2e], { site: id, roam: 2.5 });
   }
@@ -1911,6 +2021,7 @@ function updateNpcs(dt) {
   for (const n of npcs) {
     if (!n.body.g.visible) continue;
     if (Math.hypot(n.x - P.x, n.z - P.z) > 120) continue;
+    watchPlayer(n.body, n.x, n.z, dt);
     // In the saddle: he goes wherever his horse goes, and sits there while he talks to you.
     if (n.mounted && !n.mounted.dead) {
       const h = n.mounted;
@@ -2057,7 +2168,8 @@ const TRADES = {
   darius: [[['planks', 3], ['wheatSeeds', 4]], [['copperOre', 3], ['tea', 2]], [['planks', 8], ['silk', 2]], [['goldIngot', 1], ['blueCloth', 4]], [['tea', 1], ['coal', 4]], [['wool', 4], ['dates', 3]],
     // What came out of the pharaoh's tomb. Darius has never seen the like, and pays for it.
     [['goldenMask', 1], ['goldIngot', 9]], [['ankh', 1], ['goldIngot', 6]], [['canopicJar', 1], ['goldIngot', 5]],
-    [['scarab', 1], ['goldIngot', 4]], [['shabti', 1], ['goldIngot', 4]]],
+    [['scarab', 1], ['goldIngot', 4]], [['shabti', 1], ['goldIngot', 4]],
+    [['jadeCong', 1], ['goldIngot', 9]], [['jadeAxe', 1], ['goldIngot', 8]], [['jadeBi', 1], ['goldIngot', 6]]],
   tarkan: [[['leather', 4], ['ironSpear', 1]], [['leather', 2], ['ironOre', 2]], [['apple', 3], ['leather', 1]], [['rawBeef', 2], ['feather', 3]], [['wool', 2], ['fishingRod', 1]]],
 };
 let eagle = null;
@@ -2228,6 +2340,18 @@ function villageTalk(who, page) {
 const rectDist = (r, px, pz) => Math.max(Math.max(r[0] - px, 0, px - (r[2] + 1)), Math.max(r[1] - pz, 0, pz - (r[3] + 1)));
 function siteOf(x, y, z) { const v = world.protected.get(world.idx(x, y, z)); return v === undefined ? null : v; }
 let discoverT = 0;
+// Liangzhu is added here rather than in data.js, which is generated and would lose a hand-made entry.
+SITE_TEXT.liangzhu = {
+  name: 'The Ruins of Liangzhu',
+  place: 'Zhejiang, China',
+  date: 'c. 3300–2300 BCE',
+  fact: 'Liangzhu was a city of jade and water on the marshes south of the Yangtze, five thousand years ago — older than the pyramids of Giza. Its people raised earth walls three miles round and built the oldest dams anywhere in the world to hold back the floods.',
+  more: 'Jade is so hard that it cannot be cut. Every piece here was ground down with wet sand, a little at a time, for months on end. The city was abandoned when the water finally won, and lay lost under the rice fields until 1936.',
+  hello: 'Nothing is standing here now but the earth and the water.',
+  guide: 'nobody',
+  title: 'Ruins',
+};
+
 function updateDiscovery(dt) {
   discoverT -= dt;
   if (discoverT > 0) return;
@@ -2237,7 +2361,8 @@ function updateDiscovery(dt) {
     G.found.add(id);
     const t = SITE_TEXT[id];
     addStars(1);
-    showCard(`You found ${['giza', 'greatWall'].includes(id) ? 'the ' : ''}${t.name}!`, `${t.place} · ${t.date}`, `${t.fact}\n\nLook for ${t.guide} (the gold diamond) to learn more and earn another star.` + (id === 'atlantis' ? '\n\nIn this game, a narrow shaft in the floor of Poseidon\'s temple leads down to a hidden cave with three relics. Climb down the ladder!' : '')
+    showCard(`You found ${['giza', 'greatWall'].includes(id) ? 'the ' : ''}${t.name}!`, `${t.place} · ${t.date}`, `${t.fact}` + (t.guide === 'nobody' ? '' : `\n\nLook for ${t.guide} (the gold diamond) to learn more and earn another star.`) + (id === 'atlantis' ? '\n\nIn this game, a narrow shaft in the floor of Poseidon\'s temple leads down to a hidden cave with three relics. Climb down the ladder!' : '')
+      + (id === 'liangzhu' ? '\n\nNobody lives here any more. The great mound in the middle held the palace, and there is an altar on top of it. A smaller mound away to the north-west is the kings\' burial ground, with a stair cut down into it. Three great jades are still here somewhere.' : '')
       + (id === 'giza' ? '\n\nThere is a doorway on the north face of the Great Pyramid, nine courses up, with steps leading to it. Inside are the passages to the burial chamber — and the pharaoh\'s treasure. Take a torch.' : ''));
     return;
   }
@@ -2426,11 +2551,40 @@ let localLight = 1, localT = 0;
 const SUN_STEP = Math.PI / 720, SHADOW_TEXEL = 96 / 2048;      // the shadow camera is 96 blocks across, 2048 texels
 const _toSun = new THREE.Vector3(), _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _target = new THREE.Vector3();
 const C = (r, g, b) => new THREE.Color(r, g, b);
+/// The weather turns on its own: long dry spells, then it clouds over, rains, and clears again.
+/// Everything is measured on the game clock, so it doesn't rain for an hour while you read a card.
+function updateWeather(dt) {
+  // On a world that has been played for days, the clock is already high: set the first spell from now.
+  if (W.next < 0) { W.next = G.clock + 120 + Math.random() * 480; return; }
+  if (G.clock >= W.next) {
+    if (W.want > 0) {
+      // The rain is passing. Dry for a good while before the next one.
+      W.want = 0;
+      W.next = G.clock + 420 + Math.random() * 900;
+    } else {
+      // A shower, a steady rain, or now and then a proper downpour.
+      const r = Math.random();
+      W.want = r < 0.45 ? 0.35 : r < 0.85 ? 0.7 : 1;
+      W.next = G.clock + (W.want < 0.4 ? 25 + Math.random() * 35 : 60 + Math.random() * 110);
+      if (!G.talked.has('_rain')) {
+        G.talked.add('_rain');
+        message('It\'s starting to rain. Stand under a roof and listen to it.');
+      }
+    }
+  }
+  // It comes on and goes off gradually, never in a snap.
+  const rate = (W.want > W.now ? 0.055 : 0.085) * dt;
+  W.now += Math.max(-rate, Math.min(rate, W.want - W.now));
+  look.rain = W.now;
+}
+
 function updateDaylight(dt) {
   G.clock += dt * (openPanel || dialogueOpen ? 0 : 1);
+  updateWeather(dt);
   const hour = (G.clock % 1440) / 60;
   let light = 1;
   if (hour < 5 || hour >= 20) light = 0.38; else if (hour < 7) light = 0.38 + (hour - 5) / 2 * 0.62; else if (hour >= 18) light = 1 - (hour - 18) / 2 * 0.62;
+  light *= 1 - W.now * 0.3;          // a grey sky under the rain
   const dayK = (light - 0.38) / 0.62;
   const warm = Math.max(0, 1 - Math.abs(hour - 6.5) / 1.5) + Math.max(0, 1 - Math.abs(hour - 18.8) / 1.5);
   const up = hour >= 6 && hour <= 18;
@@ -2459,6 +2613,14 @@ function updateDaylight(dt) {
   hemi.groundColor = C(0.25, 0.22, 0.2).lerp(C(0.45, 0.38, 0.3), dayK);
   const top = C(0.04, 0.06, 0.16).lerp(C(0.28, 0.5, 0.86), dayK);
   const horizon = C(0.1, 0.13, 0.25).lerp(C(0.72, 0.84, 0.96), dayK).lerp(C(0.98, 0.6, 0.38), Math.min(warm, 1) * 0.6 * (0.3 + dayK));
+  // Rain takes the blue out of the sky and the warmth out of the light.
+  if (W.now > 0.01) {
+    const k = Math.min(W.now, 1) * 0.72;
+    top.lerp(C(0.30, 0.33, 0.38), k);
+    horizon.lerp(C(0.52, 0.55, 0.60), k);
+    hemi.color.lerp(C(0.62, 0.66, 0.72), k);
+    sun.intensity *= 1 - k * 0.45;
+  }
   sky.material.uniforms.top.value.copy(top);
   sky.material.uniforms.horizon.value.copy(horizon);
   sky.material.uniforms.sunDir.value.copy(up ? toSun : toSun.clone().negate());
@@ -2529,6 +2691,84 @@ function give(id, n) {
   refreshHotbar();
   if (openPanel === 'inventory') renderPanel();
 }
+/// A townsperson turns their head, and their eyes, toward you when you come near. Past about eight
+/// blocks they look back where they were going. It is what makes a street feel lived in.
+function watchPlayer(body, x, z, dt, range = 8.5) {
+  if (!body || !body.head) return;
+  const d = Math.hypot(x - P.x, z - P.z);
+  let turn = 0, nod = 0;
+  if (d < range) {
+    // How far their head has to come round from the way their body is facing.
+    const to = Math.atan2(P.x - x, P.z - z);
+    let off = to - body.g.rotation.y;
+    while (off > Math.PI) off -= Math.PI * 2;
+    while (off < -Math.PI) off += Math.PI * 2;
+    // Nobody turns their head further than this; past that they just face forward.
+    if (Math.abs(off) < 1.5) {
+      const near = 1 - Math.min(d / range, 1);
+      turn = off * (0.55 + 0.35 * near);
+      nod = Math.max(-0.4, Math.min(0.45, Math.atan2((P.y + 1.3) - (body.g.position.y + 1.6), Math.max(d, 0.6)) * -0.8));
+    }
+  }
+  const k = Math.min(dt * 5, 1);
+  body.head.rotation.y += (turn - body.head.rotation.y) * k;
+  body.head.rotation.x += (nod - body.head.rotation.x) * k;
+  if (body.pupils) for (const q of body.pupils) {
+    q.position.x += (q.userData.x + body.head.rotation.y * 0.05 - q.position.x) * k;
+    q.position.y += (q.userData.y - body.head.rotation.x * 0.025 - q.position.y) * k;
+  }
+}
+
+// ---------- the dressing figure beside your things ----------
+// A little scene of its own with you standing in it, wearing whatever you have on. Its head and eyes
+// follow your mouse, so it looks back at you while you decide what to put on it.
+const dressPreview = (() => {
+  let rend = null, scn = null, cam = null, fig = null, canvas = null;
+  const aim = { x: 0, y: 0 };              // where the pointer is, -1 … 1 across the little canvas
+  let turn = 0, nod = 0;
+  function setup() {
+    canvas = $('dressCanvas');
+    if (!canvas || rend) return;
+    try { rend = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (_) { rend = null; return; }
+    rend.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    rend.setSize(canvas.width, canvas.height, false);
+    scn = new THREE.Scene();
+    cam = new THREE.PerspectiveCamera(32, canvas.width / canvas.height, 0.1, 40);
+    cam.position.set(0, 1.12, 4.4); cam.lookAt(0, 1.0, 0);
+    scn.add(new THREE.HemisphereLight(0xdde8ff, 0x55483a, 2.1));
+    const key = new THREE.DirectionalLight(0xfff2dd, 1.5); key.position.set(2, 3.4, 3); scn.add(key);
+    canvas.addEventListener('pointermove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      aim.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+      aim.y = ((e.clientY - r.top) / r.height) * 2 - 1;
+    });
+    canvas.addEventListener('pointerleave', () => { aim.x = 0; aim.y = 0; });
+    rebuild();
+  }
+  function rebuild() {
+    if (!scn) return;
+    if (fig) scn.remove(fig.g);
+    fig = person(outfitLook());
+    fig.g.position.y = -0.02;
+    scn.add(fig.g);
+  }
+  /// Called every frame while the inventory is open.
+  function render(dt) {
+    if (!rend || !fig) return;
+    // The head turns toward the pointer and the eyes lead it, the way a real head does.
+    const wantTurn = Math.max(-0.85, Math.min(0.85, aim.x * 0.9));
+    const wantNod = Math.max(-0.45, Math.min(0.5, aim.y * 0.55));
+    turn += (wantTurn - turn) * Math.min(dt * 7, 1);
+    nod += (wantNod - nod) * Math.min(dt * 7, 1);
+    fig.head.rotation.y = turn;
+    fig.head.rotation.x = nod;
+    fig.g.rotation.y = turn * 0.3;          // the shoulders follow a little
+    if (fig.pupils) for (const q of fig.pupils) { q.position.x = q.userData.x + turn * 0.055; q.position.y = q.userData.y - nod * 0.03; }
+    rend.render(scn, cam);
+  }
+  return { setup, rebuild, render, get canvas() { return canvas; }, headAngles: () => (fig ? { turn: +fig.head.rotation.y.toFixed(3), nod: +fig.head.rotation.x.toFixed(3) } : null) };
+})();
+
 function iconImg(id, size = 32) { return `<img src="${ICONS[id] ?? ''}" width="${size}" height="${size}" alt="">`; }
 function refreshHotbar() {
   const bar = $('hotbar');
@@ -2639,6 +2879,71 @@ function closePanels(keepUnlocked) {
 }
 let craftCat = 'All', picked = null;
 function openFurnace() { craftCat = 'Smelting'; if (openPanel !== 'inventory') togglePanel('inventory'); else renderPanel(); }
+// ---------- putting clothes on and taking them off ----------
+/// Wear the clothing in inventory slot `i`. Whatever was on that part of you goes back in your bag.
+function wearFrom(i) {
+  const st = inv.slots[i];
+  if (!st || !ITEM[st.id] || !ITEM[st.id].wear) { message('That is not something you can wear.'); return false; }
+  const id = st.id, slot = ITEM[id].slot;
+  const was = G.worn[slot];
+  // Take it out of the bag first, so there is room for whatever comes off.
+  inv.slots[i] = st.n > 1 ? { id, n: st.n - 1 } : null;
+  if (was) inv.add(was, 1);
+  G.worn[slot] = id;
+  sound.play('give');
+  message(`You put on the ${ITEM[id].name.toLowerCase()}.`);
+  if (!G.talked.has('_dressed')) { G.talked.add('_dressed'); addStars(1, 'You got dressed!'); }
+  redressPlayer(); refreshHotbar(); renderPanel(); scheduleSave();
+  return true;
+}
+/// Take off whatever is on that part of you and put it back in your bag.
+function takeOffWorn(slot) {
+  const id = G.worn[slot];
+  if (!id) return;
+  if (inv.add(id, 1) > 0) { message('Your bag is full — make room before you take that off.'); return; }
+  G.worn[slot] = null;
+  sound.play('give');
+  message(`You took off the ${ITEM[id].name.toLowerCase()}.`);
+  redressPlayer(); refreshHotbar(); renderPanel(); scheduleSave();
+}
+
+// Dragging a piece of clothing from your things onto the figure.
+let dragging = null, dragGhost = null;
+function startDrag(i, e) {
+  const st = inv.slots[i];
+  if (!st || !ITEM[st.id] || !ITEM[st.id].wear) return;
+  dragging = i;
+  dragGhost = document.createElement('img');
+  dragGhost.id = 'dragGhost'; dragGhost.src = ICONS[st.id] ?? '';
+  document.body.appendChild(dragGhost);
+  moveDrag(e);
+  e.preventDefault();
+}
+function moveDrag(e) {
+  if (!dragGhost) return;
+  dragGhost.style.left = e.clientX + 'px';
+  dragGhost.style.top = e.clientY + 'px';
+  const c = dressPreview.canvas;
+  if (c) c.classList.toggle('over', overFigure(e));
+}
+/// Is the pointer over the figure (or over the little row of what you're wearing)?
+function overFigure(e) {
+  const c = dressPreview.canvas;
+  const boxes = [c, ...document.querySelectorAll('.wslot')].filter(Boolean);
+  return boxes.some((el) => { const r = el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
+}
+function endDrag(e) {
+  if (dragging === null) return;
+  const i = dragging; dragging = null;
+  if (dragGhost) { dragGhost.remove(); dragGhost = null; }
+  const c = dressPreview.canvas;
+  if (c) c.classList.remove('over');
+  if (overFigure(e)) wearFrom(i);
+}
+addEventListener('pointermove', moveDrag);
+addEventListener('pointerup', endDrag);
+addEventListener('pointercancel', endDrag);
+
 function renderPanel() {
   if (openPanel === 'inventory') {
     $('inventory').hidden = false;
@@ -2655,10 +2960,25 @@ function renderPanel() {
         else if (s) picked = i;
         renderPanel();
       });
+      // Clothes can be dragged onto the figure, or just double-clicked to put on.
+      if (s && ITEM[s.id] && ITEM[s.id].wear) {
+        el.classList.add('wearable');
+        el.addEventListener('pointerdown', (e) => startDrag(i, e));
+        el.addEventListener('dblclick', () => wearFrom(i));
+        el.title = `${ITEM[s.id].name} — drag me onto you, or double-click`;
+      }
       grid.appendChild(el);
     });
+    dressPreview.setup();
+    for (const el of document.querySelectorAll('.wslot')) {
+      const slot = el.dataset.slot, id = G.worn[slot];
+      el.innerHTML = id ? iconImg(id) : '';
+      el.classList.toggle('full', !!id);
+      el.title = id ? `${ITEM[id].name} — click to take it off` : { head: 'Nothing on your head', body: 'Nothing on', neck: 'Nothing round your neck' }[slot];
+      if (!el.dataset.wired) { el.dataset.wired = '1'; el.addEventListener('click', () => takeOffWorn(el.dataset.slot)); }
+    }
     $('invHint').textContent = picked !== null && inv.slots[picked] ? `${ITEM[inv.slots[picked].id].name} — click another slot to move it` : 'Click an item, then another slot to move it. The bottom row is your hotbar.';
-    const cats = ['All', 'Basics', 'Food', 'Building', 'Decor', 'Tools', 'Travel', 'Smelting'];
+    const cats = ['All', 'Basics', 'Food', 'Clothing', 'Building', 'Decor', 'Tools', 'Travel', 'Smelting'];
     const chips = $('chips'); chips.innerHTML = '';
     for (const c of cats) { const b = document.createElement('button'); b.className = 'chip' + (c === craftCat ? ' on' : ''); b.textContent = c; b.addEventListener('click', () => { craftCat = c; renderPanel(); }); chips.appendChild(b); }
     const list = RECIPES.filter((r) => craftCat === 'All' || r.cat === craftCat);
@@ -2995,8 +3315,8 @@ function save() {
     for (const [i, b] of G.edits) edits.push(i, b);
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay,
-      animals: mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame })) }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn,
+      animals: mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame, clones: m.clones || 0, cloneDay: m.cloneDay ?? -1 })) }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
 function load() {
@@ -3181,13 +3501,13 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza'] : s.wv === 4 ? ['olympia', 'rome', 'giza'] : Object.keys(G.cities);
+    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 10 ? ['liangzhu'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu'] : Object.keys(G.cities).concat('liangzhu');
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
     if (s.p) [P.x, P.y, P.z, P.yaw, P.pitch] = s.p;
     else { [P.x, P.z] = G.camp.spawn; P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.yaw = 0; P.pitch = -0.2; }
-    G.clock = s.clock; G.stars = s.stars; G.found = new Set(s.found); G.talked = new Set(s.talked); G.hunger = s.hunger; G.health = s.health ?? 10; selected = s.sel ?? 0; G.firstPerson = s.fp2 ?? true; G.relics = new Set(s.relics || []); G.villagers = s.villagers || []; G.giftDay = s.giftDay ?? Math.floor(G.clock / 1440);
+    G.clock = s.clock; G.stars = s.stars; G.found = new Set(s.found); G.talked = new Set(s.talked); G.hunger = s.hunger; G.health = s.health ?? 10; selected = s.sel ?? 0; G.firstPerson = s.fp2 ?? true; G.relics = new Set(s.relics || []); G.villagers = s.villagers || []; G.worn = { body: null, head: null, neck: null, ...(s.worn || {}) }; G.giftDay = s.giftDay ?? Math.floor(G.clock / 1440);
     for (const [i, b] of G.edits) if (b === 60) { const n = world.n; world.set(i % n, Math.floor(i / (n * n)), Math.floor(i / n) % n, 59); }
   } else {
     inv.add('bronzePickaxe', 1); inv.add('bronzeAxe', 1); inv.add('apple', 4); inv.add('torch', 3);
@@ -3202,8 +3522,10 @@ function start() {
     if (!SPECIES[a.kind]) continue;
     const m = resized ? addMob(a.kind, penMid[0] + (Math.random() - 0.5) * 3, penMid[1] + (Math.random() - 0.5) * 2, a.young) : addMob(a.kind, a.x, a.z, a.young);
     m.home = resized ? [...penMid] : a.home; m.age = a.age || 0; m.bred = a.bred ?? -999; m.tame = !!a.tame;
+    m.clones = a.clones || 0; m.cloneDay = a.cloneDay ?? -1;
   }
   else for (let k = 0; k < 3; k++) { const m = addMob('sheep', (pen[0] + pen[2]) / 2 + k - 1 + 0.5, (pen[1] + pen[3]) / 2 + 0.5); m.home = [(pen[0] + pen[2]) / 2 + 0.5, (pen[1] + pen[3]) / 2 + 0.5]; }
+  redressPlayer();          // put back on whatever you were wearing when you saved
   spawnGuides();
   spawnVillagers();
   spawnTravellers();
@@ -3271,9 +3593,11 @@ function updateSound(dt) {
   let sea = false;
   for (const [ox, oz] of [[8, 0], [-8, 0], [0, 8], [0, -8], [14, 14], [-14, -14]]) if (world.hasWater(Math.floor(P.x + ox), Math.floor(P.z + oz))) sea = true;
   sound.setBed(roofed ? 0.25 : 1, sea);
+  // Rain is loud outside, a drumming on the roof when you're under one.
+  sound.setRain(W.now, roofed ? 0.22 : 1);
   // Birds by day, crickets at night, both only out of doors.
   chirpT -= 1.1;
-  if (chirpT <= 0 && !roofed) {
+  if (chirpT <= 0 && !roofed && W.now < 0.35) {      // the birds go quiet in the rain
     chirpT = night ? 1.2 + Math.random() * 2 : 3 + Math.random() * 7;
     sound.play(night ? 'cricket' : 'bird');
   }
@@ -3310,6 +3634,7 @@ function loop(now) {
     updateSurvival(dt); updateDaylight(dt);
     updateSound(dt); sound.tick();
     if (scenery) scenery.update(dt, { P, ...look });
+    if (openPanel === 'inventory') dressPreview.render(dt);
     if (events) events.update(dt, P);
     updateCamera(dt);
     // What you're pointing at.
@@ -3324,5 +3649,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
 boot();

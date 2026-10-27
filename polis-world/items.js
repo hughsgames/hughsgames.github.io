@@ -56,6 +56,10 @@ it('canopicJar', 'Canopic Jar', { relic: true, worth: 5 });
 it('scarab', 'Scarab Amulet', { relic: true, worth: 4 });
 it('ankh', 'Golden Ankh', { relic: true, worth: 6 });
 it('shabti', 'Shabti Figure', { relic: true, worth: 4 });
+// The three great jades of Liangzhu, out of the ruins south of the Yangtze. Five thousand years old.
+it('jadeBi', 'Jade Bi Disc', { relic: true, worth: 6 });
+it('jadeCong', 'King of Jade Cong', { relic: true, worth: 9 });
+it('jadeAxe', 'King of Jade Axe', { relic: true, worth: 8 });
 // The three Atlantean relics.
 it('trident', "Poseidon's Trident", { relic: true }); it('lawTablet', 'Orichalcum Tablet', { relic: true }); it('seahorse', 'Golden Hippocamp', { relic: true });
 // ---------- Hugh's resources (October 26) ----------
@@ -96,7 +100,30 @@ for (const [k, n, best] of GEMS) {
     it(k + label, `${n} ${label}`, { tool: job, tier: 6, best: job === best });
   }
 }
-for (const k of Object.keys(ITEM)) ITEM[k].max = ITEM[k].tool || ITEM[k].relic ? 1 : 64;
+// ---------- Clothing (October 27) ----------
+// Each piece says which part of you it covers and how it changes the way you look. The colours are
+// the same ones the townspeople are built from, so what you wear matches the world around you.
+function wear(id, name, slot, look, art) { it(id, name, { wear: look, slot, art }); }
+// What you put on your body.
+wear('woolTunic', 'Wool Tunic', 'body', { shirt: 0xeae3d2, sleeves: 0xeae3d2, pants: 0x8a7a5a, belt: 0x6b4a2b }, ['tunic', 0xeae3d2, 0x8a7a5a]);
+wear('leatherJerkin', 'Leather Jerkin', 'body', { shirt: 0x7a5230, sleeves: 0x5f4026, pants: 0x4a3a28, belt: 0x3a2a1a }, ['tunic', 0x7a5230, 0x3a2a1a]);
+wear('linenKilt', 'Linen Kilt', 'body', { shirt: 0xf0ead8, sleeves: 0xdcae86, pants: 0xf0ead8, belt: 0xe0b84a }, ['tunic', 0xf0ead8, 0xe0b84a]);
+wear('toga', 'Roman Toga', 'body', { robe: true, shirt: 0xf2efe6, sleeves: 0xf2efe6, pants: 0xf2efe6, belt: 0xc8a84a }, ['robe', 0xf2efe6, 0x8a2a3a]);
+wear('purpleCloak', 'Tyrian Cloak', 'body', { robe: true, shirt: 0x6a2a6a, sleeves: 0x5a2458, pants: 0x4a3a28, belt: 0xe0b84a }, ['robe', 0x6a2a6a, 0xe0b84a]);
+wear('silkRobe', 'Silk Robe', 'body', { robe: true, shirt: 0x2f6ba8, sleeves: 0x2f6ba8, pants: 0x24527f, belt: 0xe0b84a }, ['robe', 0x2f6ba8, 0xe0b84a]);
+wear('bronzeArmour', 'Bronze Armour', 'body', { shirt: 0xcf8d40, sleeves: 0xa8702f, pants: 0x7a5230, belt: 0x6b4a2b }, ['armour', 0xcf8d40, 0x7a5230]);
+wear('ironArmour', 'Iron Armour', 'body', { shirt: 0xb5bcc4, sleeves: 0x98a0a8, pants: 0x4a4a52, belt: 0x3a3a42 }, ['armour', 0xb5bcc4, 0x4a4a52]);
+// What you put on your head.
+wear('strawHat', 'Straw Hat', 'head', { hat: [['hat1', [0.68, 0.06, 0.68], [0, 0.5, 0], 0xd8c078], ['hat2', [0.4, 0.17, 0.4], [0, 0.57, 0], 0xc4ab62]] }, ['hat', 0xd8c078, 0xc4ab62]);
+wear('bronzeHelmet', 'Bronze Helmet', 'head', { hat: [['hat1', [0.53, 0.3, 0.53], [0, 0.45, 0], 0xcf8d40], ['hat2', [0.09, 0.14, 0.46], [0, 0.66, 0], 0x8a3a32]] }, ['helmet', 0xcf8d40, 0x8a3a32]);
+wear('ironHelmet', 'Iron Helmet', 'head', { hat: [['hat1', [0.53, 0.32, 0.53], [0, 0.46, 0], 0xb5bcc4], ['hat2', [0.09, 0.15, 0.46], [0, 0.68, 0], 0xa83226]] }, ['helmet', 0xb5bcc4, 0xa83226]);
+wear('goldCrown', 'Golden Crown', 'head', { hat: [['hat1', [0.54, 0.13, 0.54], [0, 0.52, 0], 0xe8c040], ['hat2', [0.1, 0.11, 0.1], [0, 0.62, 0.21], 0x9a4fd0]] }, ['crown', 0xe8c040, 0x9a4fd0]);
+wear('nemes', "Pharaoh's Nemes", 'head', { hat: [['hat1', [0.58, 0.22, 0.58], [0, 0.49, 0], 0x2f6ba8], ['hat2', [0.62, 0.3, 0.1], [0, 0.26, -0.24], 0xe0b84a], ['hat3', [0.1, 0.12, 0.12], [0, 0.56, 0.26], 0xe8c040]] }, ['cloth', 0x2f6ba8, 0xe0b84a]);
+// What you put round your neck.
+wear('goldNecklace', 'Golden Collar', 'neck', { necklace: true, gold: 0xe8c040 }, ['beads', 0xe8c040, 0x6b4a2b]);
+wear('beadNecklace', 'Carnelian Collar', 'neck', { necklace: true, gold: 0xb84a3a }, ['beads', 0xb84a3a, 0x6b4a2b]);
+
+for (const k of Object.keys(ITEM)) ITEM[k].max = ITEM[k].tool || ITEM[k].relic || ITEM[k].wear ? 1 : 64;
 
 // Tier 6 is the gems: faster than ancient metal, and faster again at the job their gem suits.
 export const SPEED = [1, 2, 3.5, 5, 6.5, 9, 12];
@@ -193,6 +220,23 @@ r('silk', 1, 'Decor', [['silkFiber', 3]], 'One silkworm cocoon unwinds into a th
 // Food from the new crops.
 r('tortilla', 2, 'Food', [['maize', 3]], 'Maize was the heart of every meal in Mexico. Ground on a stone and patted flat, it becomes a tortilla.');
 r('honeyCake', 2, 'Food', [['wheat', 2], ['honey', 1]], 'Real honey makes a better cake. Egyptians kept bees in clay pipes 4,500 years ago.');
+
+// ---------- Clothes to make and wear ----------
+r('woolTunic', 1, 'Clothing', [['wool', 4]], 'A plain wool tunic is what most people in the ancient world wore every day, belted at the waist.');
+r('leatherJerkin', 1, 'Clothing', [['leather', 4]], 'Hard-wearing leather, for hunting and rough work.');
+r('linenKilt', 1, 'Clothing', [['cotton', 3]], 'Egyptians wore white linen because it is cool in the heat and easy to wash in the river.');
+r('toga', 1, 'Clothing', [['cotton', 4], ['purpleCloth', 1]], 'Only a Roman citizen could wear a toga. A purple stripe on it meant you were a senator.');
+r('purpleCloak', 1, 'Clothing', [['purpleCloth', 3]], 'Tyrian purple came from sea snails and cost more than gold. Emperors kept the deepest purple for themselves.');
+r('silkRobe', 1, 'Clothing', [['silk', 2], ['blueCloth', 1]], 'Chinese silk travelled 6,000 miles along the Silk Road, and nobody in the west knew how it was made.');
+r('bronzeArmour', 1, 'Clothing', [['bronzeIngot', 4], ['leather', 2]], 'A Greek hoplite wore a bronze breastplate and carried a round shield. The bronze was polished until it shone.');
+r('ironArmour', 1, 'Clothing', [['ironIngot', 5], ['leather', 2]], 'Roman legionaries wore iron strips on leather straps, so they could bend and still be protected.');
+r('strawHat', 1, 'Clothing', [['wheat', 4]], 'A wide straw hat keeps the sun off while you work in the fields.');
+r('bronzeHelmet', 1, 'Clothing', [['bronzeIngot', 3]], 'A Corinthian helmet covered the whole face, with a horsehair crest along the top.');
+r('ironHelmet', 1, 'Clothing', [['ironIngot', 3], ['redCloth', 1]], 'A centurion wore his crest across his helmet rather than along it, so his men could find him.');
+r('goldCrown', 1, 'Clothing', [['goldIngot', 3], ['amethyst', 1]], 'Gold does not tarnish, which is why crowns were made of it: a king looked the same at the end of his reign as at the start.');
+r('nemes', 1, 'Clothing', [['blueCloth', 2], ['goldIngot', 1]], "The striped headcloth every pharaoh wore, with a cobra at the brow. Tutankhamun's golden mask shows one.");
+r('goldNecklace', 1, 'Clothing', [['goldIngot', 2]], 'A broad gold collar was worn flat across the shoulders in Egypt, by the living and the dead alike.');
+r('beadNecklace', 1, 'Clothing', [['beads', 2]], 'Carnelian beads were traded from the Indus valley all the way to Mesopotamia 4,000 years ago.');
 r('fishStew', 1, 'Food', [['cookedSquid', 1], ['wheat', 1]]);
 // Hides and cloth.
 r('parchment', 4, 'Decor', [['crocodileLeather', 2]], 'Crocodile hide is thick and tough: shields, armour and drum skins were made from it.');

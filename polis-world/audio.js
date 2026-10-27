@@ -100,6 +100,7 @@ export class Sound {
     // The bed of sound under everything: wind, and the sea when you're near it.
     this.bedGain = c.createGain(); this.bedGain.gain.value = 0; this.bedGain.connect(this.master);
     this.wind = this.makeWind();
+    this.rain = this.makeRain();
     this.started = true;
     this.nextNoteAt = c.currentTime + 0.2;
   }
@@ -125,6 +126,34 @@ export class Sound {
     for (let i = 0; i < fade; i++) { const f = i / fade; d[i] = d[i] * f + d[n - fade + i] * (1 - f); }
     const src = c.createBufferSource(); src.buffer = buf; src.loop = true; src.start();
     return src;
+  }
+
+  /// Rain: a wide hiss of noise, with a lower rumble underneath for heavy rain, both held at zero
+  /// until the weather turns. Indoors it is muffled rather than silenced, the way real rain on a roof is.
+  makeRain() {
+    const c = this.ctx;
+    const src = this.noiseLoop(5);
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1100; hp.Q.value = 0.4;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 7000;
+    const g = c.createGain(); g.gain.value = 0;
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.master);
+    // A soft patter underneath, so heavy rain has some weight to it.
+    const src2 = this.noiseLoop(4);
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 420; bp.Q.value = 0.7;
+    const g2 = c.createGain(); g2.gain.value = 0;
+    src2.connect(bp); bp.connect(g2); g2.connect(this.master);
+    return { g, g2, lp };
+  }
+
+  /// How hard it is raining (0 to 1) and how much of the sky you can see (1 outdoors, less under a roof).
+  setRain(amount, openness = 1) {
+    if (!this.ctx || !this.rain) return;
+    const t = this.ctx.currentTime;
+    const a = this.on ? Math.max(0, Math.min(amount, 1)) : 0;
+    this.rain.g.gain.setTargetAtTime(a * 0.09 * (0.3 + 0.7 * openness), t, 1.0);
+    this.rain.g2.gain.setTargetAtTime(a * a * 0.05, t, 1.4);
+    // Under a roof the hiss loses its top end and turns into a drumming.
+    this.rain.lp.frequency.setTargetAtTime(900 + 6100 * openness, t, 1.2);
   }
 
   makeWind() {

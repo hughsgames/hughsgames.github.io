@@ -21,7 +21,7 @@ export const PARTS = [
   ['robe', 'root', [0, 0.62, 0], [0.52, 0.62, 0.28], 'shirt'],
   ['body', 'upper', [0, 1.125, 0], [0.5, 0.75, 0.25], 'shirt'],
   ['belt', 'upper', [0, 0.82, 0], [0.53, 0.08, 0.27], 'belt'],
-  ['neck', 'upper', [0, 1.47, 0.13], [0.3, 0.05, 0.03], 'gold'],
+  ['neck', 'upper', [0, 1.43, 0.1], [0.46, 0.1, 0.17], 'gold'],   // a broad collar, worn flat across the shoulders
   ['armL', 'armL', [0, -0.29, 0], [0.22, 0.58, 0.22], 'sleeves'],
   ['armR', 'armR', [0, -0.29, 0], [0.22, 0.58, 0.22], 'sleeves'],
   ['handL', 'armL', [0, -0.66, 0], [0.2, 0.16, 0.2], 'skin'],

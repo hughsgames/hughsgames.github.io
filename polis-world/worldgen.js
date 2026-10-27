@@ -857,12 +857,14 @@ const SITES = [
   { id: 'shu', tile: [36.0, 63.0], fp: [-13, -11, 13, 11] },
   { id: 'wu', tile: [32.0, 72.0], fp: [-13, -11, 13, 11] },
   { id: 'olympia', tile: [25.2, 19.8], fp: [-22, -15, 22, 15] },   // Oct 24: added last, so every other site stays where it was
+  // Oct 27: the ruins of Liangzhu, the jade city south of the Yangtze, 5,000 years old. Added last again.
+  { id: 'liangzhu', tile: [35.4, 70.2], fp: [-24, -24, 24, 24] },
 ];
 const overlaps = (a, b, m) => a[0] - m <= b[2] && b[0] <= a[2] + m && a[1] - m <= b[3] && b[1] <= a[3] + m;
 const rectDist = (r, px, pz) => Math.max(Math.max(r[0] - px, 0, px - (r[2] + 1)), Math.max(r[1] - pz, 0, pz - (r[3] + 1)));
 
 class Stamper {
-  constructor(w) { this.w = w; this.site = 0; this.pharos = null; }
+  constructor(w, seed = 0) { this.w = w; this.site = 0; this.pharos = null; this.seed = seed; }
   put(x, y, z, b) { const w = this.w; if (!w.inb(x, z) || y < 1 || y >= H) return; w.set(x, y, z, b); const i = w.idx(x, y, z); if (b === 0 || b === B.water) w.protected.delete(i); else w.protected.set(i, this.site); }
   raw(x, y, z, b) { if (!this.w.inb(x, z) || y < 1 || y >= H) return; this.w.set(x, y, z, b); }
   fill(x0, y0, z0, x1, y1, z1, b) { for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) this.put(x, y, z, b); }
@@ -1551,6 +1553,144 @@ class Stamper {
     this.atl = { cx, cz, floorY: fy, relics, door: [cx + 12, fy, cz] };
     return p;
   }
+  /// The ruins of Liangzhu: a jade city on the marshes south of the Yangtze, five thousand years old —
+  /// older than the pyramids of Giza. Its people raised earth walls three miles round, built the oldest
+  /// dams in the world to hold back the floods, and carved jade more finely than anyone had before.
+  /// Nothing is standing now but the earthworks, the water, and what was buried with their kings.
+  liangzhu(cx, cz, r) {
+    const gy = this.level(r, WL + 1);
+    this.flatten(r, gy, B.grass);
+    const jade = [];
+    const W = 22;                                     // half the width of the walled city
+
+    // ---- the great earth walls, broken down and grassed over after five thousand years ----
+    for (let k = 0; k < 4; k++) {
+      const horiz = k < 2, far = k % 2 === 1;
+      for (let t = -W; t <= W; t++) {
+        // The walls are ruined: lower in places, gone altogether where the gates were.
+        const gap = Math.abs(t) < 4;                  // a water gate on each side
+        if (gap) continue;
+        const wear = 2 + Math.round(Math.abs(Math.sin(t * 0.7)) * 2) - (Math.abs(t) > W - 4 ? 1 : 0);
+        const x = horiz ? cx + t : cx + (far ? W : -W);
+        const z = horiz ? cz + (far ? W : -W) : cz + t;
+        for (let w = -2; w <= 2; w++) {
+          const bx = horiz ? x : x + w, bz = horiz ? z + w : z;
+          const h = wear - Math.abs(w);
+          for (let y = 0; y < h; y++) this.put(bx, gy + y, bz, y === h - 1 ? B.grass : B.rammedEarth);
+        }
+      }
+    }
+    // ---- the moat, and the canals that made this a city of water ----
+    for (let k = 0; k < 4; k++) {
+      const horiz = k < 2, far = k % 2 === 1;
+      for (let t = -W - 4; t <= W + 4; t++) {
+        for (let w = 0; w < 3; w++) {
+          const d = W + 4 + w - 2;
+          const x = horiz ? cx + t : cx + (far ? d : -d);
+          const z = horiz ? cz + (far ? d : -d) : cz + t;
+          this.put(x, gy - 1, z, B.water);
+          this.put(x, gy, z, 0);
+        }
+      }
+    }
+    // The four water gates, so you can paddle in.
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (let t = W - 3; t <= W + 7; t++) for (let w = -2; w <= 2; w++) {
+        const x = cx + dx * t + (dx ? 0 : w), z = cz + dz * t + (dz ? 0 : w);
+        this.put(x, gy - 1, z, B.water); this.put(x, gy, z, 0);
+      }
+    }
+
+    // ---- Mojiaoshan: the great rammed-earth palace platform in the middle ----
+    const PH = 7;
+    for (let y = 0; y < PH; y++) {
+      const half = 13 - Math.floor(y / 2.2);
+      for (let z = -half; z <= half; z++) for (let x = -half; x <= half; x++) {
+        const edge = Math.abs(x) === half || Math.abs(z) === half;
+        this.put(cx + x, gy + y, cz + z, edge && y === PH - 1 ? B.grass : B.rammedEarth);
+      }
+    }
+    const top = gy + PH;
+    for (let z = -9; z <= 9; z++) for (let x = -9; x <= 9; x++) this.put(cx + x, top, cz + z, B.grass);
+    // The ramp up the south side. Without it the mound is a sheer three-block step and nobody can
+    // get up to the altar at all — which is how it was built the first time round.
+    for (let k = 0; k <= PH; k++) {
+      const z = cz + 16 - k;
+      for (let x = -3; x <= 3; x++) {
+        for (let y = 0; y <= k; y++) this.put(cx + x, gy + y, z, y === k ? B.rammedEarth : B.rammedEarth);
+        this.put(cx + x, gy + k + 1, z, 0);
+        this.put(cx + x, gy + k + 2, z, 0);
+      }
+      if (k % 3 === 0) { this.put(cx - 4, gy + k + 1, z, B.lamp); this.put(cx + 4, gy + k + 1, z, B.lamp); }
+    }
+    // The post holes of the great hall that stood up here: all that is left of it.
+    for (let a = -8; a <= 8; a += 4) for (let b = -8; b <= 8; b += 4) {
+      this.put(cx + a, top, cz + b, B.stoneBricks);
+      if ((a + b) % 8 === 0) this.put(cx + a, top + 1, cz + b, B.spruceLog);
+    }
+
+    // ---- the altar on the platform, where the bi disc was left to the sky ----
+    for (let y = 0; y < 3; y++) {
+      const h = 4 - y;
+      for (let z = -h; z <= h; z++) for (let x = -h; x <= h; x++) {
+        if (Math.abs(x) !== h && Math.abs(z) !== h && y < 2) continue;
+        this.put(cx + x, top + 1 + y, cz + z, y === 2 ? B.jade : B.marble);
+      }
+    }
+    const altarY = top + 4;
+    this.put(cx, altarY, cz, B.jade);
+    for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) this.put(cx + dx, altarY, cz + dz, B.lamp);
+    jade.push({ id: 'jadeBi', x: cx + 0.5, y: altarY + 1, z: cz + 0.5 });
+
+    // ---- Fanshan: the royal burial mound, away to the north-west ----
+    const fx = cx - 15, fz = cz - 15;
+    for (let y = 0; y < 4; y++) {
+      const half = 7 - y;
+      for (let z = -half; z <= half; z++) for (let x = -half; x <= half; x++) this.put(fx + x, gy + y, fz + z, y === 3 ? B.grass : B.rammedEarth);
+    }
+    // The tomb chamber inside the mound, reached by a stair cut down into it from the top.
+    const ty = gy - 4;
+    this.fill(fx - 4, ty, fz - 3, fx + 4, ty + 3, fz + 3, 0);
+    this.shell(fx - 5, ty - 1, fz - 4, fx + 5, ty + 4, fz + 4, B.stoneBricks);
+    this.fill(fx - 4, ty, fz - 3, fx + 4, ty, fz + 3, B.spruceLog);          // the wooden floor of the grave
+    // A stair from the top of the mound down into it, with a solid tread under every step.
+    for (let k = 0; k <= 7; k++) {
+      const y = gy + 3 - k, z = fz + 6 - k;
+      this.fill(fx - 1, y, z, fx + 1, y + 2, z, 0);
+      this.fill(fx - 1, y - 1, z, fx + 1, y - 1, z, B.stoneBricks);
+      if (k % 3 === 0) this.put(fx - 2, y + 1, z, B.lamp);
+    }
+    this.fill(fx - 1, ty + 1, fz + 4, fx + 1, ty + 3, fz + 4, 0);            // the doorway into the chamber
+    // What they buried with their king: jade, and more jade.
+    for (const [dx, dz] of [[-3, -2], [3, -2], [-3, 2], [3, 2], [0, -3]]) this.put(fx + dx, ty + 1, fz + dz, B.jade);
+    this.put(fx, ty + 1, fz, B.jade);
+    for (const [dx, dz] of [[-2, 0], [2, 0]]) this.put(fx + dx, ty + 1, fz + dz, B.lamp);
+    jade.push({ id: 'jadeCong', x: fx - 1.5, y: ty + 1, z: fz + 0.5 });
+    jade.push({ id: 'jadeAxe', x: fx + 1.5, y: ty + 1, z: fz + 0.5 });
+
+    // ---- the dams up the valley: the oldest waterworks anywhere ----
+    for (let k = 0; k < 2; k++) {
+      const dz2 = cz - W - 12 - k * 7;
+      for (let x = -16; x <= 16; x++) {
+        const h = 3 - Math.floor(Math.abs(x) / 9);
+        for (let y = 0; y < h; y++) this.put(cx + x + k * 6, gy + y, dz2, y === h - 1 ? B.grass : B.rammedEarth);
+      }
+    }
+
+    // ---- five thousand years of weeds ----
+    for (let z = -W; z <= W; z++) for (let x = -W; x <= W; x++) {
+      if (Math.abs(x) < 15 && Math.abs(z) < 15) continue;
+      const h = hash(cx + x, cz + z, this.seed + 211);
+      const gyy = gy;
+      if (h < 0.09) this.put(cx + x, gyy, cz + z, B.tallGrass);
+      else if (h < 0.1) this.put(cx + x, gyy, cz + z, B.bamboo);
+      else if (h < 0.105) this.put(cx + x, gyy, cz + z, B.mossyCobble);
+    }
+
+    this.tomb = (this.tomb || []).concat(jade);
+    return gy;
+  }
+
   build(id, cx, cz, r) {
     switch (id) {
       case 'rome': return this.rome(cx, cz, r); case 'athens': return this.athens(cx, cz, r); case 'giza': return this.giza(cx, cz, r);
@@ -1560,6 +1700,7 @@ class Stamper {
       case 'olympia': return this.olympia(cx, cz, r);
       case 'jerusalem': return this.jerusalem(cx, cz, r); case 'carthage': return this.carthage(cx, cz, r); case 'forbiddenCity': return this.forbiddenCity(cx, cz, r);
       case 'wei': case 'shu': case 'wu': return this.threeKingdoms(cx, cz, r, id);
+      case 'liangzhu': return this.liangzhu(cx, cz, r);
       default: return this.atlantis(cx, cz);
     }
   }
@@ -1695,7 +1836,7 @@ self.onmessage = (e) => {
   const spawn = [Math.floor(map.settle[1] * BPT + BPT / 2), Math.floor(map.settle[0] * BPT + BPT / 2)];
   const { w, cp, wake } = generate(map.rows, s32, spawn);
   post('Building the wonders of the ancient world…', 0.75);
-  const st = new Stamper(w);
+  const st = new Stamper(w, s32);
   const taken = [[spawn[0] - 16, spawn[1] - 16, spawn[0] + 16, spawn[1] + 16]];
   const placed = {};
   SITES.forEach((site, k) => {

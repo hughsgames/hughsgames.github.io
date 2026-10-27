@@ -146,11 +146,22 @@ body.designing #crosshair { display: block !important; }
 
 #designs .panel, #help .panel, #map .panel, .card { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
 #recipes, #designs .panel, #help .panel, .card, .dz-left, .dz-right, .dz-body { touch-action: pan-y; overscroll-behavior: contain; }
-#inventory .panel { width: min(560px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; gap: 10px; padding: 16px; overflow: hidden; }
+#inventory .panel { width: min(760px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; gap: 10px; padding: 16px; overflow: hidden; }
 .phead { display: flex; justify-content: space-between; align-items: center; }
 .phead h2 { margin: 0; font-family: var(--display); font-size: 22px; }
 .done { border: 0; background: none; color: var(--gold); font-weight: 900; font-size: 16px; }
 #invGrid { display: grid; grid-template-columns: repeat(9, minmax(0, 46px)); gap: 3px; justify-content: center; }
+/* You, beside your things, in whatever you are wearing. Drag clothes onto the figure to put them on. */
+#invRow { display: flex; gap: 14px; align-items: flex-start; justify-content: center; }
+#dressing { display: flex; gap: 6px; align-items: flex-start; flex: 0 0 auto; }
+#dressCanvas { width: 150px; height: 230px; border-radius: 10px; border: 2px solid rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, rgba(120, 150, 190, 0.32), rgba(60, 80, 110, 0.32)); cursor: grab; touch-action: none; }
+#dressCanvas.over { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(240, 207, 115, 0.4); }
+#wearSlots { display: flex; flex-direction: column; gap: 4px; }
+.wslot { width: 40px; height: 40px; }
+.wslot.full { border-color: rgba(240, 207, 115, 0.75); }
+#dragGhost { position: fixed; z-index: 99; pointer-events: none; width: 40px; height: 40px; margin: -20px 0 0 -20px; image-rendering: pixelated; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+@media (max-width: 620px) { #invRow { flex-direction: column; align-items: center; } }
 #invGrid .gap { margin-top: 8px; }
 #invGrid .slot.gap ~ .slot { margin-top: 8px; }
 #invHint { font-size: 12px; color: var(--ink-dim); font-weight: 700; min-height: 16px; }
@@ -302,7 +313,17 @@ body.designing #crosshair { display: block !important; }
   <div class="panel">
     <div class="phead"><h2>Inventory</h2><button class="done" id="invDone">Done</button></div>
     <div id="invHint"></div>
-    <div id="invGrid"></div>
+    <div id="invRow">
+      <div id="invGrid"></div>
+      <div id="dressing">
+        <canvas id="dressCanvas" width="150" height="230" aria-label="You, in what you are wearing"></canvas>
+        <div id="wearSlots">
+          <button class="slot wslot" data-slot="head" title="Hat or helmet"></button>
+          <button class="slot wslot" data-slot="body" title="What you wear"></button>
+          <button class="slot wslot" data-slot="neck" title="Collar"></button>
+        </div>
+      </div>
+    </div>
     <div class="phead"><h2>Crafting</h2></div>
     <div id="chips"></div>
     <div id="recipes"></div>
@@ -352,6 +373,7 @@ body.designing #crosshair { display: block !important; }
       <kbd>M</kbd><span>Map (travel to wonders you've found)</span>
       <kbd>F</kbd><span>Eat what you're holding</span>
       <kbd>B</kbd><span>Your designs: design a building, then build copies (R turns it)</span>
+      <kbd>T</kbd><span>Make a twin of one of your own tamed animals (three twins from each animal a day)</span>
       <kbd>V</kbd><span>First-person or third-person view</span>
       <kbd>X</kbd><span>Build (same as right-click)</span>
       <kbd>Z / C</kbd><span>Camera closer / farther</span>

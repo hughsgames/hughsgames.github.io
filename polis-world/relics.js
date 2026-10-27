@@ -145,6 +145,52 @@ function shabti(L) {
   return 1.15;
 }
 
+// ---------- the three great jades of Liangzhu ----------
+const JADE = 0xbcd8c0, JADE_DK = 0x8fb49a, JADE_LT = 0xd8e8d4;
+/// A bi: a flat disc with a hole in the middle, for the sky.
+function jadeBiRelic(L) {
+  for (let k = 0; k < 16; k++) {
+    const a = (k / 16) * Math.PI * 2, r = 0.34;
+    at(L, Math.cos(a) * r, 0.3, Math.sin(a) * r, 0.17, 0.07, 0.17, k % 2 ? JADE : JADE_LT);
+  }
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2 + 0.2;
+    at(L, Math.cos(a) * 0.2, 0.3, Math.sin(a) * 0.2, 0.12, 0.05, 0.12, JADE_DK);
+  }
+  return 1.0;
+}
+/// A cong: square on the outside for the earth, round on the inside for the sky, in stacked tiers.
+function jadeCongRelic(L) {
+  for (let t = 0; t < 4; t++) {
+    const y = 0.16 + t * 0.19;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      at(L, dx * 0.21, y, dz * 0.21, dx ? 0.1 : 0.52, 0.17, dz ? 0.1 : 0.52, t % 2 ? JADE : JADE_LT);
+    }
+    // the god-and-beast face cut at every corner of every tier
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      at(L, sx * 0.19, y + 0.03, sz * 0.19, 0.14, 0.05, 0.14, JADE_DK);
+    }
+  }
+  return 1.1;
+}
+/// A yue: a ceremonial axe, never meant to cut anything, only to be carried by a king.
+function jadeAxeRelic(L) {
+  at(L, 0, 0.5, 0, 0.52, 0.62, 0.1, JADE);
+  at(L, 0.3, 0.5, 0, 0.08, 0.56, 0.07, JADE_LT);          // the edge
+  at(L, -0.18, 0.74, 0.055, 0.1, 0.1, 0.03, JADE_DK);     // the eyes of the little face
+  at(L, 0.02, 0.74, 0.055, 0.1, 0.1, 0.03, JADE_DK);
+  at(L, -0.08, 0.6, 0.055, 0.3, 0.05, 0.03, JADE_DK);
+  at(L, -0.2, 0.3, 0.055, 0.1, 0.1, 0.04, JADE_DK);       // the hole for the haft
+  at(L, 0, 0.12, 0, 0.5, 0.08, 0.11, JADE_LT);
+  return 1.15;
+}
+
+export const JADE_TEXT = {
+  jadeBi: { name: 'A Jade Bi Disc', body: 'A flat ring of jade with a hole through the middle, for the round sky. Jade is so hard that it cannot be cut: every one of these was ground down with wet sand, turn by turn, for months. Hundreds were buried with a single king.' },
+  jadeCong: { name: 'The King of Jade Cong', body: 'Square outside for the earth, round inside for the sky, and at every corner a little face with round eyes — half god, half beast. The real one, dug up at Fanshan in 1986, weighs six and a half kilograms and is the finest piece of jade anyone has ever found from this time.' },
+  jadeAxe: { name: 'The King of Jade Axe', body: 'An axe of pale jade, polished smooth and never once used. It was not a tool but a sign: the man who carried this commanded the city. Five thousand years ago it was already a thing of great value.' },
+};
+
 export const TOMB_TEXT = {
   goldenMask: { name: 'The Golden Funeral Mask', body: "A mask of beaten gold and blue lapis lazuli, made to lie over the pharaoh's face so that the gods would know him. Tutankhamun's mask, found in 1922, is made of eleven kilograms of solid gold." },
   canopicJar: { name: 'A Canopic Jar', body: 'When a pharaoh was mummified his lungs, liver, stomach and intestines were taken out and kept in four stone jars, each with the head of a god on its lid. The heart was left in place: the Egyptians thought you did your thinking with it.' },
@@ -156,7 +202,8 @@ export const TOMB_TEXT = {
 export function buildRelic(id) {
   if (!cache.has(id)) {
     const L = [];
-    const build = { trident, lawTablet: tablet, goldenMask: mask, canopicJar: jar, scarab: scarabRelic, ankh: ankhRelic, shabti }[id] || hippocamp;
+    const build = { trident, lawTablet: tablet, goldenMask: mask, canopicJar: jar, scarab: scarabRelic, ankh: ankhRelic, shabti,
+      jadeBi: jadeBiRelic, jadeCong: jadeCongRelic, jadeAxe: jadeAxeRelic }[id] || hippocamp;
     const scale = build(L);
     cache.set(id, { geo: mergeBoxes(L), scale });
   }

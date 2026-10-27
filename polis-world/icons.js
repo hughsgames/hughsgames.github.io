@@ -363,6 +363,65 @@ const puffer = (p) => {
   p.stroke([[12, 22.5], [19, 23]], 1.1, () => ramp(0x7a6a24)(0.4));
 };
 
+/// Clothes. Every piece is drawn from one of five shapes in its own two colours, so a tunic, a robe,
+/// a breastplate, a hat, a helmet, a crown, a headcloth and a collar all come from the same few lines.
+const CLOTH_ART = {
+  tunic(p, main, trim) {
+    p.poly([[9, 8], [23, 8], [24, 13], [21, 13], [21, 26], [11, 26], [11, 13], [8, 13]], litPoly(main, 8, 8, 24, 26, 0.42, 0.98));
+    p.poly([[9, 8], [13, 8], [13, 12], [9, 11]], litPoly(trim, 8, 8, 14, 12, 0.4, 0.8));     // sleeves
+    p.poly([[19, 8], [23, 8], [24, 11], [19, 12]], litPoly(trim, 18, 8, 24, 12, 0.4, 0.8));
+    p.stroke([[11, 19], [21, 19]], 1.7, (t, sv) => ramp(trim)(clamp(0.7 - sv * 0.3)));       // the belt
+    p.poly([[14, 8], [18, 8], [16, 11.5]], (x, y) => ramp(0x2a2018)(0.3));                   // the neck opening
+  },
+  robe(p, main, trim) {
+    p.poly([[12, 7], [20, 7], [25, 27], [7, 27]], litPoly(main, 7, 7, 25, 27, 0.4, 0.98));
+    p.stroke([[13, 9], [10, 26]], 1.6, (t, sv) => ramp(trim)(clamp(0.78 - sv * 0.3)));       // the stripe down the front
+    p.stroke([[8, 26.5], [24, 26.5]], 1.4, () => ramp(trim)(0.72));                          // the hem
+    p.poly([[13.6, 7], [18.4, 7], [16, 10.5]], () => ramp(0x2a2018)(0.3));
+    for (let k = 0; k < 5; k++) p.stroke([[14 + k * 2, 12], [13.4 + k * 2, 25]], 0.6, () => ramp(main)(0.55));   // folds
+  },
+  armour(p, main, trim) {
+    p.poly([[9, 8], [23, 8], [22, 24], [10, 24]], litPoly(main, 9, 8, 23, 24, 0.4, 1));
+    for (const y of [12, 16, 20]) p.stroke([[10, y], [22, y]], 1.1, (t, sv) => ramp(trim)(clamp(0.6 - sv * 0.25)));
+    p.poly([[13.5, 8], [18.5, 8], [16, 11]], () => ramp(0x2a2018)(0.3));
+    for (const sx of [10.5, 21.5]) p.ball(sx, 10, 1.3, 1.3, ballPaint(mixHex(main, 0xffffff, 0.4)));   // shoulder studs
+    p.stroke([[10, 24.5], [22, 24.5]], 1.6, () => ramp(trim)(0.7));
+  },
+  hat(p, main, trim) {
+    p.poly([[3, 19], [29, 19], [26, 22], [6, 22]], litPoly(main, 3, 19, 29, 22, 0.45, 0.95));  // the wide brim
+    p.ball(16, 15, 6.4, 5.4, ballPaint(main));
+    p.stroke([[10.5, 17.5], [21.5, 17.5]], 1.6, () => ramp(trim)(0.7));                        // the band
+  },
+  helmet(p, main, trim) {
+    p.ball(16, 16, 7.4, 8, ballPaint(main));
+    p.poly([[9, 16], [23, 16], [23, 25], [19, 25], [19, 19], [13, 19], [13, 25], [9, 25]], litPoly(main, 9, 16, 23, 25, 0.35, 0.85));
+    for (let k = 0; k < 9; k++) p.stroke([[12 + k * 1.1, 7.6 - Math.sin(k / 8 * Math.PI) * 2.2], [12.6 + k * 1.1, 11]], 1.5, () => ramp(trim)(0.75));
+    p.stroke([[10.5, 12.5], [21.5, 12.5]], 1, () => ramp(mixHex(main, 0x000000, 0.35))(0.5));
+  },
+  crown(p, main, trim) {
+    p.poly([[7, 16], [25, 16], [25, 24], [7, 24]], litPoly(main, 7, 16, 25, 24, 0.45, 1));
+    for (let k = 0; k < 4; k++) {
+      const x = 8.5 + k * 5;
+      p.poly([[x, 16], [x + 2.4, 9.5], [x + 4.8, 16]], litPoly(main, x, 9, x + 5, 16, 0.5, 1));
+      p.ball(x + 2.4, 9.2, 1.3, 1.3, ballPaint(trim));
+    }
+    p.stroke([[7.5, 20], [24.5, 20]], 1.3, () => ramp(trim)(0.72));
+  },
+  cloth(p, main, trim) {
+    p.poly([[9, 8], [23, 8], [25, 15], [23, 26], [9, 26], [7, 15]], litPoly(main, 7, 8, 25, 26, 0.42, 0.95));
+    for (let k = 0; k < 5; k++) p.stroke([[9.5 + k * 3.2, 9], [8.5 + k * 3.2, 25]], 1.1, () => ramp(trim)(clamp(0.8 - k * 0.04)));
+    p.ball(16, 10, 2, 2.2, ballPaint(trim));                                                   // the cobra at the brow
+  },
+  beads(p, main, trim) {
+    p.stroke([[7, 10], [16, 12], [25, 10]], 1.1, () => ramp(trim)(0.55));
+    for (let k = 0; k < 11; k++) {
+      const t = k / 10, x = 7 + t * 18, y = 12 + Math.sin(t * Math.PI) * 7.5;
+      p.ball(x, y, 1.9, 1.9, ballPaint(k % 3 === 1 ? mixHex(main, 0xffffff, 0.3) : main));
+    }
+  },
+};
+const mixHex = (a, b, t) => { const c = mix(hex(a), hex(b), t); return (Math.round(c[0]) << 16) | (Math.round(c[1]) << 8) | Math.round(c[2]); };
+
 const ART = {
   stick(p) {
     p.stroke([[7, 27], [16, 17], [25, 6]], (t) => 2.8 - t * 0.9, woodPaint(0x8a5a32));
@@ -496,6 +555,45 @@ const ART = {
     for (const [x, y, r] of [[12, 15, 4], [20, 15, 4], [16, 21, 4.2], [16, 12.5, 3.4], [10, 21, 3.2], [22, 21, 3.2]]) {
       p.ball(x, y, r, r, (lit, u, v) => (Math.hypot(u + 0.4, v + 0.42) < 0.24 ? [168, 150, 200] : ramp(0x3c2b50)(clamp(0.18 + lit * 0.8))));
     }
+  },
+  // The three great jades of Liangzhu. Jade is not bright green here but the pale, cloudy,
+  // slightly milky stone the Liangzhu carvers actually used, and every piece wears the little
+  // god-and-beast face they cut into all of it.
+  jadeBi(p) {
+    const r = ramp(0xbcd8c0);
+    p.ball(16, 16, 12.4, 12.4, (lit, u, v, x, y) => {
+      const d = Math.hypot(u, v);
+      if (d < 0.26) return [0, 0, 0];                       // the hole for the sky to look through
+      const band = noise(Math.round(Math.atan2(v, u) * 7), 0, 51) > 0.6 ? 0.07 : 0;
+      return r(clamp(0.26 + lit * 0.62 + band));
+    });
+    p.stroke([[9.6, 9.6], [13.4, 7.4]], 1.2, () => mix(r(1), [255, 255, 255], 0.5));
+    for (let k = 0; k < 10; k++) { const a = k / 10 * 6.283; p.dot(16 + Math.cos(a) * 9.4, 16 + Math.sin(a) * 9.4, ramp(0x8fb49a)(0.5)); }
+  },
+  jadeCong(p) {
+    const r = ramp(0xc8dcc4);
+    // Square outside for the earth, round inside for the sky, in tiers from top to bottom.
+    p.poly([[7, 5], [25, 5], [25, 27], [7, 27]], (x, y) => r(clamp(0.9 - (x - 7) / 44 - (y - 5) / 50)));
+    p.ball(16, 6, 6.2, 2.1, (lit) => ramp(0x9ab89c)(clamp(0.2 + lit * 0.6)));
+    p.ball(16, 6, 3.4, 1.2, () => [18, 26, 20]);            // the bore down the middle
+    for (const y of [11, 17, 23]) {
+      p.stroke([[7, y], [25, y]], 1, () => ramp(0x8fb49a)(0.42));
+      // the god-and-beast face: two eyes and a bar, cut at every corner of every tier
+      for (const x of [10.5, 21.5]) { p.ball(x, y + 3, 1.5, 1.3, ballPaint(0x7a9a82, false)); p.dot(x, y + 3, [30, 42, 34]); }
+      p.stroke([[11, y + 6], [21, y + 6]], 1.1, () => ramp(0x7a9a82)(0.4));
+    }
+    p.stroke([[8.4, 6.4], [8.4, 25]], 1, () => mix(r(1), [255, 255, 255], 0.4));
+  },
+  jadeAxe(p) {
+    // A ceremonial axe: it was never meant to cut anything, only to be carried by a king.
+    p.poly([[8, 6], [22, 8], [24, 22], [9, 25]], (x, y) => ramp(0xcadcc8)(clamp(0.92 - (x - 8) / 40 - (y - 6) / 48)));
+    p.stroke([[22.4, 8.4], [24.2, 21.6]], 1.4, () => mix(ramp(0xcadcc8)(1), [255, 255, 255], 0.3));   // the cutting edge, unblunted
+    p.ball(12.5, 12, 1.7, 1.6, ballPaint(0x7a9a82, false)); p.dot(12.5, 12, [30, 42, 34]);
+    p.ball(17.5, 12.6, 1.7, 1.6, ballPaint(0x7a9a82, false)); p.dot(17.5, 12.6, [30, 42, 34]);
+    p.stroke([[11, 16.5], [19, 17.2]], 1.2, () => ramp(0x7a9a82)(0.42));
+    p.ball(10.4, 20, 1.5, 1.5, ballPaint(0x8fb49a, false));                                           // the hole for the haft
+    p.dot(10.4, 20, [30, 42, 34]);
+    p.stroke([[9.4, 25.4], [23.6, 22.6]], 1, () => ramp(0x8fb49a)(0.45));
   },
   // The golden egg out of the griffon's nest.
   goldenEgg(p) {
@@ -829,6 +927,8 @@ export function paintItem(id, item) {
     return p.outline();
   }
   if (ART[id]) { ART[id](p); return p.outline(); }
+  // Clothes: a shape and two colours, named by the item itself.
+  if (item?.art && CLOTH_ART[item.art[0]]) { CLOTH_ART[item.art[0]](p, item.art[1], item.art[2]); return p.outline(); }
   return null;
 }
 /// Which picture is drawn for a tool name the townspeople use (people.js), so their tools match yours.
@@ -850,6 +950,7 @@ export const SIZE = {
   parchment: 0.3, paper: 0.3, papyrus: 0.35, amphora: 0.75, clayPot: 0.3, beads: 0.3, obsidianBlade: 0.18, glassBottle: 0.15,
   statuette: 0.3, sealStone: 0.05, figs: 0.12, dates: 0.2, olives: 0.15, puls: 0.18, fishStew: 0.2, riceBowl: 0.16,
   tortilla: 0.2, honeyCake: 0.16, salt: 0.14, tea: 0.1, murex: 0.1, lawTablet: 0.6, seahorse: 0.35,
+  jadeBi: 0.22, jadeCong: 0.2, jadeAxe: 0.25,
   // Hugh's resources.
   diamond: 0.1, emerald: 0.1, amethyst: 0.11, blackOpal: 0.1,
   yellowFeather: 0.25, greenFeather: 0.25, blueFeather: 0.25, whiteFeather: 0.25, redFeather: 0.25,
