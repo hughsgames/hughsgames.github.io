@@ -248,6 +248,14 @@ export function createMachines({ scene, group, world, WL, H, IS_WATER, IS_SOLID,
     return null;
   }
   // Is there room for a machine of radius r and height h here? (Checked at a few points round its edge.)
+  /// The ground under a machine's whole footprint, not just its middle: it rests on the highest point beneath it,
+  /// so it never settles with a wing or a skid sunk into a hillside or a step (which used to leave it stuck there).
+  function floorUnder(x, z, r, from) {
+    let y = 0;
+    for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r], [r * 0.7, r * 0.7], [-r * 0.7, r * 0.7], [r * 0.7, -r * 0.7], [-r * 0.7, -r * 0.7]]) y = Math.max(y, groundAt(x + ox, z + oz, from));
+    const wt = waterTop(x, z, from);
+    return wt !== null && wt > y ? wt - 0.1 : y;   // a flying machine skims the water rather than sinking
+  }
   function clear(x, y, z, r, h) {
     for (const [ox, oz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) for (let dy = 0.3; dy < h; dy += 0.9) {
       if (IS_SOLID[world.get(Math.floor(x + ox), Math.floor(y + dy), Math.floor(z + oz))]) return false;
@@ -385,6 +393,7 @@ export function createMachines({ scene, group, world, WL, H, IS_WATER, IS_SOLID,
     }
 
     // Move, one axis at a time, so you slide along walls instead of sticking to them.
+    const wedged = (k === 'fly' || k === 'lift' || k === 'glide') && !clear(m.x, m.y + 0.05, m.z, r, h);
     if (k !== 'aim') {
       for (const axis of ['x', 'z']) {
         const step = (axis === 'x' ? m.vx : m.vz) * dt;
@@ -401,7 +410,13 @@ export function createMachines({ scene, group, world, WL, H, IS_WATER, IS_SOLID,
           if (wt !== null && tip !== null && clear(nx, wt, nz, r * 0.6, 1)) { if (axis === 'x') m.x = nx; else m.z = nz; moved += Math.abs(step); }
           else if (axis === 'x') m.vx = 0; else m.vz = 0;
         } else {
-          if (clear(nx, m.y + 0.05, nz, r, h)) { if (axis === 'x') m.x = nx; else m.z = nz; moved += Math.abs(step); }
+          // Blocked only if this step would take it from clear air into something. If it's already touching
+          // something (it was parked against a wall, or a block was built beside it), it can always move away.
+          if (clear(nx, m.y + 0.05, nz, r, h) || wedged) { if (axis === 'x') m.x = nx; else m.z = nz; moved += Math.abs(step); }
+          else if (!air && clear(nx, m.y + 1.1, nz, r, h) && floorUnder(nx, nz, r * 0.8, m.y + 1.6) <= m.y + 1.1) {
+            // On the ground, it bumps up a one-block step instead of stopping dead, the way you walk up one.
+            if (axis === 'x') m.x = nx; else m.z = nz; m.y = floorUnder(nx, nz, r * 0.8, m.y + 1.6); moved += Math.abs(step);
+          }
           else if (axis === 'x') m.vx *= -0.2; else m.vz *= -0.2;
         }
       }
@@ -425,10 +440,9 @@ export function createMachines({ scene, group, world, WL, H, IS_WATER, IS_SOLID,
       } else if (moved > 0) { m.whT = (m.whT || 0) - dt; if (m.whT <= 0) { m.whT = 0.55; sound.play('clank'); } }
     } else if (k !== 'aim') {
       let ny = m.y + m.vy * dt;
-      if (m.vy > 0 && !clear(m.x, ny + 0.2, m.z, r * 0.7, h)) { ny = m.y; m.vy = 0; }
-      const g = groundAt(m.x, m.z, m.y + 0.6);
-      const wt = waterTop(m.x, m.z, m.y + 0.6);
-      const floor = wt !== null && wt > g ? wt - 0.1 : g;   // a flying machine skims the water rather than sinking
+      // A ceiling stops you climbing — but only a real one just over your head, and never when you're already wedged.
+      if (m.vy > 0 && !wedged && !clear(m.x, ny + 0.2, m.z, r * 0.6, Math.min(h, 2))) { ny = m.y; m.vy = 0; }
+      const floor = floorUnder(m.x, m.z, r * 0.8, m.y + 0.6);
       if (ny <= floor) {
         if (m.vy < -2.5) sound.play('land');
         ny = floor; m.vy = Math.max(0, m.vy);
@@ -443,6 +457,7 @@ export function createMachines({ scene, group, world, WL, H, IS_WATER, IS_SOLID,
         m.g.rotation.x += ((air ? -m.vy * 0.05 : 0) - m.g.rotation.x) * Math.min(dt * 3, 1);
       }
     }
+    m.x = Math.max(3, Math.min(world.n - 3, m.x)); m.z = Math.max(3, Math.min(world.n - 3, m.z));   // the edge of the world stops you
     m.lastYaw = m.yaw;
     m.g.position.set(m.x, m.y, m.z);
     m.g.rotation.y = m.yaw;
@@ -627,7 +642,9 @@ export function createMachines({ scene, group, world, WL, H, IS_WATER, IS_SOLID,
       if (m === riding) continue;
       // An empty flying machine settles to the ground; an empty boat bobs.
       if (m.t.kind === 'fly' || m.t.kind === 'glide' || m.t.kind === 'lift' || m.t.kind === 'drive') {
-        const g = groundAt(m.x, m.z, m.y + 0.6), wt = waterTop(m.x, m.z, m.y + 0.6), floor = wt !== null && wt > g ? wt - 0.1 : g;
+        const [rr] = SIZE[m.id] || [1];
+        const floor = m.t.kind === 'drive' ? groundAt(m.x, m.z, m.y + 0.6) : floorUnder(m.x, m.z, rr * 0.8, m.y + 0.6);
+        if (m.y < floor - 0.01) m.y = floor;   // sunk into something (an old save, or a block put under it): lift it out
         if (m.y > floor + 0.01) { m.vy = Math.max(-12, m.vy - 20 * dt); m.y = Math.max(floor, m.y + m.vy * dt); if (m.y <= floor) m.vy = 0; }
         if (m.t.kind === 'fly') { m.parts.wings[0].rotation.z += (0.12 - m.parts.wings[0].rotation.z) * Math.min(dt * 3, 1); m.parts.wings[1].rotation.z = -m.parts.wings[0].rotation.z; }
         if (m.t.kind === 'lift') { m.spin *= Math.max(0, 1 - dt * 0.6); m.parts.rotor.rotation.y += m.spin * dt; }
