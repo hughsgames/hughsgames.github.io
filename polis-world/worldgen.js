@@ -23,6 +23,8 @@ const B = {
   maize0: 143, maize1: 144, maize2: 145,
   greenMarble: 146, blueMarble: 147, redMarble: 148, purpleMarble: 149, obsidian: 150,
   diamondOre: 151, emeraldOre: 152, amethystOre: 153, opalOre: 154, rockSalt: 155, nest: 156,
+  // Hugh's megajungle (November 1).
+  ironwoodLog: 157, ironwoodLeaves: 158, waterMoss: 159, drainerVine: 160, floodHole: 161,
 };
 const flow = (a) => 80 + a;
 const BIOMES = ['ocean', 'sea', 'lake', 'river', 'beach', 'oasis', 'desert', 'plain', 'forest', 'hill', 'mountain'];
@@ -33,8 +35,8 @@ const H = 96, WL = 32, LIFT = WL - 9, BPT = 10;   // 10 blocks per map square: a
 // Blocks that stop you (solid) and block the sky.
 const SOLID = new Uint8Array(256), CROSS = new Uint8Array(256);
 for (const id of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 34, 37, 38, 41, 42, 43, 44, 45, 46, 51, 52, 53, 54, 55, 59, 60, 61, 62, 63, 64, 67, 68, 69, 72, 74, 75, 76,
-  90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 110, 111, 112, 113, 118, 119]) SOLID[id] = 1;
-for (const id of [30, 31, 32, 33, 56, 58, 65, 66, 70, 71]) CROSS[id] = 1;
+  90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 110, 111, 112, 113, 118, 119, 157, 158, 159, 161]) SOLID[id] = 1;
+for (const id of [30, 31, 32, 33, 56, 58, 65, 66, 70, 71, 160]) CROSS[id] = 1;
 const WATERY = new Uint8Array(256);
 for (const id of [40, 65, 66, 70, 71, 81, 82, 83, 84, 85, 86, 87, 88]) WATERY[id] = 1;
 
@@ -2000,14 +2002,171 @@ function campPlan(w, sx, sz) {
   return { floorY: gy, house: [x0, z0], bed: [x0 + 1, z0 + 1], door: [x0 + 2, z0 + 4], spawn: [x0 + 2.5, z0 + 6.5], pen: [px0, pz0, px1, pz1] };
 }
 
+// ---------- Hugh's megajungle (November 1) ----------
+// Hugh's own invention: a jungle on a high plateau with sheer cliffs all round, where it never stops raining. Ironwood
+// trees, huge and nearly as hard as stone, hold pools of rain in their crowns, walled in by waterblock moss (moss that
+// water can't get through). Drainer vines hang from the branches and down the cliffs, and flash-flood holes wait near
+// the edge. The creatures that live here are added by the game (megajungle.js), using the pools and holes listed here.
+// It stands on the high mountains in the north-east, far from every city, and changes nothing outside its own cliffs.
+const MJ = { cx: 585, cz: 100, R: 44, PY: 62 };
+function mjPhases(seed) { return [hash(1, 2, seed + 901) * 6.283, hash(3, 4, seed + 902) * 6.283, hash(5, 6, seed + 903) * 6.283]; }
+/// How far from the middle the cliff edge is, in the direction a (the same formula is in megajungle.js).
+const mjEdge = (a, ph) => MJ.R * (1 + 0.12 * Math.sin(3 * a + ph[0]) + 0.08 * Math.sin(5 * a + ph[1]) + 0.05 * Math.sin(9 * a + ph[2]));
+function buildMegajungle(w, heights, seed) {
+  const n = w.n, { cx, cz, PY } = MJ, ph = mjPhases(seed), R1 = Math.ceil(MJ.R * 1.3) + 2;
+  const edgeAt = (x, z) => mjEdge(Math.atan2(z - cz, x - cx), ph) - Math.hypot(x - cx, z - cz);   // > 0 inside
+  const surf = new Map();                         // the first open block above the plateau, per column
+  const key = (x, z) => z * n + x;
+  // 1. Raise (or cut) the land to a plateau with sheer cliffs round it.
+  for (let z = cz - R1; z <= cz + R1; z++) for (let x = cx - R1; x <= cx + R1; x++) {
+    if (!w.inb(x, z) || edgeAt(x, z) < 0) continue;
+    const gy = PY + Math.floor(vnoise(x, z, 9, seed + 910) * 2.4);
+    const nat = heights[z * n + x];
+    const r = hash(x, z, seed + 911);
+    const topB = r < 0.1 ? B.mossyCobble : r < 0.2 ? B.waterMoss : B.grass;
+    for (let y = Math.max(1, Math.min(nat, gy) - 4); y < H; y++) {
+      let b = 0;
+      if (y < gy - 4) { b = B.stone; const o = ore(x, y, z, seed); if (o) b = o; else if (hash3(x, y, z, seed + 912) < 0.12) b = B.mossyCobble; }
+      else if (y < gy - 1) b = B.dirt;
+      else if (y === gy - 1) b = topB;
+      w.set(x, y, z, b);
+    }
+    surf.set(key(x, z), gy);
+  }
+  const groundAt = (x, z) => surf.get(key(x, z)) ?? 0;
+  const pools = [], holes = [];
+  // 2. Ironwood trees, about thirteen blocks apart.
+  const G = 13;
+  for (let gz = cz - R1; gz <= cz + R1; gz += G) for (let gx = cx - R1; gx <= cx + R1; gx += G) {
+    const x = gx + Math.floor((hash(gx, gz, seed + 920) - 0.5) * 8), z = gz + Math.floor((hash(gx, gz, seed + 921) - 0.5) * 8);
+    if (edgeAt(x, z) < 6 || edgeAt(x + 2, z + 2) < 6) continue;
+    const gy = groundAt(x, z); if (!gy) continue;
+    const s = hash(x, z, seed + 922) < 0.3 ? 3 : 2;
+    const T = Math.min(20 + Math.floor(hash(x, z, seed + 923) * 8), 89 - gy);
+    mjTree(w, x, gy, z, s, T, seed, pools);
+  }
+  // 3. The jungle floor: bamboo for the anchor sloths, ferns and bushes, flowers.
+  for (const [k, gy] of surf) {
+    const x = k % n, z = Math.floor(k / n);
+    if (w.get(x, gy, z) !== 0 || w.get(x, gy - 1, z) !== B.grass) continue;
+    const r = hash(x, z, seed + 930);
+    if (r < 0.035) { const h = 3 + Math.floor(hash(x, z, seed + 931) * 4); for (let y = gy; y < gy + h; y++) if (w.get(x, y, z) === 0) w.set(x, y, z, B.bamboo); }
+    else if (r < 0.06) { w.set(x, gy, z, B.jungleLeaves); if (r < 0.045 && w.get(x, gy + 1, z) === 0) w.set(x, gy + 1, z, B.jungleLeaves); }
+    else if (r < 0.2) w.set(x, gy, z, B.tallGrass);
+    else if (r < 0.21) w.set(x, gy, z, B.redFlower);
+  }
+  // 4. Flash-flood holes, a few steps in from the cliff edge, all the way round.
+  const NH = 30;
+  for (let k = 0; k < NH; k++) {
+    const a = (k + hash(k, 7, seed + 940) * 0.6) / NH * Math.PI * 2;
+    const d = mjEdge(a, ph) - (3 + hash(k, 8, seed + 941) * 4);
+    const x = Math.floor(cx + Math.cos(a) * d), z = Math.floor(cz + Math.sin(a) * d), gy = groundAt(x, z);
+    if (!gy || IS_TREE[w.get(x, gy, z)] || w.get(x, gy - 1, z) === B.ironwoodLog) continue;
+    w.set(x, gy - 1, z, B.floodHole);
+    if (CROSS[w.get(x, gy, z)] || w.get(x, gy, z) === B.jungleLeaves) w.set(x, gy, z, 0);
+    holes.push({ x: x + 0.5, y: gy, z: z + 0.5, dx: Math.cos(a), dz: Math.sin(a) });
+  }
+  // 5. Drainer vines hanging down the cliffs. They're a way up — at a price.
+  for (let k = 0; k < 90; k++) {
+    if (hash(k, 9, seed + 950) > 0.55) continue;
+    const a = k / 90 * Math.PI * 2, e = mjEdge(a, ph);
+    let x = 0, z = 0, top = 0;
+    for (let d = Math.floor(e) + 3; d > e - 4; d--) { const tx = Math.floor(cx + Math.cos(a) * d), tz = Math.floor(cz + Math.sin(a) * d); if (surf.has(key(tx, tz))) { top = groundAt(tx, tz); break; } x = tx; z = tz; }
+    if (!x || !top || surf.has(key(x, z))) continue;
+    // From level with the lip of the cliff (so you can step off the top of it) all the way down.
+    for (let y = top; y > 1; y--) { const b = w.get(x, y, z); if (b !== 0 && !CROSS[b]) break; w.set(x, y, z, B.drainerVine); }
+  }
+  // 6. A stair of mossy stone cut down the south cliff, so you can walk up.
+  const zE = Math.floor(cz + mjEdge(Math.PI / 2, ph)) - 1;
+  let sy = groundAt(cx, zE), stairs = null;
+  if (sy) {
+    for (let k = 1; k < 40; k++) {
+      const z = zE + k, y = sy - k, nat = heights[z * n + cx];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let yy = Math.min(nat, y) - 1; yy < y; yy++) w.set(cx + dx, yy, z, B.mossyCobble);
+        for (let yy = y; yy <= y + 3; yy++) { const b = w.get(cx + dx, yy, z); if (b !== B.drainerVine) w.set(cx + dx, yy, z, 0); }
+      }
+      if (y <= nat) { stairs = [cx + 0.5, z + 1.5]; break; }
+    }
+  }
+  return { cx, cz, R: MJ.R, ph, PY, pools, holes, stairs, rect: [cx - R1, cz - R1, cx + R1, cz + R1] };
+}
+const IS_TREE = new Uint8Array(256); IS_TREE[157] = 1; IS_TREE[158] = 1;
+/// An ironwood: a trunk two or three blocks across, buttress roots, branches with leaves and hanging vines, a broad
+/// crown — and, in about half of them, a pool of rainwater up in the crown, held in by waterblock moss.
+function mjTree(w, x, gy, z, s, T, seed, pools) {
+  const top = gy + T, tcx = x + s / 2, tcz = z + s / 2;
+  const h = (k) => hash3(x, k, z, seed + 960);
+  for (let dy = 0; dy < T; dy++) for (let i = 0; i < s; i++) for (let j = 0; j < s; j++) w.set(x + i, gy + dy, z + j, B.ironwoodLog);
+  // Buttress roots, like great fins round the foot of the trunk.
+  const mid = Math.floor(s / 2);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (let k = 1; k <= 3; k++) {
+    const bx = dx > 0 ? x + s - 1 + k : dx < 0 ? x - k : x + mid, bz = dz > 0 ? z + s - 1 + k : dz < 0 ? z - k : z + mid;
+    for (let y = gy; y < gy + 4 - k; y++) if (w.get(bx, y, bz) === 0 || CROSS[w.get(bx, y, bz)]) w.set(bx, y, bz, B.ironwoodLog);
+  }
+  const vine = (vx, vy, vz, len) => { for (let y = vy; y > vy - len; y--) { if (w.get(vx, y, vz) !== 0) break; w.set(vx, y, vz, B.drainerVine); } };
+  // The crown: four layers of leaves, widest in the middle.
+  const rc = 5 + s + Math.floor(h(1) * 2);
+  for (const [y, r] of [[top - 2, rc - 1], [top - 1, rc], [top, rc], [top + 1, rc - 2]]) {
+    for (let dz = -r - 1; dz <= r + 1; dz++) for (let dx = -r - 1; dx <= r + 1; dx++) {
+      const X = Math.floor(tcx + dx), Z = Math.floor(tcz + dz);
+      const d = Math.hypot(X + 0.5 - tcx, Z + 0.5 - tcz);
+      if (d > r - hash3(X, y, Z, seed + 961) * 1.3) continue;
+      if (hash3(X, y, Z, seed + 962) < 0.05) continue;
+      put(w, X, y, Z, B.ironwoodLeaves);
+    }
+  }
+  // Vines hanging from the edge of the crown.
+  for (let k = 0; k < 6; k++) {
+    const a = h(10 + k) * 6.283, vx = Math.floor(tcx + Math.cos(a) * (rc - 1)), vz = Math.floor(tcz + Math.sin(a) * (rc - 1));
+    vine(vx, top - 3, vz, 5 + Math.floor(h(20 + k) * 10));
+  }
+  // Branches, lower down, each ending in a clump of leaves with vines beneath.
+  for (const level of [top - 7, top - 12]) {
+    if (level < gy + 6) continue;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (h(level * 4 + dx * 2 + dz) < 0.45) continue;
+      const len = 4 + Math.floor(h(level + 30 + dx + dz * 3) * 3);
+      let ex = 0, ez = 0, ey = level;
+      for (let k = 1; k <= len; k++) {
+        ex = dx > 0 ? x + s - 1 + k : dx < 0 ? x - k : x + mid; ez = dz > 0 ? z + s - 1 + k : dz < 0 ? z - k : z + mid;
+        ey = level + (k > len - 2 ? 1 : 0);
+        w.set(ex, ey, ez, B.ironwoodLog);
+      }
+      for (let oy = -1; oy <= 1; oy++) for (let oz = -2; oz <= 2; oz++) for (let ox = -2; ox <= 2; ox++) if (Math.abs(ox) + Math.abs(oz) + Math.abs(oy) * 2 <= 3) put(w, ex + ox, ey + 1 + oy, ez + oz, B.ironwoodLeaves);
+      vine(ex + (dz ? 1 : 0), ey - 1, ez + (dx ? 1 : 0), 6 + Math.floor(h(level + 50 + dx) * 8));
+      vine(ex - (dz ? 1 : 0), ey - 1, ez - (dx ? 1 : 0), 4 + Math.floor(h(level + 60 + dz) * 8));
+    }
+  }
+  // A pool of rain in the crown, walled with waterblock moss.
+  if (h(2) < 0.55) {
+    const pr = rc >= 8 ? 3 : 2;
+    const pcx = Math.floor(tcx) + Math.floor((h(3) - 0.5) * 2.5), pcz = Math.floor(tcz) + Math.floor((h(4) - 0.5) * 2.5);
+    for (let dz = -pr - 1; dz <= pr + 1; dz++) for (let dx = -pr - 1; dx <= pr + 1; dx++) {
+      const d = Math.hypot(dx, dz);
+      if (d > pr + 0.7) continue;
+      const inner = d <= pr - 0.5;
+      const X = pcx + dx, Z = pcz + dz;
+      w.set(X, top - 1, Z, B.waterMoss);
+      for (const y of [top, top + 1]) w.set(X, y, Z, inner ? B.water : B.waterMoss);
+      w.set(X, top + 2, Z, 0); w.set(X, top + 3, Z, 0);
+    }
+    pools.push({ x: pcx + 0.5, z: pcz + 0.5, y: top + 1.88, r: pr - 0.5, tx: tcx, tz: tcz, ts: s, top, gy });
+    // One long drainer vine from the ground right up beside the crown, so you can climb to the pool (it costs you).
+    const a = h(5) * 6.283, vx = Math.floor(tcx + Math.cos(a) * (rc + 1)), vz = Math.floor(tcz + Math.sin(a) * (rc + 1));
+    for (let y = top + 1; y >= gy; y--) { const b = w.get(vx, y, vz); if (b !== 0 && !CROSS[b]) break; w.set(vx, y, vz, B.drainerVine); }
+  }
+}
+
 function post(msg, p) { self.postMessage({ type: 'progress', msg, p }); }
 
 self.onmessage = (e) => {
   const { map, seed, cityInfo } = e.data;
   const s32 = seed | 0;
   const spawn = [Math.floor(map.settle[1] * BPT + BPT / 2), Math.floor(map.settle[0] * BPT + BPT / 2)];
-  const { w, cp, wake } = generate(map.rows, s32, spawn);
+  const { w, cp, wake, heights } = generate(map.rows, s32, spawn);
   post('Building the wonders of the ancient world…', 0.75);
+  const megajungle = buildMegajungle(w, heights, s32);
   const st = new Stamper(w, s32);
   const taken = [[spawn[0] - 16, spawn[1] - 16, spawn[0] + 16, spawn[1] + 16]];
   const placed = {};
@@ -2033,7 +2192,7 @@ self.onmessage = (e) => {
   let k = 0;
   for (const [i, s] of w.protected) { prot[k++] = i; prot[k++] = s; }
   const canyon = { rect: cp.rect, exit: tunnel.exit, falls: [cp.head + 0.5, cp.top, cp.midZ(cp.head) + 1], fallsBase: cp.floorY(cp.head), tunnelLength: tunnel.length };
-  self.postMessage({ type: 'done', n: w.n, cells: w.cells, bio: w.bio, placed, cities, camp, prot, relics: [...st.atl.relics, ...(st.tomb || [])], leo: st.leo || null, canyon, wake }, [w.cells.buffer, w.bio.buffer, prot.buffer]);
+  self.postMessage({ type: 'done', n: w.n, cells: w.cells, bio: w.bio, placed, cities, camp, prot, relics: [...st.atl.relics, ...(st.tomb || [])], leo: st.leo || null, megajungle, canyon, wake }, [w.cells.buffer, w.bio.buffer, prot.buffer]);
 };
 
 // The great cities (city plans) are in their own file.

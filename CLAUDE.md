@@ -46,12 +46,13 @@ polis-world/        the game (everything below is in here)
 | `scenery.js` | the living sky and the small things that make the world feel alive |
 | `designer.js` | the building designer (design once, then build copies) |
 | `machines.js` | Leonardo's working machines in Florence: models, flying, driving, the crossbow, the robots |
+| `megajungle.js` | Hugh's megajungle: its creatures and traps (the plateau itself is built in `worldgen.js`) |
 
 ## Saves
 
 - Key: `polis-world-web-1`. Backups the player makes from the launch screen are kept under
   `polis-world-web-1-backup-<timestamp>`.
-- `WORLD_VERSION` in `game.js` (currently 13) says which generation of the world a save came
+- `WORLD_VERSION` in `game.js` (currently 14) says which generation of the world a save came
   from. When new cities or terrain are added, bump it and add a line to the `changed` list so
   that **only the newly changed places** are rebuilt in an existing world — never the whole
   map, which would bulldoze what the player built.

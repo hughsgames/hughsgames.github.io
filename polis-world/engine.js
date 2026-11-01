@@ -28,6 +28,8 @@ export const T = {
   obsidian: 121, diamondOre: 122, emeraldOre: 123, amethystOre: 124, opalOre: 125,
   mountainSoil: 126, blackSand: 127, rockSalt: 128,
   nestTop: 129, nestSide: 130, hive: 131, cocoon: 132, appleLeaves: 133,
+  // Hugh's megajungle.
+  ironwoodSide: 134, ironwoodLeaves: 135, waterMoss: 136, drainerVine: 137, floodHole: 138, ironwoodTop: 139,
 };
 // 32 rows of 8 pictures. The padded atlas built from this is 128 × 512, which stays a power of two
 // so the blur used on far-away blocks still works. Rows 10 upwards are drawn by paintTiles below.
@@ -186,6 +188,17 @@ def(154, 'Black Opal Ore', T.opalOre, T.opalOre, T.opalOre, 7, 'pickaxe', 4, 'bl
 def(155, 'Rock Salt', T.rockSalt, T.rockSalt, T.rockSalt, 2.5, 'pickaxe', 1, 'salt');
 // A griffon's nest, high on the cliffs. Break it open and the golden egg is yours — if its mother lets you.
 def(156, "Griffon's Nest", T.nestTop, T.nestSide, T.nestSide, 1.2, '', 0, 'goldenEgg');
+// ---------- Hugh's megajungle (November 1) ----------
+// Ironwood: the hardest wood there is. It takes a long time to chop, even with a good axe.
+def(157, 'Ironwood Log', T.ironwoodTop, T.ironwoodSide, T.ironwoodTop, 9, 'axe', 1, 'ironwoodLog');
+def(158, 'Ironwood Leaves', T.ironwoodLeaves, T.ironwoodLeaves, T.ironwoodLeaves, 0.4, '', 0, null, 'cube', true);
+// Waterblock moss: a thick wet moss that water can't get through, so it holds pools of rain up in the trees.
+def(159, 'Waterblock Moss', T.waterMoss, T.waterMoss, T.waterMoss, 0.8, 'shovel', 0, 'waterMoss');
+// Drainer vines: you can climb them like a ladder, but they drain your health while you hold on.
+def(160, 'Drainer Vine', T.drainerVine, T.drainerVine, T.drainerVine, 0.3, '', 0, 'drainerVine', 'cross', true);
+BLOCKS[160].climb = true; BLOCKS[73].climb = true;
+// A flash-flood hole: step too close and water bursts out of it.
+def(161, 'Flash-Flood Hole', T.floodHole, T.grassSide, T.dirt, -1, '', 0, null);
 // Flowing water: 81–87 are thinner and thinner sheets spreading out, 88 is water falling straight down.
 for (let a = 1; a <= 8; a++) def(80 + a, 'Water', T.water, T.water, T.water, -1, '', 0, null, 'liquid');
 for (let i = 0; i < 256; i++) if (!BLOCKS[i]) def(i, 'Air', 0, 0, 0, 0, '', 0, null, 'none');
@@ -459,6 +472,27 @@ function paintTiles(g) {
   each(T.rockSalt, (x, y, r) => {
     const face = (x + y) % 4 < 2;
     return [shade(hex(r < 0.14 ? 0xe8c0bc : 0xeee8e0), (face ? 1.04 : 0.92) * (0.95 + r * 0.1))];
+  });
+  // ----- Hugh's megajungle -----
+  // Ironwood: dark grey-brown bark in deep ridges, with a dense, almost black heart.
+  each(T.ironwoodSide, (x, y, r) => [shade(hex(0x4a3f36), (x % 3 === 0 ? 0.62 : x % 3 === 1 ? 1.12 : 0.9) * (y % 5 === 0 && x % 3 ? 0.85 : 1) * (0.9 + r * 0.18))]);
+  each(T.ironwoodTop, (x, y, r) => { const d = Math.hypot(x - 4.5, y - 4.5); return [shade(hex(d > 4 ? 0x4a3f36 : Math.floor(d) % 2 ? 0x3a2a22 : 0x2a1e18), 0.9 + r * 0.16)]; });
+  canopy(T.ironwoodLeaves, 0x2a6234, 0x3a7a44);
+  // Waterblock moss: deep wet green, thick and spongy, with drops of water caught in it.
+  each(T.waterMoss, (x, y, r) => { if (rnd(T.waterMoss, x, y, 4) < 0.07) return [hex(0x9fd8e8)]; return [shade(hex(0x2f6b3a), ((x + y * 3) % 5 === 0 ? 0.75 : 1) * (0.85 + r * 0.3))]; });
+  // Drainer vines: dark purple-red strands with pale thorns.
+  each(T.drainerVine, (x, y, r) => {
+    const strand = x === 2 + (y % 4 === 0 ? 1 : 0) || x === 6 - (y % 3 === 0 ? 1 : 0);
+    if (strand) return [shade(hex(0x5a1e3a), 0.8 + r * 0.4)];
+    if ((x === 1 || x === 4 || x === 7) && y % 3 === 1) return [hex(0xe8d8c8)];
+    return clear;
+  });
+  // A flash-flood hole: a dark hole in the ground with water glinting at the bottom.
+  each(T.floodHole, (x, y, r) => {
+    const d = Math.hypot(x - 4.5, y - 4.5);
+    if (d > 4.2) return [shade(hex(0x4f8a3a), 0.85 + r * 0.3)];
+    if (d > 3.2) return [shade(hex(0x3a2a1e), 0.8 + r * 0.3)];
+    return [rnd(T.floodHole, x, y, 2) < 0.2 ? hex(0x5fa8d8) : shade(hex(0x0e1a24), 0.8 + r * 0.4)];
   });
   // The griffon's nest: a great ring of woven sticks, seen from above and from the side.
   each(T.nestTop, (x, y, r) => {

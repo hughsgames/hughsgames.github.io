@@ -125,13 +125,15 @@ wear('beadNecklace', 'Carnelian Collar', 'neck', { necklace: true, gold: 0xb84a3
 // Leonardo's inventions you can carry (November 1). The diving hood is worn on the head; hold the parachute to use it.
 wear('divingSuit', "Leonardo's Diving Hood", 'head', { hat: [['hat1', [0.56, 0.56, 0.56], [0, 0.26, 0], 0x6e4a2a], ['hat2', [0.4, 0.14, 0.06], [0, 0.3, 0.28], 0x9fd0e0], ['hat3', [0.08, 0.5, 0.08], [0, 0.72, -0.18], 0xc9a86a]] }, ['helmet', 0x6e4a2a, 0x9fd0e0]);
 it('parachute', "Leonardo's Parachute", { parachute: true });
+// Hugh's megajungle (November 1).
+it('ironwoodLog', 'Ironwood Log', { block: 157 }); it('waterMoss', 'Waterblock Moss', { block: 159 }); it('drainerVine', 'Drainer Vine', { block: 160 });
 
 for (const k of Object.keys(ITEM)) ITEM[k].max = ITEM[k].tool || ITEM[k].relic || ITEM[k].wear ? 1 : 64;
 
 // Tier 6 is the gems: faster than ancient metal, and faster again at the job their gem suits.
 export const SPEED = [1, 2, 3.5, 5, 6.5, 9, 12];
 export const toolDamage = (t) => !t ? 1 : t.tool === 'sword' ? 3 + t.tier + (t.best ? 3 : 0) : t.tool === 'spear' ? 7 : t.tool === 'axe' ? 2 + t.tier : 1 + Math.floor(t.tier / 2);
-export const LOGS = ['oakLog', 'birchLog', 'spruceLog', 'palmLog', 'jungleLog', 'cherryLog', 'ginkgoLog', 'acaciaLog', 'figLog'];
+export const LOGS = ['oakLog', 'birchLog', 'spruceLog', 'palmLog', 'jungleLog', 'cherryLog', 'ginkgoLog', 'acaciaLog', 'figLog', 'ironwoodLog'];
 export const FUEL = ['coal', 'charcoal'];
 export const STONES = ['cobblestone', 'sandstone', 'limestone', 'granite'];
 

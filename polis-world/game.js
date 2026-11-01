@@ -14,6 +14,7 @@ import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_G
 import { buildRelic, TOMB_TEXT, JADE_TEXT } from './relics.js';
 import { Sound, CITY_LAND } from './audio.js';
 import { createMachines, MACHINES } from './machines.js';
+import { createMegajungle, JUNGLE } from './megajungle.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
@@ -25,7 +26,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 13;   // 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
+const WORLD_VERSION = 14;   // 14: Hugh's megajungle on the north-east plateau (nothing rebuilt: what you built there stays) · 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
@@ -73,7 +74,7 @@ addEventListener('resize', resize);
 resize();
 
 // ---------- game state ----------
-let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null;
+let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null, jungle = null;
 const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color(), rain: 0 };   // the light right now, for the sky and its life
 // The weather. It clouds over, rains for a while, then clears, and does it again later in the day.
 // `now` is how hard it is raining this instant; `until` is the clock reading when this spell ends.
@@ -1048,6 +1049,7 @@ function updateHerds(dt) {
   const a = Math.random() * Math.PI * 2, d = 28 + Math.random() * 30;
   const [x, z] = world.nearestLand(Math.floor(P.x + Math.cos(a) * d), Math.floor(P.z + Math.sin(a) * d));
   if (Math.hypot(x - P.x, z - P.z) < 20) return;
+  if (jungle && jungle.inside(x, z)) return;   // the megajungle has creatures of its own
   const bi = world.bio[z * world.n + x];
   const kinds = bi === 6 ? ['goat', 'camel'] : bi === 9 || bi === 10 ? ['goat', 'sheep'] : bi === 8 ? ['pig', 'cow', 'chicken'] : ['sheep', 'cow', 'chicken', 'pig'];
   let kind = kinds[Math.floor(Math.random() * kinds.length)];
@@ -1200,6 +1202,31 @@ function updateRide(dt, fwd, side) {
   b.g.rotation.y = G.firstPerson ? P.yaw : angleLerp(b.g.rotation.y, m.g.rotation.y, Math.min(dt * 10, 1));
   b.legs[0].rotation.x = -1.35; b.legs[1].rotation.x = -1.35;
   b.arms[0].rotation.x = -0.75; b.arms[1].rotation.x = -0.75;
+}
+
+// ---------- Hugh's megajungle ----------
+// The creatures and traps are in megajungle.js. Here: finding it, and a star for each new creature you spot.
+function jungleSpotted(kind, info) {
+  const key = 'jungle:' + kind;
+  if (G.talked.has(key)) return;
+  G.talked.add(key);
+  message(info.fact);
+  addStars(1, `You spotted ${/s$/.test(info.name) ? '' : /^[aeiou]/.test(info.name) ? 'an ' : 'a '}${info.name}!`);
+  const all = Object.keys(JUNGLE).every((k) => G.talked.has('jungle:' + k));
+  if (all && !G.talked.has('_allJungle')) { G.talked.add('_allJungle'); addStars(3, 'You found every creature in the megajungle!'); }
+}
+function jungleVisit() {
+  if (!jungle.state.inside || G.found.has('megajungle')) return;
+  G.found.add('megajungle');
+  addStars(2, 'You found the megajungle!');
+  showCard('The Megajungle', "Hugh's own invention · high in the mountains",
+    "A jungle on top of a plateau, where it never stops raining. Ironwood trees, as hard as stone, hold pools of rain up in their crowns behind walls of waterblock moss — and the pools are full of fish.\n\nBe careful: almost everything here is a trap. Drainer vines drain your health while you climb them. Flash-flood holes near the cliff edge can sweep you right over. Sponge leeches slow you down. Vampire kites follow your warmth. And if you disturb the invisible fauna, it glows purple — and the harpy wyverns come hunting.\n\nEvery new creature you spot is worth a star.");
+}
+/// Is there a fire near you (a campfire, a torch on the ground, a burning furnace)?
+function nearFire() {
+  const x0 = Math.floor(P.x), y0 = Math.floor(P.y), z0 = Math.floor(P.z);
+  for (let y = y0 - 1; y <= y0 + 2; y++) for (let z = z0 - 3; z <= z0 + 3; z++) for (let x = x0 - 3; x <= x0 + 3; x++) { const b = world.get(x, y, z); if (b === 58 || b === 56 || b === 60) return true; }
+  return false;
 }
 
 // ---------- Leonardo's machines ----------
@@ -2140,6 +2167,7 @@ function updateNpcs(dt) {
 }
 function interact(who) {
   if (who.kind === 'machine') { useMachine(who.m); return; }
+  if (who.kind === 'jungle') { if (jungle) jungle.hit(who.c, toolDamage(heldTool()), P); P.swing = 0.25; return; }
   if (SPECIES[who.kind]) { hitMob(who); return; }
   if (FISH[who.kind]) { touchSwimmer(who); return; }
   if (who.kind === 'relic') { takeRelic(who); return; }
@@ -2603,11 +2631,18 @@ function updatePlayer(dt) {
   const fx0 = Math.floor(P.x), fz0 = Math.floor(P.z);
   const feet = world.get(fx0, Math.floor(P.y + 0.4), fz0);
   P.water = IS_WATERY[feet] === 1 || IS_WATERY[world.get(fx0, Math.floor(P.y + 1.2), fz0)] === 1;
-  P.ladder = world.get(fx0, Math.floor(P.y + 0.2), fz0) === 73 || world.get(fx0, Math.floor(P.y + 1.2), fz0) === 73;
+  const lo = world.get(fx0, Math.floor(P.y + 0.2), fz0), hi = world.get(fx0, Math.floor(P.y + 1.2), fz0);
+  P.ladder = !!(BLOCKS[lo].climb || BLOCKS[hi].climb);
+  // A drainer vine holds you up like a ladder, but it drinks your health while you hang on.
+  if (lo === 160 || hi === 160) {
+    P.vineT = (P.vineT ?? 1.2) - dt;
+    if (P.vineT <= 0) { P.vineT = 3; hurt(1, null); if (!G.talked.has('_vine')) { G.talked.add('_vine'); message('Drainer vines are good for climbing, but they drain your health while you hold on. Climb fast!'); } }
+  } else P.vineT = 1.2;
   const flowV = P.water ? currentAt(fx0, Math.floor(P.y + 0.4), fz0) : [0, 0, 0];
   const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
   const suit = G.worn && G.worn.head === 'divingSuit';   // Leonardo's diving hood: walk the sea bed, and quicker under water
-  const speed = (P.water ? (suit ? 3.8 : 2.6) : sprint ? 6.4 : 4.3) * (G.hunger <= 0 ? 0.7 : 1);
+  const slow = jungle ? jungle.state.slow : 1;   // sponge leeches make you slow and heavy
+  const speed = (P.water ? (suit ? 3.8 : 2.6) : sprint ? 6.4 : 4.3) * (G.hunger <= 0 ? 0.7 : 1) * slow;
   let vx = 0, vz = 0;
   if (amt > 0.08) {
     const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
@@ -2621,6 +2656,8 @@ function updatePlayer(dt) {
   } else P.walk = 0;
   // Running water carries you along.
   vx += flowV[0] * 2.2; vz += flowV[2] * 2.2;
+  // A flash flood (or anything else) shoving you along.
+  if (P.pushT > 0) { P.pushT -= dt; vx += P.pushX; vz += P.pushZ; P.vx = vx; P.vz = vz; }
   P.vx += (vx - P.vx) * Math.min(dt * (P.water ? 6 : 14), 1);
   P.vz += (vz - P.vz) * Math.min(dt * (P.water ? 6 : 14), 1);
   // Gravity, jumping, swimming and climbing.
@@ -2642,7 +2679,7 @@ function updatePlayer(dt) {
     if (!k.has('Space') && !diving && !suit && !(amt > 0.08 && P.pitch < -0.3) && world.get(Math.floor(P.x), Math.floor(P.y + 1.5), Math.floor(P.z)) === 0) P.vy = Math.max(P.vy, 0) * 0.5;
   } else {
     P.vy -= 28 * dt;
-    if (P.ground && k.has('Space')) { P.vy = 8.6; P.ground = false; sound.play('jump'); }
+    if (P.ground && k.has('Space')) { P.vy = 8.6 * Math.max(0.7, slow); P.ground = false; sound.play('jump'); }
     // Holding Leonardo's parachute, you float down instead of falling.
     if (!P.ground && P.vy < -2.4 && heldItem()?.id === 'parachute') {
       P.vy = -2.4; P.chute = true;
@@ -2747,8 +2784,9 @@ function updateWeather(dt) {
     }
   }
   // It comes on and goes off gradually, never in a snap.
-  const rate = (W.want > W.now ? 0.055 : 0.085) * dt;
-  W.now += Math.max(-rate, Math.min(rate, W.want - W.now));
+  const want = jungle && jungle.state.inside ? 1 : W.want;   // in Hugh's megajungle it never stops raining
+  const rate = (want > W.now ? (want === 1 && W.want < 1 ? 0.2 : 0.055) : 0.085) * dt;
+  W.now += Math.max(-rate, Math.min(rate, want - W.now));
   look.rain = W.now;
 }
 
@@ -2812,6 +2850,7 @@ function updateDaylight(dt) {
   shared.uCamUnder.value = under ? 1 : 0;
   look.under = under;
   if (under) { const suit = G.worn && G.worn.head === 'divingSuit'; scene.fog.color.copy(deep).multiplyScalar(0.9 * localLight + 0.1); scene.fog.near = suit ? 4 : 0.5; scene.fog.far = (18 + 22 * dayK * localLight) * (suit ? 2.4 : 1); if (suit && !G.talked.has('_dive')) { G.talked.add('_dive'); addStars(1, 'You walked under the sea in Leonardo\'s diving hood!'); } }
+  else if (jungle && jungle.state.mist) { scene.fog.color.setRGB(0.78, 0.78, 0.74); scene.fog.near = 1.5; scene.fog.far = 9; }   // a swarm of mist mimic moths
   else { scene.fog.color.copy(fogC); scene.fog.near = viewChunks * CS * 0.45; scene.fog.far = viewChunks * CS * 1.15; }
   $('underwater').hidden = !under;
   shared.uTime.value += dt;
@@ -2831,19 +2870,23 @@ function hurt(n, from) {
   G.health = Math.max(0, G.health - n);
   shake = 0.35;
   const f = $('hurt'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
-  if (from) { const ax = P.x - from.x, az = P.z - from.z, l = Math.hypot(ax, az) || 1, push = SPECIES[from.kind]?.push ?? 5; P.vx = ax / l * push; P.vz = az / l * push; if (!P.water) { P.vy = 5; P.ground = false; } }
+  if (from) { const ax = P.x - from.x, az = P.z - from.z, l = Math.hypot(ax, az) || 1, push = from.push ?? SPECIES[from.kind]?.push ?? 5; P.vx = ax / l * push; P.vz = az / l * push; if (!P.water) { P.vy = 5; P.ground = false; } }
   refreshHud();
   if (G.health <= 0) faint(from);
 }
 function faint(from) {
   $('fade').classList.add('on');
   if (machines && machines.riding) machines.leave(P, true);
+  // Fainting in the megajungle, you wake at the foot of its stair instead of all the way back at camp.
+  const wild = jungle && G.mj && G.mj.stairs && Math.hypot(P.x - G.mj.cx, P.z - G.mj.cz) < G.mj.R + 20;
   setTimeout(() => {
-    [P.x, P.z] = G.camp.spawn; P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.vx = P.vy = P.vz = 0;
+    if (wild) { [P.x, P.z] = G.mj.stairs; } else [P.x, P.z] = G.camp.spawn;
+    P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.vx = P.vy = P.vz = 0; P.pushT = 0;
     G.health = 10; G.hunger = Math.max(G.hunger, 5);
     for (const m of mobs) if (m.angry > 0) { m.angry = 0; m.flee = 3; }
     $('fade').classList.remove('on'); refreshHud();
-    showCard('You fainted!', 'Back at camp', `${from ? `The ${SPECIES[from.kind]?.name ?? 'animal'} was too strong. ` : ''}You woke up safe at your camp, with everything you were carrying. Wild animals only fight back if you attack them, so be careful who you pick a fight with!`);
+    if (wild) { showCard('You fainted!', 'At the foot of the megajungle', `${from && from.name ? `The ${from.name} was too much for you. ` : 'The megajungle was too much for you. '}You woke up at the bottom of the stair, with everything you were carrying. Rest until your hearts come back, then try again — and watch out for purple glows!`); return; }
+    showCard('You fainted!', 'Back at camp', `${from ? `The ${from.name ?? SPECIES[from.kind]?.name ?? 'animal'} was too strong. ` : ''}You woke up safe at your camp, with everything you were carrying. Wild animals only fight back if you attack them, so be careful who you pick a fight with!`);
   }, 900);
 }
 function updateSurvival(dt) {
@@ -3219,6 +3262,15 @@ function drawMap() {
     b.title = found ? `Travel to ${SITE_TEXT[id].name}` : secret ? 'A legend… somewhere under the sea?' : `${SITE_TEXT[id].name}: not visited yet. Walk there to unlock travel.`;
     b.addEventListener('click', () => { if (!G.found.has(id)) { message(secret ? 'Nobody knows where Atlantis is. Keep exploring!' : `Walk to ${SITE_TEXT[id].name} first; after that you can travel there from the map.`); return; } travel(p.x - 14, p.z + 3); });
     pins.appendChild(b);
+  }
+  if (G.mj) {
+    // Hugh's megajungle, up on its plateau. Once you've been there you can travel to the foot of its stair.
+    const mjb = document.createElement('button'), found = G.found.has('megajungle');
+    mjb.className = 'pin' + (found ? ' found' : ' unfound'); mjb.textContent = 'Megajungle';
+    mjb.style.left = `${(G.mj.cx / n) * 100}%`; mjb.style.top = `${(G.mj.cz / n) * 100}%`;
+    mjb.title = found ? 'Travel to the megajungle' : 'The megajungle: not visited yet. Walk (or fly) there to unlock travel.';
+    mjb.addEventListener('click', () => { if (!found) { message('Walk (or fly) to the megajungle first; after that you can travel there from the map.'); return; } const st = G.mj.stairs || [G.mj.cx, G.mj.cz + G.mj.R + 8]; travel(st[0], st[1]); });
+    pins.appendChild(mjb);
   }
   const home = document.createElement('button');
   home.className = 'pin home'; home.textContent = 'Home';
@@ -3662,7 +3714,7 @@ async function boot() {
     scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
       groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
     for (let i = 0; i < m.prot.length; i += 2) world.protected.set(m.prot[i], m.prot[i + 1]);
-    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo;
+    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo; G.mj = m.megajungle;
     launched.then(start);   // wait for Continue / New world on the launch page
   };
   worker.onerror = () => setLoading('Something went wrong building the world. Reload the page to try again.', 0);
@@ -3677,7 +3729,7 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 12 || s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence');
+    const changed = s.wv >= WORLD_VERSION || s.wv === 13 ? [] : s.wv === 12 || s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence');
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
@@ -3710,6 +3762,9 @@ function start() {
   try {
     if (G.leo) machines = createMachines({ scene, group: entityGroup, world, WL, H, IS_WATER, IS_SOLID, spots: G.leo.machines, targets: G.leo.targets, saved: s && !resized ? s.machines : null, sound, say: message, onFirst: machineFirst, onBullseye });
   } catch (err) { console.warn('machines', err); machines = null; }
+  try {
+    if (G.mj) jungle = createMegajungle({ scene, group: entityGroup, world, H, IS_WATER, IS_SOLID, mj: G.mj, sound, say: message, spotted: jungleSpotted, hurt, drop: (id, n, x, y, z) => dropItem(id, n, x, y, z, 1.4), held: () => heldItem()?.id, nearFire });
+  } catch (err) { console.warn('megajungle', err); jungle = null; }
   try {
     const avoid = [...Object.values(G.placed).map((p) => p.rect), ...Object.values(G.cities).filter(Boolean).map((c) => [c.center[0] - c.R - 4, c.center[1] - c.R - 4, c.center[0] + c.R + 4, c.center[1] + c.R + 4]),
       [G.camp.spawn[0] - 40, G.camp.spawn[1] - 40, G.camp.spawn[0] + 40, G.camp.spawn[1] + 40]];
@@ -3799,6 +3854,7 @@ function loop(now) {
     }
     updatePlayer(dt);
     if (machines) machines.update(dt, P);
+    if (jungle) { jungle.update(dt, P); jungleVisit(); }
     if (P.ground || P.water || P.ride || (machines && machines.riding) || heldItem()?.id !== 'parachute') P.chute = false;
     canopy.visible = !!P.chute;
     if (P.chute) { canopy.position.set(P.x, P.y, P.z); canopy.rotation.y = playerBody.g.rotation.y; }
@@ -3832,5 +3888,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); updateCamera(dt); } }, render: () => { streamChunks(400); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get jungle() { return jungle; }, JUNGLE, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: () => { streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

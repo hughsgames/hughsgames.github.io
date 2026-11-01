@@ -311,6 +311,12 @@ export class Sound {
       case 'twang': this.tone(r(150, 175), { type: 'sawtooth', dur: 0.5, gain: 0.16, slideTo: 70 }); this.noise(800, { dur: 0.18, gain: 0.5, q: 0.8, sweepTo: 2400 }); break;
       case 'boom': this.noise(180, { dur: 0.9, gain: 1.0, q: 0.5, type: 'lowpass', sweepTo: 40 }); this.tone(70, { type: 'sine', dur: 0.6, gain: 0.3, slideTo: 32 }); break;
       case 'thunk': this.noise(260, { dur: 0.16, gain: 0.7, q: 1.2, sweepTo: 120 }); this.tone(140, { type: 'triangle', dur: 0.12, gain: 0.1, slideTo: 90 }); break;
+      // Hugh's megajungle.
+      case 'zap': for (let k = 0; k < 3; k++) this.tone(r(900, 1400), { type: 'square', dur: 0.05, gain: 0.08, slideTo: r(200, 400), when: this.ctx.currentTime + k * 0.05 }); this.noise(3000, { dur: 0.15, gain: 0.4, q: 2 }); break;
+      case 'screech': this.tone(r(1500, 1800), { type: 'sawtooth', dur: 0.5, gain: 0.08, slideTo: r(900, 1100) }); this.noise(2500, { dur: 0.4, gain: 0.25, q: 3, sweepTo: 1500 }); break;
+      case 'glow': this.tone(r(500, 560), { type: 'sine', dur: 0.7, gain: 0.12, slideTo: r(900, 1000) }); this.tone(r(750, 840), { type: 'sine', dur: 0.7, gain: 0.08, slideTo: r(1300, 1500) }); break;
+      case 'gush': this.noise(600, { dur: 1.4, gain: 1.0, q: 0.4, type: 'lowpass', sweepTo: 250 }); this.noise(1800, { dur: 0.9, gain: 0.5, q: 0.6, sweepTo: 900 }); break;
+      case 'squelch': this.noise(350, { dur: 0.18, gain: 0.6, q: 2, sweepTo: 180 }); break;
       case 'roar': this.tone(r(110, 130), { type: 'sawtooth', dur: 0.9, gain: 0.14, slideTo: r(70, 85) }); this.noise(400, { dur: 0.7, gain: 0.3, q: 0.6, type: 'lowpass', sweepTo: 200 }); break;
       case 'no': this.tone(220, { type: 'square', dur: 0.14, gain: 0.1, slideTo: 165 }); break;
       case 'bleat': this.tone(r(380, 460), { type: 'sawtooth', dur: 0.4, gain: 0.1, slideTo: r(260, 320) }); break;
