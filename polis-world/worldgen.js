@@ -369,6 +369,7 @@ function landMap(n, placed) {
     const x = i * LAND_CELL + LAND_CELL / 2, z = j * LAND_CELL + LAND_CELL / 2;
     let best = null, bd = 320;
     for (const s of SITES) {
+      if (s.noLand) continue;
       const c = placed && placed[s.id], sx = c ? c[0] : s.tile[1] * BPT, sz = c ? c[1] : s.tile[0] * BPT;
       const d = Math.hypot(sx - x, sz - z);
       if (d < bd) { bd = d; best = SITE_LAND[s.id] || null; }
@@ -859,6 +860,8 @@ const SITES = [
   { id: 'olympia', tile: [25.2, 19.8], fp: [-22, -15, 22, 15] },   // Oct 24: added last, so every other site stays where it was
   // Oct 27: the ruins of Liangzhu, the jade city south of the Yangtze, 5,000 years old. Added last again.
   { id: 'liangzhu', tile: [35.4, 70.2], fp: [-24, -24, 24, 24] },
+  // Oct 27: Florence in Tuscany, a thousand years later than everything else here. Added last.
+  { id: 'florence', tile: [7.4, 18.8], fp: [-26, -20, 26, 22], noLand: true },   // noLand: added after the trees were, so it mustn't change which plants grow where
 ];
 const overlaps = (a, b, m) => a[0] - m <= b[2] && b[0] <= a[2] + m && a[1] - m <= b[3] && b[1] <= a[3] + m;
 const rectDist = (r, px, pz) => Math.max(Math.max(r[0] - px, 0, px - (r[2] + 1)), Math.max(r[1] - pz, 0, pz - (r[3] + 1)));
@@ -1691,6 +1694,185 @@ class Stamper {
     return gy;
   }
 
+  /// Florence in Tuscany, around 1500. Brunelleschi's dome over the cathedral, the Baptistery beside it,
+  /// the Palazzo Vecchio with its tower, the Arno with the Ponte Vecchio and its shops across it — and in
+  /// the yard behind the workshop, the machines Leonardo drew and nobody built for another four hundred years.
+  florence(cx, cz, r) {
+    const gy = this.level(r, WL + 1);
+    this.flatten(r, gy, B.grass);
+    const shops = [];
+
+    // ---- the piazza, paved in pale stone ----
+    this.fill(cx - 18, gy, cz - 14, cx + 18, gy, cz + 10, B.marble);
+
+    // ---- the cathedral: a long nave, then the great octagonal dome ----
+    const dx = cx - 6, dz = cz - 6;
+    this.fill(dx - 13, gy + 1, dz - 4, dx + 1, gy + 12, dz + 4, B.plaster);
+    this.fill(dx - 12, gy + 1, dz - 3, dx + 0, gy + 11, dz + 3, 0);
+    for (let x = -12; x <= 0; x += 3) {                        // the green and white banding Florence is known for
+      this.fill(dx + x, gy + 1, dz - 4, dx + x, gy + 12, dz - 4, B.greenRoof);
+      this.fill(dx + x, gy + 1, dz + 4, dx + x, gy + 12, dz + 4, B.greenRoof);
+    }
+    this.fill(dx - 13, gy + 13, dz - 4, dx + 1, gy + 13, dz + 4, B.terracotta);
+    for (let z = -3; z <= 3; z++) this.put(dx - 13, gy + 5 + Math.abs(z) - 3, dz + z, 0);   // the west door
+    this.fill(dx - 13, gy + 1, dz - 1, dx - 13, gy + 4, dz + 1, 0);
+
+    // The drum the dome sits on: an octagon, as the real one is.
+    const DR = 9;
+    const oct = (rad, y, blk, hollow) => {
+      for (let z = -rad; z <= rad; z++) for (let x = -rad; x <= rad; x++) {
+        const d = Math.abs(x) + Math.abs(z);
+        if (d > rad + Math.floor(rad * 0.42)) continue;
+        if (Math.abs(x) > rad || Math.abs(z) > rad) continue;
+        const edge = d > rad + Math.floor(rad * 0.42) - 1 || Math.abs(x) === rad || Math.abs(z) === rad;
+        if (hollow && !edge) continue;
+        this.put(cx + x, y, cz + z, blk);
+      }
+    };
+    for (let y = 1; y <= 9; y++) oct(DR, gy + y, B.plaster, true);
+    for (let y = 1; y <= 9; y++) for (const [ox, oz] of [[DR, 0], [-DR, 0], [0, DR], [0, -DR]]) {
+      if (y >= 4 && y <= 7) this.put(cx + ox, gy + y, cz + oz, B.glass);     // the round windows in the drum
+    }
+    // The dome itself: terracotta tiles rising to a white marble lantern, with eight ribs.
+    for (let y = 0; y <= 11; y++) {
+      const rad = Math.max(1, Math.round(DR * Math.cos((y / 12) * Math.PI / 2)));
+      oct(rad, gy + 10 + y, B.terracotta, y < 10);
+      for (const [ox, oz] of [[rad, 0], [-rad, 0], [0, rad], [0, -rad], [rad - 1, rad - 1], [-rad + 1, rad - 1], [rad - 1, -rad + 1], [-rad + 1, -rad + 1]]) {
+        this.put(cx + ox, gy + 10 + y, cz + oz, B.plaster);                   // the eight white ribs
+      }
+    }
+    this.fill(cx - 2, gy + 21, cz - 2, cx + 2, gy + 25, cz + 2, B.marble);
+    this.fill(cx - 1, gy + 21, cz - 1, cx + 1, gy + 24, cz + 1, 0);
+    this.put(cx, gy + 26, cz, B.goldBlock);                                   // the golden ball on the very top
+    for (let y = 1; y <= 9; y++) oct(DR - 1, gy + y, 0, false);                // hollow out the inside
+
+    // ---- the Baptistery: a smaller octagon west of the cathedral, with its golden doors ----
+    const bx = cx - 26, bz = cz - 6;
+    for (let y = 1; y <= 8; y++) for (let z = -5; z <= 5; z++) for (let x = -5; x <= 5; x++) {
+      if (Math.abs(x) + Math.abs(z) > 7) continue;
+      const edge = Math.abs(x) + Math.abs(z) > 6 || Math.abs(x) === 5 || Math.abs(z) === 5;
+      this.put(bx + x, gy + y, bz + z, edge ? ((x + z + y) % 4 === 0 ? B.greenRoof : B.plaster) : 0);
+    }
+    for (let z = -4; z <= 4; z++) for (let x = -4; x <= 4; x++) {
+      if (Math.abs(x) + Math.abs(z) > 6) continue;
+      this.put(bx + x, gy + 9, bz + z, B.terracotta);
+    }
+    this.fill(bx + 5, gy + 1, bz - 1, bx + 5, gy + 3, bz + 1, B.goldBlock);    // the Gates of Paradise
+
+    // ---- the Palazzo Vecchio, square and stern, with its tower ----
+    const px = cx + 14, pz = cz + 4;
+    this.fill(px - 7, gy + 1, pz - 6, px + 7, gy + 11, pz + 6, B.stoneBricks);
+    this.fill(px - 6, gy + 1, pz - 5, px + 6, gy + 10, pz + 5, 0);
+    for (let x = -6; x <= 6; x += 2) for (const zz of [-6, 6]) this.put(px + x, gy + 12, pz + zz, B.stoneBricks);
+    for (let z = -5; z <= 5; z += 2) for (const xx of [-7, 7]) this.put(px + xx, gy + 12, pz + z, B.stoneBricks);
+    this.fill(px - 2, gy + 12, pz - 2, px + 2, gy + 25, pz + 2, B.stoneBricks);
+    this.fill(px - 1, gy + 12, pz - 1, px + 1, gy + 24, pz + 1, 0);
+    for (let x = -2; x <= 2; x += 2) for (const zz of [-2, 2]) this.put(px + x, gy + 26, pz + zz, B.stoneBricks);
+    this.put(px, gy + 27, pz, B.lamp);
+    this.fill(px - 7, gy + 1, pz - 1, px - 7, gy + 4, pz + 1, 0);              // the way in
+    for (let z = -4; z <= 4; z += 2) for (let y = 4; y <= 8; y += 4) { this.put(px - 7, gy + y, pz + z, B.glass); this.put(px + 7, gy + y, pz + z, B.glass); }
+
+    // ---- the Arno, and the Ponte Vecchio with the shops along it ----
+    const rz = cz + 20;
+    for (let x = r[0]; x <= r[2]; x++) for (let z = rz - 3; z <= rz + 3; z++) {
+      for (let y = gy; y >= gy - 2; y--) this.put(x, y, z, B.water);
+      this.put(x, gy + 1, z, 0);
+    }
+    for (let x = cx - 9; x <= cx + 9; x++) {
+      for (let z = rz - 4; z <= rz + 4; z++) this.put(x, gy + 1, z, B.stoneBricks);
+      if ((x - cx) % 6 === 0) for (let z = -4; z <= 4; z += 8) {
+        this.fill(x - 1, gy + 2, rz + z, x + 1, gy + 5, rz + z, B.terracotta);
+        this.fill(x - 1, gy + 2, rz + z, x + 1, gy + 4, rz + z, 0);
+        this.put(x, gy + 6, rz + z, B.terracotta);
+      }
+    }
+    for (let x = cx - 9; x <= cx + 9; x++) for (const z of [rz - 4, rz + 4]) this.put(x, gy + 2, z, B.fence);
+
+    // ---- Leonardo's workshop, and the yard behind it where the machines stand ----
+    const wx = cx - 22, wz = cz + 10;
+    this.fill(wx - 6, gy + 1, wz - 5, wx + 6, gy + 8, wz + 5, B.plaster);
+    this.fill(wx - 5, gy + 1, wz - 4, wx + 5, gy + 7, wz + 4, 0);
+    this.fill(wx - 6, gy + 9, wz - 5, wx + 6, gy + 9, wz + 5, B.terracotta);
+    this.fill(wx - 6, gy + 1, wz + 5, wx - 4, gy + 4, wz + 5, 0);              // the door
+    for (const [ox, oz] of [[-3, -5], [0, -5], [3, -5], [6, 0], [-6, 0]]) this.fill(wx + ox, gy + 3, wz + oz, wx + ox, gy + 5, wz + oz, B.glass);
+    // Inside: a workbench, his shelves of notebooks, a lamp.
+    for (let x = -4; x <= 4; x++) this.put(wx + x, gy + 2, wz - 3, B.scrollShelf);
+    for (let x = -4; x <= 0; x++) this.put(wx + x, gy + 1, wz + 2, B.planks);
+    this.put(wx + 4, gy + 2, wz + 3, B.lamp);
+    this.put(wx - 5, gy + 2, wz - 1, B.lamp);
+
+    // The yard: a flat paved apron, big enough to run at and take off from.
+    this.fill(wx - 10, gy, wz + 8, wx + 14, gy, wz + 22, B.marble);
+    const yard = { x: wx + 2, z: wz + 15, y: gy + 1 };
+
+    // Each machine is built by its own little function, and each remembers where it stands so the
+    // game can put the real, working one on top of it.
+    const put = (id, x, z, build) => { build(x, z); shops.push({ id, x: x + 0.5, y: gy + 1, z: z + 0.5 }); };
+    put('ornithopter', yard.x, yard.z, (x, z) => this.ornithopter(x, gy + 1, z));
+    put('aerialScrew', yard.x + 10, yard.z - 4, (x, z) => this.aerialScrew(x, gy + 1, z));
+    put('crossbow', yard.x - 8, yard.z + 4, (x, z) => this.greatCrossbow(x, gy + 1, z));
+    put('cart', yard.x + 9, yard.z + 5, (x, z) => this.leoCart(x, gy + 1, z));
+    put('tank', yard.x - 7, yard.z - 4, (x, z) => this.armouredCar(x, gy + 1, z));
+
+    this.leo = { x: wx + 1, z: wz + 7, y: gy + 1, machines: shops };
+    return gy;
+  }
+
+  /// The ornithopter: a wooden frame with two great bat wings, the one Leonardo drew most often.
+  ornithopter(x, y, z) {
+    this.fill(x - 1, y, z - 2, x + 1, y, z + 2, B.planks);
+    this.fill(x - 1, y + 1, z - 1, x + 1, y + 1, z + 1, B.planks);
+    this.put(x, y + 2, z, B.redCloth);
+    for (const s of [-1, 1]) {
+      for (let k = 1; k <= 6; k++) {
+        this.put(x + s * (1 + k), y + 1 + Math.floor(k / 3), z - 1, B.spruceLog);
+        for (let w = -1; w <= 2; w++) this.put(x + s * (1 + k), y + 1 + Math.floor(k / 3), z + w, k > 4 && Math.abs(w) > 1 ? 0 : B.redCloth);
+      }
+    }
+    this.put(x, y + 1, z + 3, B.planks);
+  }
+  /// The aerial screw: a helical sail on a mast, the drawing everyone calls Leonardo's helicopter.
+  aerialScrew(x, y, z) {
+    for (let k = 0; k < 7; k++) this.put(x, y + k, z, B.spruceLog);
+    for (let k = 0; k < 14; k++) {
+      const a = k * 0.9, rad = 1 + k / 5;
+      this.put(x + Math.round(Math.cos(a) * rad), y + 3 + Math.floor(k / 3), z + Math.round(Math.sin(a) * rad), B.plaster);
+    }
+    this.fill(x - 2, y, z - 2, x + 2, y, z + 2, B.planks);
+    this.fill(x - 1, y, z - 1, x + 1, y, z + 1, 0);
+  }
+  /// The great crossbow: twenty-seven feet across in his drawing, on six wheels.
+  greatCrossbow(x, y, z) {
+    this.fill(x - 1, y, z - 1, x + 1, y, z + 5, B.planks);
+    for (let k = -7; k <= 7; k++) {
+      const bend = Math.round(Math.abs(k) * Math.abs(k) / 22);
+      this.put(x + k, y + 1, z - 1 + bend, B.spruceLog);
+    }
+    this.fill(x, y + 1, z, x, y + 1, z + 5, B.planks);
+    for (const s of [-1, 1]) for (const dz of [0, 2, 4]) this.put(x + s * 2, y, z + dz, B.spruceLog);
+  }
+  /// The self-propelled cart: springs under the deck, and no horse in front of it.
+  leoCart(x, y, z) {
+    this.fill(x - 2, y + 1, z - 2, x + 2, y + 1, z + 2, B.planks);
+    for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2], [0, 3]]) this.put(x + ox, y, z + oz, B.spruceLog);
+    this.fill(x - 1, y + 2, z - 1, x + 1, y + 2, z + 1, B.spruceLog);
+    this.put(x, y + 3, z, B.bronzeBlock);
+  }
+  /// The armoured car: a round wooden shell like a turtle, with guns all round and a lookout on top.
+  armouredCar(x, y, z) {
+    for (let k = 0; k < 4; k++) {
+      const rad = 4 - k;
+      for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++) {
+        if (dx * dx + dz * dz > rad * rad + 1) continue;
+        const edge = dx * dx + dz * dz > (rad - 1) * (rad - 1);
+        if (k > 0 && !edge) continue;
+        this.put(x + dx, y + k, z + dz, B.planks);
+      }
+    }
+    for (const [ox, oz] of [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, -3]]) this.put(x + ox, y + 1, z + oz, B.bronzeBlock);
+    this.put(x, y + 4, z, B.planks); this.put(x, y + 5, z, B.glass);
+  }
+
   build(id, cx, cz, r) {
     switch (id) {
       case 'rome': return this.rome(cx, cz, r); case 'athens': return this.athens(cx, cz, r); case 'giza': return this.giza(cx, cz, r);
@@ -1701,6 +1883,7 @@ class Stamper {
       case 'jerusalem': return this.jerusalem(cx, cz, r); case 'carthage': return this.carthage(cx, cz, r); case 'forbiddenCity': return this.forbiddenCity(cx, cz, r);
       case 'wei': case 'shu': case 'wu': return this.threeKingdoms(cx, cz, r, id);
       case 'liangzhu': return this.liangzhu(cx, cz, r);
+      case 'florence': return this.florence(cx, cz, r);
       default: return this.atlantis(cx, cz);
     }
   }
@@ -1861,7 +2044,7 @@ self.onmessage = (e) => {
   let k = 0;
   for (const [i, s] of w.protected) { prot[k++] = i; prot[k++] = s; }
   const canyon = { rect: cp.rect, exit: tunnel.exit, falls: [cp.head + 0.5, cp.top, cp.midZ(cp.head) + 1], fallsBase: cp.floorY(cp.head), tunnelLength: tunnel.length };
-  self.postMessage({ type: 'done', n: w.n, cells: w.cells, bio: w.bio, placed, cities, camp, prot, relics: [...st.atl.relics, ...(st.tomb || [])], canyon, wake }, [w.cells.buffer, w.bio.buffer, prot.buffer]);
+  self.postMessage({ type: 'done', n: w.n, cells: w.cells, bio: w.bio, placed, cities, camp, prot, relics: [...st.atl.relics, ...(st.tomb || [])], leo: st.leo || null, canyon, wake }, [w.cells.buffer, w.bio.buffer, prot.buffer]);
 };
 
 // The great cities (city plans) are in their own file.

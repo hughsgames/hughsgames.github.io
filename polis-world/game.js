@@ -24,7 +24,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 11;   // 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
+const WORLD_VERSION = 12;   // 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
@@ -2340,6 +2340,58 @@ function villageTalk(who, page) {
 const rectDist = (r, px, pz) => Math.max(Math.max(r[0] - px, 0, px - (r[2] + 1)), Math.max(r[1] - pz, 0, pz - (r[3] + 1)));
 function siteOf(x, y, z) { const v = world.protected.get(world.idx(x, y, z)); return v === undefined ? null : v; }
 let discoverT = 0;
+// Florence and Liangzhu are added here rather than in data.js, which is generated and would lose a
+// hand-made entry. Florence is much later than everything else in this world — the others are ancient,
+// this one is 1500 CE — and Leonardo says so himself when you ask him.
+SITE_TEXT.florence = {
+  name: 'Florence',
+  place: 'Tuscany, Italy',
+  date: 'The Renaissance, c. 1500 CE',
+  fact: "Florence is where the Renaissance began. Its cathedral is crowned by the biggest brick dome ever built, raised by Filippo Brunelleschi without any scaffolding from the ground — nobody had known how to do it for a thousand years. And in a workshop here lives Leonardo da Vinci, who painted, sculpted, built bridges and filled thousands of pages with machines nobody would build for four hundred years.",
+  more: "Leonardo wrote his notes backwards, in mirror writing, so they read properly only in a looking-glass. He left about 7,000 pages behind. In them are a flying machine, a parachute, a diving suit, a tank, a helicopter and a self-propelled cart — and drawings of the human heart so exact that doctors still recognise them. He finished very few of his paintings. He was always more interested in the next question.",
+  hello: 'Benvenuto a Firenze!',
+  guide: 'Leonardo',
+  title: 'Painter, Engineer and Inventor',
+};
+CITY_INFO.florence = {
+  population: 60000,
+  when: 'around 1500 CE',
+  style: 'roman',
+  life: 'We live in tall stone houses along narrow streets, above the shop or the workshop where we work. The wool trade made this city rich, and the Medici bank made it richer.',
+  names: ['Lucia', 'Piero', 'Caterina', 'Niccolo', 'Bianca', 'Sandro', 'Giulia', 'Donato', 'Isabella', 'Marco', 'Fiammetta', 'Tomaso'],
+  jobs: [
+    ['wool dyer', 'I dye cloth in great vats by the river. Florence grew rich on wool: it comes in raw from England and goes out as the finest cloth in Europe.'],
+    ['apprentice', "I grind pigments and prepare panels in a master's workshop. Boys start at about twelve and sweep the floor for years before they are let near a brush."],
+    ['stonecarver', 'I cut marble from Carrara, up the coast. A block for a statue takes weeks to bring down the mountain and along the river.'],
+    ['banker', 'I keep the ledgers. We invented double-entry bookkeeping here: every sum written twice, so the books must balance, and a mistake shows itself.'],
+  ],
+};
+TALK.florence = {
+  hello: ['Benvenuto!', 'Buongiorno, traveller.', 'Welcome to Florence!'],
+  jobs: {
+    'wool dyer': [
+      'I dye cloth by the Arno. The whole wool guild works along this river — washing, combing, spinning, weaving and dyeing, each in its own street.',
+      'The best red comes from a little insect brought all the way from the east, and it costs more than silver. A cloak dyed with it says more about a man than his name does.',
+      'One in three people in this city works in wool somewhere along the line. It is the wool that paid for the cathedral.',
+    ],
+    apprentice: [
+      'I grind colours all day. Blue is the dearest of all: it comes from a stone, lapis lazuli, carried from mountains far away in the east.',
+      'Master Leonardo keeps a notebook hanging from his belt and draws in it wherever he goes — a face in the market, a bird turning in the air, water going round a post.',
+      'They say he buys caged birds at the market just to open the cages and let them go, so he can watch how they climb away.',
+    ],
+    stonecarver: [
+      'The marble comes from Carrara. Michelangelo goes up there himself to choose his blocks — he says he can see the figure already inside the stone.',
+      'The dome above us is brick, not stone: two shells, one inside the other, laid in a herringbone pattern so each ring holds itself up while the mortar sets.',
+      'Brunelleschi would not tell anyone how he meant to raise it. He won the commission with an egg: he asked the judges to stand one on end, and when none of them could, he cracked its base on the table.',
+    ],
+    banker: [
+      'We write every sum twice, once owed and once owing. If the two columns do not agree, somebody has made a mistake — and the books will tell you so.',
+      'The florin of this city is good anywhere in Europe. A coin people trust is worth more than an army.',
+      'The Medici pay for the painters and the builders. It buys them something money cannot: that in five hundred years people will still say their name.',
+    ],
+  },
+};
+
 // Liangzhu is added here rather than in data.js, which is generated and would lose a hand-made entry.
 SITE_TEXT.liangzhu = {
   name: 'The Ruins of Liangzhu',
@@ -3501,7 +3553,7 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 10 ? ['liangzhu'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu'] : Object.keys(G.cities).concat('liangzhu');
+    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence');
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
