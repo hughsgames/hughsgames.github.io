@@ -27,7 +27,13 @@ const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
 const WORLD_VERSION = 14;   // 14: Hugh's megajungle on the north-east plateau (nothing rebuilt: what you built there stays) · 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
-const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
+const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25, 124: 125, 126: 127, 128: 129, 130: 131, 132: 133, 157: 158 };   // every kind of trunk, and its own leaves
+/// Anything leafy that a tree carries. Trees don't always wear their own leaves: an olive is oak wood under silvery
+/// spruce-like leaves, and an apple tree mixes apple boughs with plain oak leaves. Any of these counts.
+const LEAFY = new Uint8Array(256); for (const b of [8, 10, 12, 25, 125, 127, 129, 131, 133, 134, 158]) LEAFY[b] = 1;
+/// Things that grow on a tree and come down with it: cocoa pods, açaí, hives, cocoons, vines, and the waterblock
+/// moss round an ironwood's rain pool.
+const ON_TREE = new Uint8Array(256); for (const b of [135, 136, 139, 140, 141, 142, 159, 160]) ON_TREE[b] = 1;
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
 const input = { mode: matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'desk', keys: new Set(), joy: { x: 0, y: 0 }, mining: false, buildMode: false, freeLook: false };
@@ -678,50 +684,102 @@ function tapAt(sx, sy) {
 // ---------- falling trees, sand and things on the ground ----------
 const fx = [];       // falling trees and blocks
 const drops = [];
+let fellWhy = '';
 function fellTree(x, y, z, log) {
-  const leaf = LOG_LEAVES[log];
+  // 1. The trunk and branches above the cut: the same wood, joined up. Big trees (a jungle giant, an ironwood two or
+  //    three blocks thick with long branches) have far more wood than a little oak, so the limits are generous.
   const logs = [], seen = new Set(), q = [[x, y + 1, z]];
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (dx || dz) q.push([x + dx, y + 1, z + dz]);   // the rest of a thick trunk
+  const REACH = 11;
   while (q.length) {
     const [cx, cy, cz] = q.pop(), k = world.idx(cx, cy, cz);
     if (seen.has(k) || cy <= y || cy >= H || !world.inb(cx, cz)) continue;
     seen.add(k);
-    if (world.get(cx, cy, cz) !== log || Math.abs(cx - x) > 3 || Math.abs(cz - z) > 3) continue;
-    if (siteOf(cx, cy, cz) !== null) return;
+    if (world.get(cx, cy, cz) !== log || Math.abs(cx - x) > REACH || Math.abs(cz - z) > REACH) continue;
+    if (siteOf(cx, cy, cz) !== null) { fellWhy = 'site'; return; }
     logs.push([cx, cy, cz]);
-    if (logs.length > 24) return;
+    if (logs.length > 600) { fellWhy = 'too many logs'; return; }
     for (let dy = 0; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (dx || dy || dz) q.push([cx + dx, cy + dy, cz + dz]);
   }
-  if (!logs.length) return;
-  for (const [cx, cy, cz] of logs) { const below = world.get(cx, cy - 1, cz); if (below !== log && below !== 0 && !(cx === x && cz === z && cy === y + 1) && IS_SOLID[below]) return; }
-  const leaves = [], lseen = new Set(), lq = [];
+  if (!logs.length) { fellWhy = 'no logs above'; return; }
+  // Roots: low wood standing on the ground round the foot of the trunk (an ironwood's buttress roots, a palm on a
+  // bump) stays behind as a stump instead of stopping the tree from falling.
+  logs.sort((a, b) => a[1] - b[1]);
+  const rooted = new Set();
+  for (const [cx, cy, cz] of logs) {
+    if (cy > y + 3 || (cx === x && cz === z)) continue;
+    const below = world.get(cx, cy - 1, cz), bk = world.idx(cx, cy - 1, cz);
+    if (rooted.has(bk) || (below !== log && IS_SOLID[below] && !LEAFY[below] && !ON_TREE[below])) rooted.add(world.idx(cx, cy, cz));
+  }
+  if (rooted.size) logs.splice(0, logs.length, ...logs.filter(([cx, cy, cz]) => !rooted.has(world.idx(cx, cy, cz))));
+  if (!logs.length) { fellWhy = 'only roots'; return; }
+  // Higher up, anything else solid holding the wood up (a wall, a roof you built) means it isn't a free-standing tree.
+  for (const [cx, cy, cz] of logs) {
+    const below = world.get(cx, cy - 1, cz);
+    if (below === log || below === 0 || LEAFY[below] || ON_TREE[below] || !IS_SOLID[below] || (cx === x && cz === z && cy === y + 1)) continue;
+    fellWhy = `held up by ${below} under ${cx},${cy},${cz}`; return;
+  }
+  // Which columns are this tree's wood, so leaves that belong to the tree next door stay on it.
+  const mine = new Set(logs.map(([cx, , cz]) => cx + ',' + cz)); mine.add(x + ',' + z);
+  const ours = (lx, ly, lz) => {
+    let dOur = 99;
+    for (const c of mine) { const [cx, cz] = c.split(',').map(Number); dOur = Math.min(dOur, Math.max(Math.abs(cx - lx), Math.abs(cz - lz))); if (dOur === 0) return true; }
+    const R = Math.min(5, dOur - 1);
+    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+      const fx = lx + dx, fz = lz + dz;
+      if (mine.has(fx + ',' + fz)) continue;
+      for (let fy = ly; fy >= ly - 8 && fy > 0; fy--) if (LOG_LEAVES[world.get(fx, fy, fz)]) return false;   // another trunk is nearer
+    }
+    return true;
+  };
+  // 2. Its leaves (and fruit, vines and moss), spreading out from the wood. A big crown reaches further.
+  const big = logs.length > 40, maxD = big ? 10 : 4, maxLeaves = big ? 2500 : 220;
+  const leaves = [], extras = [], pools = [], lseen = new Set(), lq = [];
   for (const [cx, cy, cz] of logs) for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) lq.push([cx + dx, cy + dy, cz + dz, 1]);
   while (lq.length) {
     const [cx, cy, cz, d] = lq.shift(), k = world.idx(cx, cy, cz);
     if (lseen.has(k) || cy <= y || !world.inb(cx, cz)) continue;
     lseen.add(k);
-    if (world.get(cx, cy, cz) !== leaf) continue;
-    leaves.push([cx, cy, cz]);
-    if (d < 4 && leaves.length < 160) for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) lq.push([cx + dx, cy + dy, cz + dz, d + 1]);
+    const b = world.get(cx, cy, cz);
+    if (IS_WATER[b] && big) { pools.push([cx, cy, cz]); continue; }   // the rain pool in an ironwood's crown spills out
+    if (!LEAFY[b] && !ON_TREE[b]) continue;
+    if (siteOf(cx, cy, cz) !== null) continue;
+    if (LEAFY[b] && !ours(cx, cy, cz)) continue;
+    (LEAFY[b] ? leaves : extras).push([cx, cy, cz, b]);
+    if (d < maxD && leaves.length + extras.length < maxLeaves) for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) lq.push([cx + dx, cy + dy, cz + dz, d + 1]);
   }
-  if (leaves.length < (log === 24 ? 2 : 4)) return;
-  // A little world with just the tree in it, drawn with the same blocks.
-  const span = 16, cells = new Uint8Array(span * span * H);
+  // A few logs with no leaves at all are something you built, not a tree: those stay put.
+  if (leaves.length < (log === 24 ? 2 : 3)) { fellWhy = `only ${leaves.length} leaves`; return; }
+  // 3. A little world with just the tree in it, drawn with the same blocks, to topple over.
+  let ext = 2;
+  for (const c of [...logs, ...leaves, ...extras]) ext = Math.max(ext, Math.abs(c[0] - x), Math.abs(c[2] - z));
+  const half = Math.min(ext + 1, 24), span = half * 2 + 1, cells = new Uint8Array(span * span * H);
   const mini = { n: span, get(a, b, c) { return a < 0 || c < 0 || a >= span || c >= span || b < 0 || b >= H ? 0 : cells[(b * span + c) * span + a]; } };
-  const putMini = ([cx, cy, cz], b) => { const lx = cx - x + 8, lz = cz - z + 8, ly = cy - y; if (lx >= 0 && lz >= 0 && lx < span && lz < span) cells[(ly * span + lz) * span + lx] = b; };
-  logs.forEach((c) => putMini(c, log)); leaves.forEach((c) => putMini(c, leaf));
-  const g = meshChunk(mini, 0, 0, mini);
+  const putMini = (cx, cy, cz, b) => { const lx = cx - x + half, lz = cz - z + half, ly = cy - y; if (lx >= 0 && lz >= 0 && lx < span && lz < span && ly >= 0 && ly < H) cells[(ly * span + lz) * span + lx] = b; };
+  for (const [cx, cy, cz] of logs) putMini(cx, cy, cz, log);
+  for (const [cx, cy, cz, b] of [...leaves, ...extras]) putMini(cx, cy, cz, b);
   const pivot = new THREE.Group(), inner = new THREE.Group();
-  for (const [geo, mat] of [[g.solid, mats.solid], [g.cut, mats.cut]]) if (geo) { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; inner.add(m); }
-  inner.position.set(-8.5, -1, -8.5);
+  // The mesher works sixteen blocks square at a time, so a big crown is drawn in several pieces.
+  for (let cj = 0; cj * CS < span; cj++) for (let ci = 0; ci * CS < span; ci++) {
+    const g = meshChunk(mini, ci, cj, mini);
+    for (const [geo, mat] of [[g.solid, mats.solid], [g.cut, mats.cut]]) if (geo) { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; inner.add(m); }
+  }
+  inner.position.set(-half - 0.5, -1, -half - 0.5);
   pivot.add(inner);
   pivot.position.set(x + 0.5, y + 1, z + 0.5);
   scene.add(pivot);
-  for (const [cx, cy, cz] of [...leaves, ...logs]) setBlock(cx, cy, cz, 0);
+  for (const [cx, cy, cz] of [...leaves, ...extras, ...logs]) setBlock(cx, cy, cz, 0);
+  for (const [cx, cy, cz] of pools) setBlock(cx, cy, cz, 0);
+  if (pools.length) for (let k = 0; k < 3; k++) burst(x + 0.5 + (Math.random() - 0.5) * 3, y + 6, z + 0.5 + (Math.random() - 0.5) * 3, T.water);
   let away = new THREE.Vector2(x + 0.5 - P.x, z + 0.5 - P.z);
   if (away.length() < 0.1) away.set(Math.sin(P.yaw + Math.PI), Math.cos(P.yaw + Math.PI));
   away.normalize();
   const axis = new THREE.Vector3(away.y, 0, -away.x);
-  fx.push({ kind: 'tree', pivot, axis, t: 0, logs: logs.length, logItem: BLOCKS[log].drop, leaves: leaves.length, oak: log === 7, base: [x + 0.5, y + 1, z + 0.5], dir: away });
+  // What comes down with it: fruit from fig and apple boughs, and whatever was growing on the trunk.
+  const bonus = [];
+  for (const [, , , b] of leaves) if ((b === 133 || b === 134) && Math.random() < 0.12) bonus.push(BLOCKS[b].drop);
+  for (const [, , , b] of extras) if (BLOCKS[b].drop && Math.random() < (b === 159 || b === 135 || b === 136 || b === 160 ? 0.15 : 1)) bonus.push(BLOCKS[b].drop);
+  fx.push({ kind: 'tree', pivot, axis, t: 0, logs: logs.length, logItem: BLOCKS[log].drop, leaves: leaves.length, oak: log === 7, bonus, leafTile: BLOCKS[leaves[0][3]].side, base: [x + 0.5, y + 1, z + 0.5], dir: away });
   message(G.found.has('_tree') ? 'Timber!' : 'Timber! Cut a trunk and the whole tree comes down.');
   G.found.add('_tree');
 }
@@ -754,13 +812,16 @@ function updateFx(dt) {
         f.pivot.quaternion.setFromAxisAngle(f.axis, Math.PI / 2 - 0.08);
         shake = 0.35;
         const along = [f.dir.x, f.dir.y];
-        for (let k = 0; k < f.logs; k++) dropItem(f.logItem, 1, f.base[0] + along[0] * (k + 0.6), f.base[1] + 0.7, f.base[2] + along[1] * (k + 0.6), 1.5);
+        const piles = Math.min(f.logs, 12), each = Math.floor(f.logs / piles), extra = f.logs - each * piles;
+        for (let k = 0; k < piles; k++) dropItem(f.logItem, each + (k < extra ? 1 : 0), f.base[0] + along[0] * (k * f.logs / piles + 0.6), f.base[1] + 0.7, f.base[2] + along[1] * (k * f.logs / piles + 0.6), 1.5);
         let sticks = 0, apples = 0;
         for (let k = 0; k < f.leaves; k++) { if (Math.random() < 0.06) sticks++; if (f.oak && Math.random() < 0.025) apples++; }
         const cx = f.base[0] + along[0] * (f.logs + 1), cz = f.base[2] + along[1] * (f.logs + 1);
         if (sticks) dropItem('stick', sticks, cx, f.base[1] + 1, cz, 2.5);
         for (let k = 0; k < apples; k++) dropItem('apple', 1, cx, f.base[1] + 1, cz, 3);
-        for (let k = 0; k < 3; k++) burst(cx + (Math.random() - 0.5) * 3, f.base[1] + 0.8, cz + (Math.random() - 0.5) * 3, f.oak ? T.oakLeaves : T.birchLeaves);
+        const counts = {}; for (const id of f.bonus || []) counts[id] = (counts[id] || 0) + 1;
+        for (const [id, n] of Object.entries(counts)) if (ITEM[id]) dropItem(id, n, cx, f.base[1] + 1, cz, 3);
+        for (let k = 0; k < 3; k++) burst(cx + (Math.random() - 0.5) * 3, f.base[1] + 0.8, cz + (Math.random() - 0.5) * 3, f.leafTile ?? (f.oak ? T.oakLeaves : T.birchLeaves));
       } else if (f.t > fall + 1.1) {
         f.pivot.traverse((o) => { if (o.material && !o.userData.fade) { o.material = o.material.clone(); o.material.transparent = true; o.userData.fade = true; } });
         const a = 1 - (f.t - fall - 1.1) / 0.6;
@@ -3949,5 +4010,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get jungle() { return jungle; }, JUNGLE, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: () => { streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: () => { streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();
