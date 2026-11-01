@@ -3030,6 +3030,65 @@ function refreshHotbar() {
     }
   }
 }
+// ---------- the compass ----------
+// North is the top of the map, so what the compass says and what the map shows always agree. It also points the way
+// home (blue) and to the place you picked on the map (gold), with how far it is.
+const bearingOf = (dx, dz) => ((Math.atan2(dx, -dz) * 180 / Math.PI) + 360) % 360;
+const heading = () => bearingOf(Math.sin(P.yaw), Math.cos(P.yaw));
+const compassMarks = (() => {
+  const track = $('compassTrack'), out = [];
+  const names = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+  for (let b = 0; b < 360; b += 15) {
+    const el = document.createElement('div');
+    el.className = 'cmark' + (names[b] === undefined ? ' tick' : b % 90 ? ' minor' : '') + (b === 0 ? ' north' : '');
+    if (names[b] !== undefined) el.textContent = names[b];
+    track.appendChild(el); out.push({ el, b });
+  }
+  const pin = (cls) => { const el = document.createElement('div'); el.className = 'cpin ' + cls; el.hidden = true; track.appendChild(el); return el; };
+  return { out, home: pin('home'), aim: pin('aim') };
+})();
+let compassLast = '';
+function updateCompass() {
+  if (!G.started) return;
+  const W = $('compass').clientWidth || 300, span = 150, ppd = W / span, h = heading();
+  const off = (b) => ((b - h + 540) % 360) - 180;
+  const key = h.toFixed(1) + (G.aim ? G.aim.x + ',' + G.aim.z : '') + Math.round(P.x / 4) + ',' + Math.round(P.z / 4) + W;
+  if (key === compassLast) return;
+  compassLast = key;
+  for (const m of compassMarks.out) {
+    const o = off(m.b);
+    m.el.hidden = Math.abs(o) > span / 2 - 4;
+    if (!m.el.hidden) m.el.style.transform = `translateX(calc(-50% + ${(o * ppd).toFixed(1)}px))`;
+  }
+  // Markers for home and for where you're heading; one that's behind you sits at the edge, pointing the way to turn.
+  const place = (el, x, z, label) => {
+    const d = Math.hypot(x - P.x, z - P.z);
+    if (d < 4) { el.hidden = true; return d; }
+    let o = off(bearingOf(x - P.x, z - P.z));
+    const edge = Math.abs(o) > span / 2 - 14;
+    if (edge) o = Math.sign(o) * (span / 2 - 14);
+    el.hidden = false;
+    el.classList.toggle('edge', edge);
+    el.textContent = edge ? (o < 0 ? '◀ ' + label : label + ' ▶') : label;
+    el.style.transform = `translateX(calc(-50% + ${(o * ppd).toFixed(1)}px))`;
+    return d;
+  };
+  place(compassMarks.home, G.camp.spawn[0], G.camp.spawn[1], 'Home');
+  if (G.aim) {
+    const d = place(compassMarks.aim, G.aim.x, G.aim.z, G.aim.name);
+    $('compassRead').textContent = `${G.aim.name} · ${Math.round(d)} blocks`;
+    if (d < 24) { message(`You made it to ${G.aim.name}!`); G.aim = null; compassMarks.aim.hidden = true; scheduleSave(); }
+  } else { compassMarks.aim.hidden = true; $('compassRead').textContent = Math.round(h) + '°'; }
+}
+/// Pick a place on the map to head for: a gold marker appears on the compass.
+function aimFor(name, x, z) {
+  G.aim = { name, x: Math.round(x), z: Math.round(z) };
+  compassLast = '';
+  scheduleSave();
+  closePanels();
+  message(`Follow the gold ${name} marker on your compass. When you get there you can travel back to it from the map any time.`);
+}
+
 function refreshHud() {
   $('stars').textContent = G.stars;
   const h = Math.floor((G.clock % 1440) / 60), m = Math.floor(G.clock % 60);
@@ -3259,8 +3318,8 @@ function drawMap() {
     b.className = 'pin' + (found ? ' found' : ' unfound');
     b.style.left = `${(p.x / n) * 100}%`; b.style.top = `${(p.z / n) * 100}%`;
     b.textContent = secret ? '?' : SITE_TEXT[id].name;
-    b.title = found ? `Travel to ${SITE_TEXT[id].name}` : secret ? 'A legend… somewhere under the sea?' : `${SITE_TEXT[id].name}: not visited yet. Walk there to unlock travel.`;
-    b.addEventListener('click', () => { if (!G.found.has(id)) { message(secret ? 'Nobody knows where Atlantis is. Keep exploring!' : `Walk to ${SITE_TEXT[id].name} first; after that you can travel there from the map.`); return; } travel(p.x - 14, p.z + 3); });
+    b.title = found ? `Travel to ${SITE_TEXT[id].name}` : secret ? 'A legend… somewhere under the sea?' : `${SITE_TEXT[id].name}: not visited yet. Click to put it on your compass, then walk there.`;
+    b.addEventListener('click', () => { if (!G.found.has(id)) { if (secret) message('Nobody knows where Atlantis is. Keep exploring!'); else aimFor(SITE_TEXT[id].name, p.x, p.z); return; } travel(p.x - 14, p.z + 3); });
     pins.appendChild(b);
   }
   if (G.mj) {
@@ -3269,7 +3328,7 @@ function drawMap() {
     mjb.className = 'pin' + (found ? ' found' : ' unfound'); mjb.textContent = 'Megajungle';
     mjb.style.left = `${(G.mj.cx / n) * 100}%`; mjb.style.top = `${(G.mj.cz / n) * 100}%`;
     mjb.title = found ? 'Travel to the megajungle' : 'The megajungle: not visited yet. Walk (or fly) there to unlock travel.';
-    mjb.addEventListener('click', () => { if (!found) { message('Walk (or fly) to the megajungle first; after that you can travel there from the map.'); return; } const st = G.mj.stairs || [G.mj.cx, G.mj.cz + G.mj.R + 8]; travel(st[0], st[1]); });
+    mjb.addEventListener('click', () => { if (!found) { aimFor('Megajungle', G.mj.cx, G.mj.cz); return; } const st = G.mj.stairs || [G.mj.cx, G.mj.cz + G.mj.R + 8]; travel(st[0], st[1]); });
     pins.appendChild(mjb);
   }
   const home = document.createElement('button');
@@ -3287,8 +3346,9 @@ function drawMap() {
   }
   // You: a red dot on top of everything (it used to hide under the Home label).
   const me = document.createElement('div');
-  me.className = 'pin you'; me.title = 'You are here';
+  me.className = 'pin you arrow'; me.title = 'You are here, facing this way';
   me.style.left = `${(P.x / n) * 100}%`; me.style.top = `${(P.z / n) * 100}%`;
+  me.style.transform = `translate(-50%, -50%) rotate(${heading().toFixed(0)}deg)`;
   pins.appendChild(me);
   void s;
 }
@@ -3543,7 +3603,7 @@ function save() {
     for (const [i, b] of G.edits) edits.push(i, b);
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, machines: machines ? machines.state() : undefined,
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
       animals: mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame, clones: m.clones || 0, cloneDay: m.cloneDay ?? -1 })) }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
@@ -3735,7 +3795,7 @@ function start() {
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
     if (s.p) [P.x, P.y, P.z, P.yaw, P.pitch] = s.p;
     else { [P.x, P.z] = G.camp.spawn; P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.yaw = 0; P.pitch = -0.2; }
-    G.clock = s.clock; G.stars = s.stars; G.found = new Set(s.found); G.talked = new Set(s.talked); G.hunger = s.hunger; G.health = s.health ?? 10; selected = s.sel ?? 0; G.firstPerson = s.fp2 ?? true; G.relics = new Set(s.relics || []); G.villagers = s.villagers || []; G.worn = { body: null, head: null, neck: null, ...(s.worn || {}) }; G.giftDay = s.giftDay ?? Math.floor(G.clock / 1440);
+    G.clock = s.clock; G.stars = s.stars; G.found = new Set(s.found); G.talked = new Set(s.talked); G.hunger = s.hunger; G.health = s.health ?? 10; selected = s.sel ?? 0; G.firstPerson = s.fp2 ?? true; G.relics = new Set(s.relics || []); G.villagers = s.villagers || []; G.worn = { body: null, head: null, neck: null, ...(s.worn || {}) }; G.aim = s.aim || null; G.giftDay = s.giftDay ?? Math.floor(G.clock / 1440);
     for (const [i, b] of G.edits) if (b === 60) { const n = world.n; world.set(i % n, Math.floor(i / (n * n)), Math.floor(i / n) % n, 59); }
   } else {
     inv.add('bronzePickaxe', 1); inv.add('bronzeAxe', 1); inv.add('apple', 4); inv.add('torch', 3);
@@ -3876,6 +3936,7 @@ function loop(now) {
     if (openPanel === 'inventory') dressPreview.render(dt);
     if (events) events.update(dt, P);
     updateCamera(dt);
+    updateCompass();
     // What you're pointing at.
     if (input.mode === 'desk' && !openPanel) { const a = aimFrom(); outline.visible = !!a.block; if (a.block) outline.position.set(a.block.x + 0.5, a.block.y + 0.5, a.block.z + 0.5); }
     else outline.visible = false;
@@ -3888,5 +3949,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get jungle() { return jungle; }, JUNGLE, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: () => { streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get jungle() { return jungle; }, JUNGLE, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: () => { streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

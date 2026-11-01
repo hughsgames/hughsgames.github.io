@@ -57,6 +57,26 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .slot.sel { border-color: var(--gold); background: rgba(240, 207, 115, 0.22); }
 .slot .n { position: absolute; right: 3px; bottom: 1px; font-size: 12px; font-weight: 900; text-shadow: 0 1px 2px #000; }
 .slot .k { position: absolute; left: 4px; top: 1px; font-size: 10px; color: var(--ink-dim); }
+/* The compass across the top of the screen. North is the top of the map. */
+#compass { position: fixed; left: 50%; top: max(12px, env(safe-area-inset-top, 0px)); transform: translateX(-50%); width: min(380px, calc(100vw - 440px)); min-width: 220px; height: 46px; border-radius: 10px; background: var(--glass); overflow: hidden; pointer-events: none; }
+#compassTrack { position: absolute; inset: 0; }
+.cmark { position: absolute; left: 50%; top: 5px; transform: translateX(-50%); font-weight: 900; font-size: 15px; color: var(--ink); text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.cmark.minor { font-size: 11px; top: 8px; color: var(--ink-dim); }
+.cmark.tick { top: 9px; width: 2px; height: 8px; background: rgba(255, 255, 255, 0.45); }
+.cmark.north { color: #ff6a5a; font-size: 17px; top: 3px; }
+.cpin { position: absolute; left: 50%; top: 25px; transform: translateX(-50%); font-size: 11px; font-weight: 900; padding: 1px 6px; border-radius: 6px; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.cpin.home { background: #2f6fd1; color: #fff; }
+.cpin.aim { background: var(--gold); color: #1b160c; }
+.cpin.edge { opacity: 0.85; }
+#compassNeedle { position: absolute; left: 50%; top: 0; width: 0; height: 0; transform: translateX(-50%); border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 8px solid var(--gold); }
+#compassRead { position: absolute; right: 8px; bottom: 3px; font-size: 10px; font-weight: 800; color: var(--ink-dim); }
+@media (max-width: 720px) {
+  #compass { top: auto; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); width: min(300px, calc(100vw - 32px)); min-width: 0; }
+  #message { bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+/* On the map: you are an arrow pointing the way you face. */
+.pin.you.arrow { width: 0; height: 0; border-radius: 0; background: none; border: 0; box-shadow: none; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 18px solid #ff3b30; filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #000); }
+.mapnorth { position: absolute; left: 8px; top: 8px; padding: 3px 7px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; font-weight: 900; font-size: 13px; pointer-events: none; }
 #message { position: fixed; left: 50%; bottom: calc(120px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); text-align: center; font-weight: 800; padding: 8px 14px; border-radius: 10px; background: var(--glass); }
 #toasts { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(120px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 4px; align-items: flex-end; pointer-events: none; }
 .toast { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; background: var(--glass); font-weight: 900; font-size: 13px; animation: tin 0.25s ease-out; }
@@ -272,6 +292,12 @@ body.designing #crosshair { display: block !important; }
     <div class="pill" id="healthPill" hidden><div class="label">Health</div><div id="healthWrap"><div id="health"></div></div></div>
   </div>
 </div>
+<!-- The compass: which way you're facing, the way home, and the place you picked on the map. -->
+<div id="compass" aria-label="Compass">
+  <div id="compassTrack"></div>
+  <div id="compassNeedle"></div>
+  <div id="compassRead"></div>
+</div>
 <div id="underwater" hidden></div>
 <div id="crosshair"></div>
 <div id="bottom"><div id="heldName"></div><div id="hotbar"></div></div>
@@ -333,8 +359,8 @@ body.designing #crosshair { display: block !important; }
 <div id="map" class="overlay" hidden>
   <div class="panel">
     <div class="phead"><h2>The World</h2><button class="done" id="mapDone">Done</button></div>
-    <div class="mapwrap"><canvas id="mapCanvas" width="560" height="560"></canvas><div id="mapPins"></div></div>
-    <p class="maphint">Gold labels are places you've visited: click one to travel there. Grey ones you haven't reached yet; walk there first. Blue is your camp. The red dot is you, and green dots are animals you've tamed.</p>
+    <div class="mapwrap"><canvas id="mapCanvas" width="560" height="560"></canvas><div id="mapPins"></div><div class="mapnorth">▲ N</div></div>
+    <p class="maphint">Gold labels are places you've visited: click one to travel there. Grey ones you haven't reached yet: click one and a gold marker on your compass shows you the way. North is the top of the map. Blue is your camp. The red arrow is you, pointing the way you're facing, and green dots are animals you've tamed.</p>
   </div>
 </div>
 
