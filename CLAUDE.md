@@ -45,15 +45,18 @@ polis-world/        the game (everything below is in here)
 | `relics.js` | the three Atlantis relics |
 | `scenery.js` | the living sky and the small things that make the world feel alive |
 | `designer.js` | the building designer (design once, then build copies) |
+| `machines.js` | Leonardo's working machines in Florence: models, flying, driving, the crossbow, the robots |
 
 ## Saves
 
 - Key: `polis-world-web-1`. Backups the player makes from the launch screen are kept under
   `polis-world-web-1-backup-<timestamp>`.
-- `WORLD_VERSION` in `game.js` (currently 6) says which generation of the world a save came
+- `WORLD_VERSION` in `game.js` (currently 13) says which generation of the world a save came
   from. When new cities or terrain are added, bump it and add a line to the `changed` list so
   that **only the newly changed places** are rebuilt in an existing world — never the whole
   map, which would bulldoze what the player built.
+- A new site added to `SITES` must not change which plants grow anywhere else: give it
+  `noLand: true` (see `landMap`), then diff the generated world with and without it.
 - If the world's size changes, the resize path keeps inventory, stars, discoveries, villagers
   and animals, moves everyone to the new camp, and tells the player the world got bigger.
 - The launch screen has a copy-and-paste backup panel. Saves belong to one web address, so a

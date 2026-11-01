@@ -993,10 +993,10 @@ const CITY_PLANS = {
   // Florence in Leonardo's day: the Duomo, the Palazzo Vecchio and the Arno are in florence() in worldgen.js.
   // The town around them is red-roofed houses, workshops and a city wall with gates.
   florence: (p) => ({
-    cx: p.x, cz: p.z, R: 38, shape: 'square', S: 9, style: 'roman', markets: 0.12, gardens: 0.08,
+    cx: p.x, cz: p.z + 2, R: 46, shape: 'square', S: 9, style: 'roman', markets: 0.12, gardens: 0.08,
     wall: { b: B.stoneBricks, h: 7 }, keep: [p.rect],
     monuments: [
-      { name: 'The Medici Garden', at: [-34, -8], size: [10, 9], build(x0, z0, gy) {
+      { name: 'The Medici Garden', at: [-46, -14], size: [10, 9], build(x0, z0, gy) {
         // Lorenzo de' Medici's sculpture garden, where young artists (Michelangelo among them) learned by copying old statues.
         this.fill(x0, gy, z0, x0 + 9, gy, z0 + 8, B.grass);
         for (let x = x0; x <= x0 + 9; x++) { this.put(x, gy + 1, z0, B.oakLeaves); this.put(x, gy + 1, z0 + 8, B.oakLeaves); }

@@ -13,6 +13,7 @@ import { PARTS as BODY, JOINTS, isUpper, dress, JOBS, pose, boxModel, toolGeomet
 import { paintItem, extrude, toolInHand, PEOPLE_TOOL, TOOL_ITEMS, GRIP as ICON_GRIP, pixelSize, isLongTool } from './icons.js';
 import { buildRelic, TOMB_TEXT, JADE_TEXT } from './relics.js';
 import { Sound, CITY_LAND } from './audio.js';
+import { createMachines, MACHINES } from './machines.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
@@ -24,7 +25,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 12;   // 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
+const WORLD_VERSION = 13;   // 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25 };
 
 // ---------- input mode: computer (keyboard and mouse) or touch screen ----------
@@ -72,7 +73,7 @@ addEventListener('resize', resize);
 resize();
 
 // ---------- game state ----------
-let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null;
+let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null;
 const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color(), rain: 0 };   // the light right now, for the sky and its life
 // The weather. It clouds over, rains for a while, then clears, and does it again later in the day.
 // `now` is how hard it is raining this instant; `until` is the clock reading when this spell ends.
@@ -341,6 +342,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (!document.pointerLockElement && !input.freeLook) { requestLock(); return; }
   if (input.freeLook) drag = { x: e.clientX, y: e.clientY, moved: false };
   if (D.mode) { if (e.button === 2 && D.mode === 'place') { D.rot = (D.rot + 1) % 4; buildGhost(); } else if (e.button === 0) designAction(); return; }
+  if (e.button === 0 && machines && machines.riding) { machineClick = true; return; }   // in a machine, a click fires its guns or its bow
   if (e.button === 0) { const a = aimFrom(); if (a.who) interact(a.who); else input.mining = true; }
   if (e.button === 2) useOrPlace();
 });
@@ -611,6 +613,7 @@ function useOrPlace(sx, sy) {
     message(took ? 'You have the steering oars. W rows · S backs water · A and D turn.' : 'You let go of the steering oars.');
     return;
   }
+  if (machines && machines.riding) { machines.leave(P); return; }
   if (P.ride) { dismount(); return; }
   // Setting a boat you built on the water.
   const inHand = heldItem();
@@ -1199,6 +1202,64 @@ function updateRide(dt, fwd, side) {
   b.arms[0].rotation.x = -0.75; b.arms[1].rotation.x = -0.75;
 }
 
+// ---------- Leonardo's machines ----------
+// The machines themselves (models, flying, driving, shooting) are in machines.js. Here: climbing in, the keys,
+// how you sit in each one, and the stars for trying them.
+let machineClick = false, machineSpace = false;
+function useMachine(m) {
+  if (P.ride) { message('Get down off your animal first (press X).'); return; }
+  if (Math.hypot(m.x - P.x, m.z - P.z) > (m.t.reach || 3) + 2.5 || Math.abs(m.y - P.y) > 4) { message(`Walk right up to ${m.t.name.replace(/^The /, 'the ')}, then press X.`); return; }
+  machines.board(m);
+}
+function machineFirst(m) {
+  const key = 'machine:' + m.id;
+  if (G.talked.has(key)) return;
+  G.talked.add(key);
+  showCard(m.t.name, "Leonardo da Vinci's inventions", m.t.fact + (m.t.help ? `\n\n${m.t.help}` : ''));
+  addStars(1, `You tried ${m.t.name.replace(/^The /, 'the ')}!`);
+  const all = Object.keys(MACHINES).every((id) => G.talked.has('machine:' + id));
+  if (all && !G.talked.has('_allMachines')) { G.talked.add('_allMachines'); addStars(2, "You've tried every one of Leonardo's machines!"); }
+}
+function onBullseye() {
+  message('Bullseye! Right in the target!');
+  if (!G.talked.has('_bullseye')) { G.talked.add('_bullseye'); addStars(1, 'Bullseye with the great crossbow!'); }
+}
+function driveMachine(dt, fwd, side) {
+  const m = machines.riding, k = input.keys;
+  const busy = !!(openPanel || dialogueOpen);
+  const space = !busy && k.has('Space');
+  const upEdge = space && !machineSpace; machineSpace = space;
+  const down = !busy && (k.has('ShiftLeft') || k.has('ShiftRight'));
+  const fire = !busy && (machineClick || (upEdge && (m.t.kind === 'aim' || !!m.t.guns)));
+  machineClick = false;
+  machines.drive(dt, { fwd, side, up: space, upEdge, down, fire, yaw: P.yaw, pitch: P.pitch }, P);
+  P.heading = m.yaw;
+  // How you sit (or stand, or hang) in it.
+  const b = playerBody;
+  b.g.position.set(P.x, P.y, P.z);
+  b.g.rotation.y = G.firstPerson ? P.yaw : angleLerp(b.g.rotation.y, m.yaw + (m.t.kind === 'aim' ? 0 : 0), Math.min(dt * 10, 1));
+  const pose = m.t.pose, t = performance.now() / 1000;
+  if (pose === 'sit') { b.legs[0].rotation.x = b.legs[1].rotation.x = -1.35; b.arms[0].rotation.x = b.arms[1].rotation.x = -0.9; }
+  else if (pose === 'hang') { const sw = Math.sin(t * 2) * 0.12; b.legs[0].rotation.x = 0.1 + sw; b.legs[1].rotation.x = 0.1 - sw; b.arms[0].rotation.x = b.arms[1].rotation.x = -1.1; }
+  else { b.legs[0].rotation.x = b.legs[1].rotation.x = 0; b.arms[0].rotation.x = b.arms[1].rotation.x = -1.2; }
+}
+// The parachute: a tent of linen over your head while you hold it and fall.
+const canopy = (() => {
+  const g = new THREE.Group();
+  const tent = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.5, 4, 1, true), new THREE.MeshLambertMaterial({ color: 0xeee3c8, side: THREE.DoubleSide }));
+  tent.rotation.y = Math.PI / 4; tent.position.y = 3.3; g.add(tent);
+  const cordMat = new THREE.MeshLambertMaterial({ color: 0xc9a86a }), poleMat = new THREE.MeshLambertMaterial({ color: 0x8a5a2e });
+  const stick = (a, b, w, m) => { const s = new THREE.Mesh(new THREE.BoxGeometry(w, w, a.distanceTo(b)), m); s.position.copy(a).add(b).multiplyScalar(0.5); s.lookAt(b); g.add(s); };
+  const top = new THREE.Vector3(0, 4.05, 0), hands = new THREE.Vector3(0, 1.55, 0);
+  for (const [x, z] of [[1.34, 1.34], [-1.34, 1.34], [1.34, -1.34], [-1.34, -1.34]]) {
+    const corner = new THREE.Vector3(x, 2.55, z);
+    stick(top, corner, 0.06, poleMat);          // the frame along each edge of the tent
+    stick(corner, hands, 0.025, cordMat);       // and a cord from each corner down to you
+  }
+  g.visible = false; scene.add(g);
+  return g;
+})();
+
 /// Keeps animals from standing inside each other. Done a few at a time so it costs nothing.
 let nudgeAt = 0;
 function spreadOut(dt) {
@@ -1710,6 +1771,11 @@ function spawnGuides() {
   for (const [id, p] of Object.entries(G.placed)) {
     const t = SITE_TEXT[id];
     if (!t || t.guide === 'nobody') continue;      // a ruin has nobody standing about in it
+    if (id === 'florence' && G.leo) {
+      // Leonardo, at his workshop door: a rose-coloured tunic (he liked them short and pink), a long grey beard and a dark cap.
+      addNpc('guide', t.guide, t.title, G.leo.x, G.leo.z, [0xe2b896, 0xc4626e, 0x5a3a4a], { site: id, roam: 1.5, hair: 0xcfccc4, beard: true, hat: [['hat1', [0.56, 0.14, 0.56], [0, 0.47, 0], 0x2e2438], ['hat2', [0.36, 0.1, 0.36], [0, 0.57, -0.03], 0x2e2438]] });
+      continue;
+    }
     const [gx, gz] = world.nearestLand(p.x + (id === 'greatWall' ? 3 : -14), p.z + 3);
     addNpc('guide', t.guide, t.title, gx + 0.5, gz + 0.5, [0xd2a07a, 0xd9b34a, 0x6b4e2e], { site: id, roam: 2.5 });
   }
@@ -2073,6 +2139,7 @@ function updateNpcs(dt) {
   }
 }
 function interact(who) {
+  if (who.kind === 'machine') { useMachine(who.m); return; }
   if (SPECIES[who.kind]) { hitMob(who); return; }
   if (FISH[who.kind]) { touchSwimmer(who); return; }
   if (who.kind === 'relic') { takeRelic(who); return; }
@@ -2080,10 +2147,57 @@ function interact(who) {
   who.talking = true;
   talkPage(who, 'start');
 }
+// Leonardo, in his workshop: much more to say than an ordinary guide.
+const LEO = {
+  start: "Ah — a visitor! Come in, come in, but mind the drawings, they get everywhere. I am Leonardo, from the little town of Vinci in the hills near here. I paint, I build, I take things apart to see how they work — and I write everything down.",
+  life: "I was born in 1452 in Vinci. My father was a notary, and when I was about fourteen he sent me here to Florence to learn in the workshop of Andrea del Verrocchio. I ground colours, cast bronze and learned to paint. People say that when my master saw an angel I painted in one of his pictures, he gave up painting altogether! Later I worked for the Duke of Milan for seventeen years. I write with my left hand, and I buy caged birds in the market just to set them free.",
+  when: "You noticed! Everyone else in your world lived long, long before me — Plato in Athens lived almost two thousand years earlier. I live around the year 1500. We call this time the Renaissance, which means 'rebirth', because we are rediscovering the old books of Greece and Rome, and then going further than they did.",
+  machines: "Look around the yard! The flying machine, the glider up on its tower, the aerial screw, the cart that drives itself, the armoured car, the great crossbow, the paddle boat down on the river, my knight and my lion. Here every one of them works — go and try them! Walk up to one and press X.",
+  really: "Some, yes. In 2004 a museum here in Florence built my cart, and it rolled along by itself. A robot engineer built my knight in 2002, and it moved. In the year 2000 a skydiver floated down under a parachute built just like my drawing. But my flying machine never could have flown: a person's arms are far too weak to flap such big wings. Birds are mostly muscle and hollow bone. I did not understand that yet when I drew it.",
+  fly: "Climb into the flying machine and press Space to beat the wings — keep pressing to climb higher. Steer by looking where you want to go, and hold W to fly forward. Shift brings you down gently. If you would rather float, climb the ladder up my tower and take the glider. And carry a parachute, just in case!",
+  mirror: "I write from right to left, with every letter backwards. Hold my notebook up to a mirror and you can read it easily. Why do I do it? I am left-handed, so it keeps my hand out of the wet ink — and perhaps it keeps my ideas away from nosy eyes. Nobody knows for certain. More than 7,000 of my pages still exist, and perhaps as many again are lost.",
+  notebooks: "I carry a little notebook on my belt wherever I go. In it I put faces I see in the market, the way water swirls round a rock, the bones of a hand, and lists of things to find out. One of them says: 'Describe the tongue of the woodpecker.' I never stop asking questions.",
+  paint: "Only about fifteen or twenty of my paintings are left in the world — I start far more than I finish. For the Duke of Milan I painted The Last Supper on the wall of a dining hall. I tried a new way of painting and, alas, it started to flake off while I was still alive. And here in Florence I am painting a lady called Lisa, with a smile you can never quite catch. I have kept her with me for years, because I cannot stop adding to her. People will call her the Mona Lisa.",
+  study: "Everything! How birds fly. How water flows — I have drawn plans to change the course of the river Arno. Plants, rocks, light and shadow, the moon. And how the human body works: bones, muscles and the heart. I drew the heart so carefully that doctors still study my drawings today. I also drew a man inside a circle and a square, to show how the body fits perfect shapes. People call it the Vitruvian Man.",
+  legacy: "I will die in France in 1519, as the guest of the French king, and leave my notebooks to my pupil Francesco Melzi. After him they were scattered and sold page by page, and for hundreds of years almost nobody read them. When people finally did, they found a tank, a helicopter, a parachute, a diving suit and a robot knight, all drawn four hundred years too early. Today, when someone is good at everything, people call them 'a Renaissance man' — and they think of me.",
+};
+function leoTalk(who, page) {
+  const go = (p) => () => leoTalk(who, p);
+  const bye = ['Goodbye', () => closeDialogue(who)];
+  const back = ['Ask something else', go('menu')];
+  const menu = [
+    ['Who are you?', go('life')], ['Tell me about your machines', go('machines')], ['Why is your writing backwards?', go('mirror')],
+    ['What do you paint?', go('paint')], ['What else do you study?', go('study')], ['What happened to your ideas?', go('legacy')],
+    ['Do you have anything I could use?', go('gifts')], ['I lost one of your machines…', go('lost')], bye,
+  ];
+  const show = (text, choices) => showDialogue(who.name, who.title, text, choices);
+  if (!G.talked.has('florence')) { G.talked.add('florence'); addStars(1, 'You met Leonardo da Vinci!'); }
+  if (LEO[page] && page !== 'start' && !G.talked.has('leo:' + page)) {
+    G.talked.add('leo:' + page);
+    const n = Object.keys(LEO).filter((k) => k !== 'start' && G.talked.has('leo:' + k)).length;
+    if (n === 3 || n === 6 || n === Object.keys(LEO).length - 1) addStars(1, n === Object.keys(LEO).length - 1 ? 'You heard everything Leonardo had to tell you!' : 'Leonardo has taught you a lot!');
+  }
+  if (page === 'start') show(LEO.start, menu);
+  else if (page === 'menu') show('What else would you like to know?', menu);
+  else if (page === 'life') show(LEO.life, [['You live much later than everyone else!', go('when')], back, bye]);
+  else if (page === 'machines') show(LEO.machines, [['Could they really work?', go('really')], ['How do I fly?', go('fly')], back, bye]);
+  else if (page === 'mirror') show(LEO.mirror, [['What is in your notebooks?', go('notebooks')], back, bye]);
+  else if (page === 'gifts') {
+    if (!G.talked.has('leo:gifts')) {
+      G.talked.add('leo:gifts');
+      give('parachute', 1); give('divingSuit', 1); refreshHotbar(); scheduleSave();
+      show("Take these! My parachute: a tent of linen on a wooden frame. Hold it in your hand, step off somewhere high, and you will float down gently. And my diving hood, from when I worked in Venice: put it on in your inventory and you can walk on the bottom of the sea and see far through the water. You can make more yourself — look under Tools and Clothing.", [['Thank you!', go('menu')], bye]);
+    } else show("I have already given you my parachute and my diving hood. You can make more yourself: look under Tools and Clothing in your inventory. A parachute needs cotton cloth and sticks; a diving hood needs leather and glass.", [back, bye]);
+  } else if (page === 'lost') {
+    if (machines) machines.reset();
+    show("Ha! It happens to the best inventors. I will build them again — there, every machine is back in the yard where it belongs, and the boat is back on the river.", [back, bye]);
+  } else if (LEO[page]) show(LEO[page], [back, bye]);
+}
 function talkPage(who, page) {
   if (who.kind === 'refugee' || who.kind === 'villager') { villageTalk(who, page); return; }
   if (who.kind === 'trader' || who.kind === 'hunter') { travellerTalk(who, page); return; }
   let text = '', choices = [];
+  if (who.kind === 'guide' && who.site === 'florence') { leoTalk(who, page); return; }
   if (who.kind === 'guide') {
     const t = SITE_TEXT[who.site];
     if (page === 'more') { text = t.more; if (!G.talked.has(who.site)) { G.talked.add(who.site); addStars(1, `${who.name} taught you about ${t.name}!`); } choices = [['Back', 'start'], ['Goodbye', null]]; }
@@ -2484,6 +2598,7 @@ function updatePlayer(dt) {
   if (openPanel || dialogueOpen) { fwd = 0; side = 0; }
   if (P.steering) { fwd = 0; side = 0; }   // at the steering oars your hands are full: W A S D sails the ship instead
   if (P.ride) { updateRide(dt, fwd, side); return; }   // in the saddle, W A S D rides
+  if (machines && machines.riding) { driveMachine(dt, fwd, side); return; }   // in one of Leonardo's machines
   const amt = Math.min(Math.hypot(fwd, side), 1);
   const fx0 = Math.floor(P.x), fz0 = Math.floor(P.z);
   const feet = world.get(fx0, Math.floor(P.y + 0.4), fz0);
@@ -2491,7 +2606,8 @@ function updatePlayer(dt) {
   P.ladder = world.get(fx0, Math.floor(P.y + 0.2), fz0) === 73 || world.get(fx0, Math.floor(P.y + 1.2), fz0) === 73;
   const flowV = P.water ? currentAt(fx0, Math.floor(P.y + 0.4), fz0) : [0, 0, 0];
   const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
-  const speed = (P.water ? 2.6 : sprint ? 6.4 : 4.3) * (G.hunger <= 0 ? 0.7 : 1);
+  const suit = G.worn && G.worn.head === 'divingSuit';   // Leonardo's diving hood: walk the sea bed, and quicker under water
+  const speed = (P.water ? (suit ? 3.8 : 2.6) : sprint ? 6.4 : 4.3) * (G.hunger <= 0 ? 0.7 : 1);
   let vx = 0, vz = 0;
   if (amt > 0.08) {
     const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
@@ -2521,11 +2637,17 @@ function updatePlayer(dt) {
     const diving = k.has('ShiftLeft') || k.has('ShiftRight');
     if (amt > 0.08) P.vy += Math.sin(P.pitch) * fwd * dt * 12;
     if (diving) P.vy -= dt * 10;
+    if (suit && !k.has('Space')) P.vy -= dt * 9;   // the hood's weights keep you down on the bottom
     P.vy = Math.max(-3.5, Math.min(P.vy, 4));
-    if (!k.has('Space') && !diving && !(amt > 0.08 && P.pitch < -0.3) && world.get(Math.floor(P.x), Math.floor(P.y + 1.5), Math.floor(P.z)) === 0) P.vy = Math.max(P.vy, 0) * 0.5;
+    if (!k.has('Space') && !diving && !suit && !(amt > 0.08 && P.pitch < -0.3) && world.get(Math.floor(P.x), Math.floor(P.y + 1.5), Math.floor(P.z)) === 0) P.vy = Math.max(P.vy, 0) * 0.5;
   } else {
     P.vy -= 28 * dt;
     if (P.ground && k.has('Space')) { P.vy = 8.6; P.ground = false; sound.play('jump'); }
+    // Holding Leonardo's parachute, you float down instead of falling.
+    if (!P.ground && P.vy < -2.4 && heldItem()?.id === 'parachute') {
+      P.vy = -2.4; P.chute = true;
+      if (!G.talked.has('_chute')) { G.talked.add('_chute'); addStars(1, 'You floated down under Leonardo\'s parachute!'); }
+    }
   }
   // Move one axis at a time; step up one block automatically.
   for (const axis of ['x', 'z']) {
@@ -2689,7 +2811,7 @@ function updateDaylight(dt) {
   const under = IS_WATERY[cb] === 1 && camera.position.y < cy + waterHeight(cb, world.get(cx, cy + 1, cz)) - 0.02;
   shared.uCamUnder.value = under ? 1 : 0;
   look.under = under;
-  if (under) { scene.fog.color.copy(deep).multiplyScalar(0.9 * localLight + 0.1); scene.fog.near = 0.5; scene.fog.far = 18 + 22 * dayK * localLight; }
+  if (under) { const suit = G.worn && G.worn.head === 'divingSuit'; scene.fog.color.copy(deep).multiplyScalar(0.9 * localLight + 0.1); scene.fog.near = suit ? 4 : 0.5; scene.fog.far = (18 + 22 * dayK * localLight) * (suit ? 2.4 : 1); if (suit && !G.talked.has('_dive')) { G.talked.add('_dive'); addStars(1, 'You walked under the sea in Leonardo\'s diving hood!'); } }
   else { scene.fog.color.copy(fogC); scene.fog.near = viewChunks * CS * 0.45; scene.fog.far = viewChunks * CS * 1.15; }
   $('underwater').hidden = !under;
   shared.uTime.value += dt;
@@ -2715,6 +2837,7 @@ function hurt(n, from) {
 }
 function faint(from) {
   $('fade').classList.add('on');
+  if (machines && machines.riding) machines.leave(P, true);
   setTimeout(() => {
     [P.x, P.z] = G.camp.spawn; P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.vx = P.vy = P.vz = 0;
     G.health = 10; G.hunger = Math.max(G.hunger, 5);
@@ -3118,6 +3241,7 @@ function drawMap() {
   void s;
 }
 function travel(x, z) {
+  if (machines && machines.riding) machines.leave(P, true);   // the machine stays behind where you left it
   if (P.ride) { const m = P.ride; P.ride = null; m.ridden = false; m.tx = m.x; m.tz = m.z; m.home = [m.x, m.z]; }   // your horse stays where it was grazing
   const [lx, lz] = world.nearestLand(Math.floor(x), Math.floor(z));
   P.x = lx + 0.5; P.z = lz + 0.5; P.y = world.groundY(lx, lz); P.vy = 0;
@@ -3367,7 +3491,7 @@ function save() {
     for (const [i, b] of G.edits) edits.push(i, b);
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn,
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, machines: machines ? machines.state() : undefined,
       animals: mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame, clones: m.clones || 0, cloneDay: m.cloneDay ?? -1 })) }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
@@ -3538,7 +3662,7 @@ async function boot() {
     scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
       groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
     for (let i = 0; i < m.prot.length; i += 2) world.protected.set(m.prot[i], m.prot[i + 1]);
-    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake;
+    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo;
     launched.then(start);   // wait for Continue / New world on the launch page
   };
   worker.onerror = () => setLoading('Something went wrong building the world. Reload the page to try again.', 0);
@@ -3553,7 +3677,7 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence');
+    const changed = s.wv >= WORLD_VERSION ? [] : s.wv === 12 || s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence');
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
@@ -3583,6 +3707,9 @@ function start() {
   spawnTravellers();
   spawnRelics();
   try { ships = createShips({ scene, world, WL, IS_WATERY, cities: G.cities }); } catch (err) { console.warn('ships', err); ships = null; }
+  try {
+    if (G.leo) machines = createMachines({ scene, group: entityGroup, world, WL, H, IS_WATER, IS_SOLID, spots: G.leo.machines, targets: G.leo.targets, saved: s && !resized ? s.machines : null, sound, say: message, onFirst: machineFirst, onBullseye });
+  } catch (err) { console.warn('machines', err); machines = null; }
   try {
     const avoid = [...Object.values(G.placed).map((p) => p.rect), ...Object.values(G.cities).filter(Boolean).map((c) => [c.center[0] - c.R - 4, c.center[1] - c.R - 4, c.center[0] + c.R + 4, c.center[1] + c.R + 4]),
       [G.camp.spawn[0] - 40, G.camp.spawn[1] - 40, G.camp.spawn[0] + 40, G.camp.spawn[1] + 40]];
@@ -3671,6 +3798,10 @@ function loop(now) {
       if (boarded) { input.keys.delete('Space'); message(`You climbed aboard the ${boarded.t.name}! Walk to the back and press X to take the steering oars.`); }
     }
     updatePlayer(dt);
+    if (machines) machines.update(dt, P);
+    if (P.ground || P.water || P.ride || (machines && machines.riding) || heldItem()?.id !== 'parachute') P.chute = false;
+    canopy.visible = !!P.chute;
+    if (P.chute) { canopy.position.set(P.x, P.y, P.z); canopy.rotation.y = playerBody.g.rotation.y; }
     // Hold the mouse button to dig; let go and digging stops (on a touch screen one tap digs the whole block).
     if (input.mode === 'desk') {
       if (input.mining && !openPanel && !dialogueOpen) {
@@ -3701,5 +3832,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; } };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); updateCamera(dt); } }, render: () => { streamChunks(400); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

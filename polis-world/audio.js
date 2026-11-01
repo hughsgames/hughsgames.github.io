@@ -302,6 +302,16 @@ export class Sound {
         break;
       }
       case 'boat': this.noise(260, { dur: 0.5, gain: 0.7, q: 1.4, sweepTo: 120 }); break;
+      // Leonardo's machines.
+      case 'flap': this.noise(r(500, 650), { dur: 0.28, gain: 0.5, q: 0.6, type: 'lowpass', sweepTo: 180 }); break;   // a great linen wing beating the air
+      case 'whirr': this.noise(r(700, 900), { dur: 0.2, gain: 0.22, q: 2.5, sweepTo: r(1100, 1300) }); break;       // a spinning sail, a gear train
+      case 'wind': this.noise(r(900, 1200), { dur: 0.9, gain: 0.25, q: 0.4, type: 'lowpass', sweepTo: 600 }); break;  // air rushing past a glider
+      case 'ratchet': for (let k = 0; k < 4; k++) this.tone(r(1500, 1700), { type: 'square', dur: 0.025, gain: 0.06, when: this.ctx.currentTime + k * 0.06 }); break;
+      case 'clank': this.tone(r(520, 640), { type: 'triangle', dur: 0.09, gain: 0.08, slideTo: r(380, 440) }); this.noise(2400, { dur: 0.05, gain: 0.25, q: 3 }); break;
+      case 'twang': this.tone(r(150, 175), { type: 'sawtooth', dur: 0.5, gain: 0.16, slideTo: 70 }); this.noise(800, { dur: 0.18, gain: 0.5, q: 0.8, sweepTo: 2400 }); break;
+      case 'boom': this.noise(180, { dur: 0.9, gain: 1.0, q: 0.5, type: 'lowpass', sweepTo: 40 }); this.tone(70, { type: 'sine', dur: 0.6, gain: 0.3, slideTo: 32 }); break;
+      case 'thunk': this.noise(260, { dur: 0.16, gain: 0.7, q: 1.2, sweepTo: 120 }); this.tone(140, { type: 'triangle', dur: 0.12, gain: 0.1, slideTo: 90 }); break;
+      case 'roar': this.tone(r(110, 130), { type: 'sawtooth', dur: 0.9, gain: 0.14, slideTo: r(70, 85) }); this.noise(400, { dur: 0.7, gain: 0.3, q: 0.6, type: 'lowpass', sweepTo: 200 }); break;
       case 'no': this.tone(220, { type: 'square', dur: 0.14, gain: 0.1, slideTo: 165 }); break;
       case 'bleat': this.tone(r(380, 460), { type: 'sawtooth', dur: 0.4, gain: 0.1, slideTo: r(260, 320) }); break;
       case 'growl': this.tone(r(90, 120), { type: 'sawtooth', dur: 0.6, gain: 0.16, slideTo: r(60, 80) }); break;

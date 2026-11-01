@@ -861,7 +861,7 @@ const SITES = [
   // Oct 27: the ruins of Liangzhu, the jade city south of the Yangtze, 5,000 years old. Added last again.
   { id: 'liangzhu', tile: [35.4, 70.2], fp: [-24, -24, 24, 24] },
   // Oct 27: Florence in Tuscany, a thousand years later than everything else here. Added last.
-  { id: 'florence', tile: [7.4, 18.8], fp: [-26, -20, 26, 22], noLand: true },   // noLand: added after the trees were, so it mustn't change which plants grow where
+  { id: 'florence', tile: [7.4, 18.8], fp: [-34, -26, 34, 30], noLand: true },   // noLand: added after the trees were, so it mustn't change which plants grow where
 ];
 const overlaps = (a, b, m) => a[0] - m <= b[2] && b[0] <= a[2] + m && a[1] - m <= b[3] && b[1] <= a[3] + m;
 const rectDist = (r, px, pz) => Math.max(Math.max(r[0] - px, 0, px - (r[2] + 1)), Math.max(r[1] - pz, 0, pz - (r[3] + 1)));
@@ -1694,73 +1694,87 @@ class Stamper {
     return gy;
   }
 
-  /// Florence in Tuscany, around 1500. Brunelleschi's dome over the cathedral, the Baptistery beside it,
-  /// the Palazzo Vecchio with its tower, the Arno with the Ponte Vecchio and its shops across it — and in
-  /// the yard behind the workshop, the machines Leonardo drew and nobody built for another four hundred years.
+  /// Florence in Tuscany, around 1500. Brunelleschi's dome over the cathedral, Giotto's bell tower and the
+  /// Baptistery beside it, the Palazzo Vecchio with Michelangelo's David at its door, the Arno with the Ponte
+  /// Vecchio across it — and Leonardo's workshop, with a yard in front where his machines stand ready to use.
+  /// The machines themselves are not blocks: the game builds them as moving models on the spots listed in
+  /// this.leo.machines, so they can fly, drive, shoot and walk.
   florence(cx, cz, r) {
     const gy = this.level(r, WL + 1);
     this.flatten(r, gy, B.grass);
-    const shops = [];
 
-    // ---- the piazza, paved in pale stone ----
-    this.fill(cx - 18, gy, cz - 14, cx + 18, gy, cz + 10, B.marble);
+    // ---- the Piazza del Duomo, paved in pale stone ----
+    this.fill(cx - 34, gy, cz - 25, cx + 16, gy, cz + 0, B.marble);
 
     // ---- the cathedral: a long nave, then the great octagonal dome ----
-    const dx = cx - 6, dz = cz - 6;
-    this.fill(dx - 13, gy + 1, dz - 4, dx + 1, gy + 12, dz + 4, B.plaster);
-    this.fill(dx - 12, gy + 1, dz - 3, dx + 0, gy + 11, dz + 3, 0);
-    for (let x = -12; x <= 0; x += 3) {                        // the green and white banding Florence is known for
-      this.fill(dx + x, gy + 1, dz - 4, dx + x, gy + 12, dz - 4, B.greenRoof);
-      this.fill(dx + x, gy + 1, dz + 4, dx + x, gy + 12, dz + 4, B.greenRoof);
+    const DX = cx + 4, DZ = cz - 10, DR = 9;
+    const nx0 = DX - 22, nx1 = DX - 7;
+    this.fill(nx0, gy + 1, DZ - 4, nx1, gy + 12, DZ + 4, B.plaster);
+    this.fill(nx0 + 1, gy + 1, DZ - 3, nx1 + 1, gy + 11, DZ + 3, 0);
+    for (let x = nx0; x <= nx1; x += 3) {                       // the green and white banding Florence is known for
+      this.fill(x, gy + 1, DZ - 4, x, gy + 12, DZ - 4, B.greenRoof);
+      this.fill(x, gy + 1, DZ + 4, x, gy + 12, DZ + 4, B.greenRoof);
     }
-    this.fill(dx - 13, gy + 13, dz - 4, dx + 1, gy + 13, dz + 4, B.terracotta);
-    for (let z = -3; z <= 3; z++) this.put(dx - 13, gy + 5 + Math.abs(z) - 3, dz + z, 0);   // the west door
-    this.fill(dx - 13, gy + 1, dz - 1, dx - 13, gy + 4, dz + 1, 0);
-
-    // The drum the dome sits on: an octagon, as the real one is.
-    const DR = 9;
+    for (const zz of [-4, 4]) for (let x = nx0 + 2; x <= nx1 - 1; x += 3) this.fill(x, gy + 6, DZ + zz, x, gy + 9, DZ + zz, B.glass);
+    this.fill(nx0, gy + 13, DZ - 4, nx1, gy + 13, DZ + 4, B.terracotta);
+    this.fill(nx0, gy + 1, DZ - 1, nx0, gy + 5, DZ + 1, 0);          // the west door
+    this.fill(nx0, gy + 6, DZ - 3, nx0, gy + 12, DZ + 3, B.marble);   // and the white front above it
+    this.put(nx0, gy + 9, DZ, B.glass);
     const oct = (rad, y, blk, hollow) => {
+      const cut = rad + Math.floor(rad * 0.42);
       for (let z = -rad; z <= rad; z++) for (let x = -rad; x <= rad; x++) {
         const d = Math.abs(x) + Math.abs(z);
-        if (d > rad + Math.floor(rad * 0.42)) continue;
-        if (Math.abs(x) > rad || Math.abs(z) > rad) continue;
-        const edge = d > rad + Math.floor(rad * 0.42) - 1 || Math.abs(x) === rad || Math.abs(z) === rad;
+        if (d > cut) continue;
+        const edge = d > cut - 1 || Math.abs(x) === rad || Math.abs(z) === rad;
         if (hollow && !edge) continue;
-        this.put(cx + x, y, cz + z, blk);
+        this.put(DX + x, y, DZ + z, blk);
       }
     };
     for (let y = 1; y <= 9; y++) oct(DR, gy + y, B.plaster, true);
-    for (let y = 1; y <= 9; y++) for (const [ox, oz] of [[DR, 0], [-DR, 0], [0, DR], [0, -DR]]) {
-      if (y >= 4 && y <= 7) this.put(cx + ox, gy + y, cz + oz, B.glass);     // the round windows in the drum
-    }
-    // The dome itself: terracotta tiles rising to a white marble lantern, with eight ribs.
+    for (let y = 4; y <= 7; y++) for (const [ox, oz] of [[DR, 0], [0, DR], [0, -DR]]) this.put(DX + ox, gy + y, DZ + oz, B.glass);   // round windows in the drum
     for (let y = 0; y <= 11; y++) {
       const rad = Math.max(1, Math.round(DR * Math.cos((y / 12) * Math.PI / 2)));
       oct(rad, gy + 10 + y, B.terracotta, y < 10);
-      for (const [ox, oz] of [[rad, 0], [-rad, 0], [0, rad], [0, -rad], [rad - 1, rad - 1], [-rad + 1, rad - 1], [rad - 1, -rad + 1], [-rad + 1, -rad + 1]]) {
-        this.put(cx + ox, gy + 10 + y, cz + oz, B.plaster);                   // the eight white ribs
-      }
+      for (const [ox, oz] of [[rad, 0], [-rad, 0], [0, rad], [0, -rad], [rad - 1, rad - 1], [-rad + 1, rad - 1], [rad - 1, -rad + 1], [-rad + 1, -rad + 1]]) this.put(DX + ox, gy + 10 + y, DZ + oz, B.plaster);   // the eight white ribs
     }
-    this.fill(cx - 2, gy + 21, cz - 2, cx + 2, gy + 25, cz + 2, B.marble);
-    this.fill(cx - 1, gy + 21, cz - 1, cx + 1, gy + 24, cz + 1, 0);
-    this.put(cx, gy + 26, cz, B.goldBlock);                                   // the golden ball on the very top
-    for (let y = 1; y <= 9; y++) oct(DR - 1, gy + y, 0, false);                // hollow out the inside
+    this.fill(DX - 2, gy + 21, DZ - 2, DX + 2, gy + 25, DZ + 2, B.marble);
+    this.fill(DX - 1, gy + 21, DZ - 1, DX + 1, gy + 24, DZ + 1, 0);
+    this.put(DX, gy + 26, DZ, B.goldBlock);                                  // the golden ball on the very top
+    for (let y = 1; y <= 9; y++) oct(DR - 1, gy + y, 0, false);               // hollow out the inside...
+    this.fill(nx1 + 1, gy + 1, DZ - 3, DX - DR + 1, gy + 8, DZ + 3, 0);      // ...and open it to the nave
+    this.put(DX, gy + 1, DZ, B.lamp);
 
-    // ---- the Baptistery: a smaller octagon west of the cathedral, with its golden doors ----
-    const bx = cx - 26, bz = cz - 6;
+    // ---- Giotto's bell tower, beside the cathedral's front ----
+    const TX = nx0 + 6, TZ = DZ - 9;
+    for (let y = 1; y <= 30; y++) {
+      const band = y % 6 === 0 ? B.greenRoof : y % 6 === 3 ? B.redMarble : B.plaster;
+      this.fill(TX - 2, gy + y, TZ - 2, TX + 2, gy + y, TZ + 2, band);
+      this.fill(TX - 1, gy + y, TZ - 1, TX + 1, gy + y, TZ + 1, 0);
+      if (y % 7 === 4) for (const [ox, oz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) this.put(TX + ox, gy + y, TZ + oz, B.glass);
+    }
+    for (let y = 1; y <= 30; y++) this.put(TX - 1, gy + y, TZ + 1, B.ladder);   // climb up inside to see the city
+    this.fill(TX, gy + 1, TZ + 2, TX, gy + 2, TZ + 2, 0);                         // its door
+    this.fill(TX - 2, gy + 31, TZ - 2, TX + 2, gy + 31, TZ + 2, B.plaster);
+    this.put(TX - 1, gy + 31, TZ + 1, 0);                                         // the hatch at the top of the ladder
+    for (let x = -2; x <= 2; x++) for (const zz of [-2, 2]) { this.put(TX + x, gy + 32, TZ + zz, B.fence); this.put(TX + zz, gy + 32, TZ + x, B.fence); }
+    this.put(TX, gy + 32, TZ, B.lamp);
+
+    // ---- the Baptistery: a small octagon west of the cathedral, with its golden doors ----
+    const bx = nx0 - 9, bz = DZ;
     for (let y = 1; y <= 8; y++) for (let z = -5; z <= 5; z++) for (let x = -5; x <= 5; x++) {
       if (Math.abs(x) + Math.abs(z) > 7) continue;
       const edge = Math.abs(x) + Math.abs(z) > 6 || Math.abs(x) === 5 || Math.abs(z) === 5;
       this.put(bx + x, gy + y, bz + z, edge ? ((x + z + y) % 4 === 0 ? B.greenRoof : B.plaster) : 0);
     }
-    for (let z = -4; z <= 4; z++) for (let x = -4; x <= 4; x++) {
-      if (Math.abs(x) + Math.abs(z) > 6) continue;
-      this.put(bx + x, gy + 9, bz + z, B.terracotta);
+    for (let k = 0; k < 3; k++) for (let z = -4 + k; z <= 4 - k; z++) for (let x = -4 + k; x <= 4 - k; x++) {
+      if (Math.abs(x) + Math.abs(z) > 6 - k) continue;
+      this.put(bx + x, gy + 9 + k, bz + z, B.terracotta);
     }
-    this.fill(bx + 5, gy + 1, bz - 1, bx + 5, gy + 3, bz + 1, B.goldBlock);    // the Gates of Paradise
+    this.fill(bx + 5, gy + 1, bz - 1, bx + 5, gy + 3, bz + 1, B.goldBlock);     // the Gates of Paradise
+    this.fill(bx + 5, gy + 1, bz, bx + 5, gy + 2, bz, 0);
 
-    // ---- the Palazzo Vecchio, square and stern, with its tower ----
-    const px = cx + 14, pz = cz + 4;
+    // ---- the Palazzo Vecchio, square and stern, with its tower; Michelangelo's David at the door ----
+    const px = cx + 25, pz = cz - 8;
     this.fill(px - 7, gy + 1, pz - 6, px + 7, gy + 11, pz + 6, B.stoneBricks);
     this.fill(px - 6, gy + 1, pz - 5, px + 6, gy + 10, pz + 5, 0);
     for (let x = -6; x <= 6; x += 2) for (const zz of [-6, 6]) this.put(px + x, gy + 12, pz + zz, B.stoneBricks);
@@ -1769,108 +1783,83 @@ class Stamper {
     this.fill(px - 1, gy + 12, pz - 1, px + 1, gy + 24, pz + 1, 0);
     for (let x = -2; x <= 2; x += 2) for (const zz of [-2, 2]) this.put(px + x, gy + 26, pz + zz, B.stoneBricks);
     this.put(px, gy + 27, pz, B.lamp);
-    this.fill(px - 7, gy + 1, pz - 1, px - 7, gy + 4, pz + 1, 0);              // the way in
-    for (let z = -4; z <= 4; z += 2) for (let y = 4; y <= 8; y += 4) { this.put(px - 7, gy + y, pz + z, B.glass); this.put(px + 7, gy + y, pz + z, B.glass); }
+    this.fill(px - 1, gy + 1, pz + 6, px + 1, gy + 4, pz + 6, 0);              // the way in, from the piazza
+    for (let x = -4; x <= 4; x += 2) for (let y = 4; y <= 8; y += 4) { this.put(px + x, gy + y, pz - 6, B.glass); this.put(px + x, gy + y, pz + 6, B.glass); }
+    this.fill(cx + 17, gy, cz - 1, cx + 33, gy, cz + 9, B.stoneBricks);         // the Piazza della Signoria
+    this.statue(px - 3, pz + 9, gy + 1, B.marble);                               // David, in white marble, as he stood here from 1504
+    this.put(px + 3, gy + 1, pz + 9, B.water); this.fill(px + 2, gy + 1, pz + 8, px + 4, gy + 1, pz + 8, B.marble);   // and a fountain
 
     // ---- the Arno, and the Ponte Vecchio with the shops along it ----
-    const rz = cz + 20;
-    for (let x = r[0]; x <= r[2]; x++) for (let z = rz - 3; z <= rz + 3; z++) {
+    const rz = cz + 24;
+    for (let x = r[0]; x <= r[2]; x++) for (let z = rz - 2; z <= rz + 2; z++) {
       for (let y = gy; y >= gy - 2; y--) this.put(x, y, z, B.water);
-      this.put(x, gy + 1, z, 0);
+      for (let y = gy + 1; y <= gy + 3; y++) this.put(x, y, z, 0);
     }
-    for (let x = cx - 9; x <= cx + 9; x++) {
-      for (let z = rz - 4; z <= rz + 4; z++) this.put(x, gy + 1, z, B.stoneBricks);
-      if ((x - cx) % 6 === 0) for (let z = -4; z <= 4; z += 8) {
-        this.fill(x - 1, gy + 2, rz + z, x + 1, gy + 5, rz + z, B.terracotta);
-        this.fill(x - 1, gy + 2, rz + z, x + 1, gy + 4, rz + z, 0);
-        this.put(x, gy + 6, rz + z, B.terracotta);
-      }
+    for (let x = r[0]; x <= r[2]; x++) for (const z of [rz - 3, rz + 3]) this.put(x, gy, z, B.stoneBricks);   // stone banks
+    const bridgeX = cx + 20;
+    for (let x = bridgeX - 3; x <= bridgeX + 3; x++) {
+      for (let z = rz - 3; z <= rz + 3; z++) this.put(x, gy + 1, z, B.stoneBricks);
+      for (const z of [rz - 3, rz + 3]) this.put(x, gy, z, B.stoneBricks);
     }
-    for (let x = cx - 9; x <= cx + 9; x++) for (const z of [rz - 4, rz + 4]) this.put(x, gy + 2, z, B.fence);
+    for (const x of [bridgeX - 3, bridgeX + 3]) for (let z = rz - 2; z <= rz + 2; z++) {   // the little goldsmiths' shops along each side
+      this.fill(x, gy + 2, z, x, gy + 4, z, B.terracotta);
+      this.put(x, gy + 5, z, B.terracotta);
+      if (z === rz) this.fill(x, gy + 2, z, x, gy + 3, z, B.glass);
+    }
+    for (let z = rz - 2; z <= rz + 2; z += 2) for (const x of [bridgeX - 2, bridgeX + 2]) this.put(x, gy - 2, z, B.stoneBricks);   // its piers
+    this.fill(bridgeX - 2, gy + 2, rz - 4, bridgeX + 2, gy + 2, rz - 4, 0);
+    this.put(bridgeX - 3, gy + 1, rz - 4, B.stoneBricks); this.put(bridgeX + 3, gy + 1, rz - 4, B.stoneBricks);
+    this.fill(bridgeX - 2, gy + 1, rz - 4, bridgeX + 2, gy + 1, rz - 4, B.stoneBricks);   // a step up onto it from each bank
+    this.fill(bridgeX - 2, gy + 1, rz + 4, bridgeX + 2, gy + 1, rz + 4, B.stoneBricks);
 
-    // ---- Leonardo's workshop, and the yard behind it where the machines stand ----
-    const wx = cx - 22, wz = cz + 10;
+    // ---- Leonardo's workshop ----
+    const wx = cx - 26, wz = cz + 8;
     this.fill(wx - 6, gy + 1, wz - 5, wx + 6, gy + 8, wz + 5, B.plaster);
     this.fill(wx - 5, gy + 1, wz - 4, wx + 5, gy + 7, wz + 4, 0);
-    this.fill(wx - 6, gy + 9, wz - 5, wx + 6, gy + 9, wz + 5, B.terracotta);
-    this.fill(wx - 6, gy + 1, wz + 5, wx - 4, gy + 4, wz + 5, 0);              // the door
-    for (const [ox, oz] of [[-3, -5], [0, -5], [3, -5], [6, 0], [-6, 0]]) this.fill(wx + ox, gy + 3, wz + oz, wx + ox, gy + 5, wz + oz, B.glass);
-    // Inside: a workbench, his shelves of notebooks, a lamp.
-    for (let x = -4; x <= 4; x++) this.put(wx + x, gy + 2, wz - 3, B.scrollShelf);
-    for (let x = -4; x <= 0; x++) this.put(wx + x, gy + 1, wz + 2, B.planks);
-    this.put(wx + 4, gy + 2, wz + 3, B.lamp);
-    this.put(wx - 5, gy + 2, wz - 1, B.lamp);
+    for (let k = 0; k <= 3; k++) this.fill(wx - 6 + k, gy + 9 + k, wz - 5, wx + 6 - k, gy + 9 + k, wz + 5, B.terracotta);   // a red tiled roof
+    this.fill(wx + 6, gy + 1, wz - 1, wx + 6, gy + 3, wz + 1, 0);              // the big door, onto the yard
+    for (const [ox, oz] of [[-3, -5], [0, -5], [3, -5], [-3, 5], [3, 5], [-6, 0]]) this.fill(wx + ox, gy + 3, wz + oz, wx + ox, gy + 5, wz + oz, B.glass);
+    // Inside: his shelves of notebooks, a long workbench, a lamp, and a bed in the corner.
+    for (let x = -4; x <= 4; x++) this.put(wx + x, gy + 1, wz - 4, B.scrollShelf), this.put(wx + x, gy + 2, wz - 4, B.scrollShelf);
+    for (let x = -4; x <= 1; x++) this.put(wx + x, gy + 1, wz + 1, B.planks);
+    this.put(wx - 4, gy + 1, wz + 3, B.bedHead); this.put(wx - 3, gy + 1, wz + 3, B.bedFoot);
+    this.put(wx + 4, gy + 2, wz + 4, B.lamp); this.put(wx - 5, gy + 2, wz - 1, B.lamp);
 
-    // The yard: a flat paved apron, big enough to run at and take off from.
-    this.fill(wx - 10, gy, wz + 8, wx + 14, gy, wz + 22, B.marble);
-    const yard = { x: wx + 2, z: wz + 15, y: gy + 1 };
+    // ---- the yard, where the machines stand ----
+    const y0 = gy + 1;
+    this.fill(cx - 19, gy, cz + 2, cx + 14, gy, cz + 20, B.limestone);
+    for (let x = cx - 19; x <= cx + 14; x++) for (let z = cz + 2; z <= cz + 20; z++) for (let y = gy + 1; y <= gy + 14; y++) this.put(x, y, z, 0);
+    // A launching tower for the glider. Leonardo meant his to be flown off a hill, Monte Ceceri, outside the city.
+    const gx = cx + 9, gz = cz + 12, TOP = 10;
+    for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) this.fill(gx + ox, gy + 1, gz + oz, gx + ox, gy + TOP - 1, gz + oz, B.spruceLog);
+    this.fill(gx - 2, gy + TOP, gz - 2, gx + 2, gy + TOP, gz + 2, B.planks);
+    this.fill(gx - 3, gy + 1, gz, gx - 3, gy + TOP, gz, B.spruceLog);
+    for (let y = 1; y <= TOP + 1; y++) this.put(gx - 4, gy + y, gz, B.ladder);   // climb the ladder on the west side
+    this.put(gx - 3, gy + TOP + 1, gz, 0);
+    for (let k = -2; k <= 2; k++) { this.put(gx + k, gy + TOP + 1, gz - 2, B.fence); this.put(gx + k, gy + TOP + 1, gz + 2, B.fence); }
+    this.put(gx - 2, gy + TOP + 1, gz - 1, B.fence); this.put(gx - 2, gy + TOP + 1, gz + 1, B.fence);
+    this.put(gx - 2, gy + TOP, gz, B.planks); this.put(gx - 3, gy + TOP, gz, B.planks);
+    // Straw targets for the great crossbow, at the far end of the yard.
+    const targets = [];
+    for (const tx of [cx + 2, cx + 12]) {
+      this.fill(tx, gy + 1, cz + 18, tx, gy + 2, cz + 19, B.redCloth);
+      targets.push({ x: tx + 0.5, y: gy + 2, z: cz + 19 });
+    }
 
-    // Each machine is built by its own little function, and each remembers where it stands so the
-    // game can put the real, working one on top of it.
-    const put = (id, x, z, build) => { build(x, z); shops.push({ id, x: x + 0.5, y: gy + 1, z: z + 0.5 }); };
-    put('ornithopter', yard.x, yard.z, (x, z) => this.ornithopter(x, gy + 1, z));
-    put('aerialScrew', yard.x + 10, yard.z - 4, (x, z) => this.aerialScrew(x, gy + 1, z));
-    put('crossbow', yard.x - 8, yard.z + 4, (x, z) => this.greatCrossbow(x, gy + 1, z));
-    put('cart', yard.x + 9, yard.z + 5, (x, z) => this.leoCart(x, gy + 1, z));
-    put('tank', yard.x - 7, yard.z - 4, (x, z) => this.armouredCar(x, gy + 1, z));
-
-    this.leo = { x: wx + 1, z: wz + 7, y: gy + 1, machines: shops };
+    const at = (id, x, z, yaw = 0, y = y0) => ({ id, x: x + 0.5, y, z: z + 0.5, yaw });
+    const machines = [
+      at('ornithopter', cx - 12, cz + 6),
+      at('aerialScrew', cx - 1, cz + 6),
+      at('tank', cx + 8, cz + 6),
+      at('cart', cx - 14, cz + 12),
+      at('knight', cx - 8, cz + 12, Math.PI / 2),
+      at('lion', cx - 3, cz + 12, Math.PI / 2),
+      at('glider', gx, gz, Math.PI / 2, gy + TOP + 1),
+      at('crossbow', cx - 16, cz + 18, Math.PI / 2),
+      at('paddleBoat', cx - 6, rz, Math.PI / 2, gy + 0.6),
+    ];
+    this.leo = { x: wx + 8.5, z: wz - 4.5, y: y0, machines, targets };
     return gy;
-  }
-
-  /// The ornithopter: a wooden frame with two great bat wings, the one Leonardo drew most often.
-  ornithopter(x, y, z) {
-    this.fill(x - 1, y, z - 2, x + 1, y, z + 2, B.planks);
-    this.fill(x - 1, y + 1, z - 1, x + 1, y + 1, z + 1, B.planks);
-    this.put(x, y + 2, z, B.redCloth);
-    for (const s of [-1, 1]) {
-      for (let k = 1; k <= 6; k++) {
-        this.put(x + s * (1 + k), y + 1 + Math.floor(k / 3), z - 1, B.spruceLog);
-        for (let w = -1; w <= 2; w++) this.put(x + s * (1 + k), y + 1 + Math.floor(k / 3), z + w, k > 4 && Math.abs(w) > 1 ? 0 : B.redCloth);
-      }
-    }
-    this.put(x, y + 1, z + 3, B.planks);
-  }
-  /// The aerial screw: a helical sail on a mast, the drawing everyone calls Leonardo's helicopter.
-  aerialScrew(x, y, z) {
-    for (let k = 0; k < 7; k++) this.put(x, y + k, z, B.spruceLog);
-    for (let k = 0; k < 14; k++) {
-      const a = k * 0.9, rad = 1 + k / 5;
-      this.put(x + Math.round(Math.cos(a) * rad), y + 3 + Math.floor(k / 3), z + Math.round(Math.sin(a) * rad), B.plaster);
-    }
-    this.fill(x - 2, y, z - 2, x + 2, y, z + 2, B.planks);
-    this.fill(x - 1, y, z - 1, x + 1, y, z + 1, 0);
-  }
-  /// The great crossbow: twenty-seven feet across in his drawing, on six wheels.
-  greatCrossbow(x, y, z) {
-    this.fill(x - 1, y, z - 1, x + 1, y, z + 5, B.planks);
-    for (let k = -7; k <= 7; k++) {
-      const bend = Math.round(Math.abs(k) * Math.abs(k) / 22);
-      this.put(x + k, y + 1, z - 1 + bend, B.spruceLog);
-    }
-    this.fill(x, y + 1, z, x, y + 1, z + 5, B.planks);
-    for (const s of [-1, 1]) for (const dz of [0, 2, 4]) this.put(x + s * 2, y, z + dz, B.spruceLog);
-  }
-  /// The self-propelled cart: springs under the deck, and no horse in front of it.
-  leoCart(x, y, z) {
-    this.fill(x - 2, y + 1, z - 2, x + 2, y + 1, z + 2, B.planks);
-    for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2], [0, 3]]) this.put(x + ox, y, z + oz, B.spruceLog);
-    this.fill(x - 1, y + 2, z - 1, x + 1, y + 2, z + 1, B.spruceLog);
-    this.put(x, y + 3, z, B.bronzeBlock);
-  }
-  /// The armoured car: a round wooden shell like a turtle, with guns all round and a lookout on top.
-  armouredCar(x, y, z) {
-    for (let k = 0; k < 4; k++) {
-      const rad = 4 - k;
-      for (let dz = -rad; dz <= rad; dz++) for (let dx = -rad; dx <= rad; dx++) {
-        if (dx * dx + dz * dz > rad * rad + 1) continue;
-        const edge = dx * dx + dz * dz > (rad - 1) * (rad - 1);
-        if (k > 0 && !edge) continue;
-        this.put(x + dx, y + k, z + dz, B.planks);
-      }
-    }
-    for (const [ox, oz] of [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, -3]]) this.put(x + ox, y + 1, z + oz, B.bronzeBlock);
-    this.put(x, y + 4, z, B.planks); this.put(x, y + 5, z, B.glass);
   }
 
   build(id, cx, cz, r) {

@@ -122,6 +122,9 @@ wear('nemes', "Pharaoh's Nemes", 'head', { hat: [['hat1', [0.58, 0.22, 0.58], [0
 // What you put round your neck.
 wear('goldNecklace', 'Golden Collar', 'neck', { necklace: true, gold: 0xe8c040 }, ['beads', 0xe8c040, 0x6b4a2b]);
 wear('beadNecklace', 'Carnelian Collar', 'neck', { necklace: true, gold: 0xb84a3a }, ['beads', 0xb84a3a, 0x6b4a2b]);
+// Leonardo's inventions you can carry (November 1). The diving hood is worn on the head; hold the parachute to use it.
+wear('divingSuit', "Leonardo's Diving Hood", 'head', { hat: [['hat1', [0.56, 0.56, 0.56], [0, 0.26, 0], 0x6e4a2a], ['hat2', [0.4, 0.14, 0.06], [0, 0.3, 0.28], 0x9fd0e0], ['hat3', [0.08, 0.5, 0.08], [0, 0.72, -0.18], 0xc9a86a]] }, ['helmet', 0x6e4a2a, 0x9fd0e0]);
+it('parachute', "Leonardo's Parachute", { parachute: true });
 
 for (const k of Object.keys(ITEM)) ITEM[k].max = ITEM[k].tool || ITEM[k].relic || ITEM[k].wear ? 1 : 64;
 
@@ -222,6 +225,8 @@ r('tortilla', 2, 'Food', [['maize', 3]], 'Maize was the heart of every meal in M
 r('honeyCake', 2, 'Food', [['wheat', 2], ['honey', 1]], 'Real honey makes a better cake. Egyptians kept bees in clay pipes 4,500 years ago.');
 
 // ---------- Clothes to make and wear ----------
+r('parachute', 1, 'Tools', [['cotton', 4], ['stick', 4]], 'Leonardo drew a tent of linen on a wooden frame, about seven metres each way. In the year 2000 a skydiver built one exactly to his drawing and floated down in it safely. Hold it in your hand and jump from somewhere high!');
+r('divingSuit', 1, 'Clothing', [['leather', 4], ['glass', 1]], 'Leonardo designed a diving suit in Venice: a leather hood with glass eyes, and a breathing tube up to a float. Wear it to walk on the bottom of the sea and see far under water.');
 r('woolTunic', 1, 'Clothing', [['wool', 4]], 'A plain wool tunic is what most people in the ancient world wore every day, belted at the waist.');
 r('leatherJerkin', 1, 'Clothing', [['leather', 4]], 'Hard-wearing leather, for hunting and rough work.');
 r('linenKilt', 1, 'Clothing', [['cotton', 3]], 'Egyptians wore white linen because it is cool in the heat and easy to wash in the river.');

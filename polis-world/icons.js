@@ -595,6 +595,18 @@ const ART = {
     p.dot(10.4, 20, [30, 42, 34]);
     p.stroke([[9.4, 25.4], [23.6, 22.6]], 1, () => ramp(0x8fb49a)(0.45));
   },
+  // Leonardo's parachute: a pyramid of linen on a square wooden frame, with the cords gathered below.
+  parachute(p) {
+    const r = ramp(0xece2c8);
+    p.poly([[16, 4], [28, 19], [4, 19]], (x, y) => r(clamp(0.95 - (x - 4) / 46 - (y - 4) / 60)));
+    p.poly([[16, 4], [16, 19], [4, 19]], (x, y) => r(clamp(0.62 - (y - 4) / 70)));
+    p.stroke([[16, 4], [4, 19]], 1.1, () => ramp(0x8a5a2e)(0.5));
+    p.stroke([[16, 4], [28, 19]], 1.1, () => ramp(0x8a5a2e)(0.5));
+    p.stroke([[16, 4], [16, 19]], 1, () => ramp(0x8a5a2e)(0.45));
+    p.stroke([[3.5, 19.5], [28.5, 19.5]], 1.4, () => ramp(0x8a5a2e)(0.42));
+    for (const x of [5, 16, 27]) p.stroke([[x, 20], [16, 27]], 0.7, () => ramp(0xb89a6a)(0.6));
+    p.ball(16, 28, 1.6, 1.6, ballPaint(0x6e4a2a, false));
+  },
   // The golden egg out of the griffon's nest.
   goldenEgg(p) {
     p.ball(16, 18, 8.4, 11, (lit, u, v, x, y) => {
@@ -950,7 +962,7 @@ export const SIZE = {
   parchment: 0.3, paper: 0.3, papyrus: 0.35, amphora: 0.75, clayPot: 0.3, beads: 0.3, obsidianBlade: 0.18, glassBottle: 0.15,
   statuette: 0.3, sealStone: 0.05, figs: 0.12, dates: 0.2, olives: 0.15, puls: 0.18, fishStew: 0.2, riceBowl: 0.16,
   tortilla: 0.2, honeyCake: 0.16, salt: 0.14, tea: 0.1, murex: 0.1, lawTablet: 0.6, seahorse: 0.35,
-  jadeBi: 0.22, jadeCong: 0.2, jadeAxe: 0.25,
+  jadeBi: 0.22, jadeCong: 0.2, jadeAxe: 0.25, parachute: 0.5,
   // Hugh's resources.
   diamond: 0.1, emerald: 0.1, amethyst: 0.11, blackOpal: 0.1,
   yellowFeather: 0.25, greenFeather: 0.25, blueFeather: 0.25, whiteFeather: 0.25, redFeather: 0.25,
