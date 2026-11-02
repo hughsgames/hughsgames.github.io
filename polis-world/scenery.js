@@ -1,22 +1,17 @@
 // Polis World (computer version): the living sky and the little things that make the world feel alive.
-// Drifting blocky clouds, flocks of birds, butterflies by day and fireflies by night, glowing halos round torches and
+// Flocks of birds, butterflies by day and fireflies by night, glowing halos round torches and
 // lamps after dark, and the details of city life: striped awnings over doorways, banners on the walls and potted
 // plants on the flat roofs. All of it is only for looking at: nothing here changes the world or gets in your way.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
 const hash = (x, z, s) => { let h = (x * 374761393 + z * 668265263 + s * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-function valueNoise(x, z, s) {
-  const xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi;
-  const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
-  const a = hash(xi, zi, s), b = hash(xi + 1, zi, s), c = hash(xi, zi + 1, s), d = hash(xi + 1, zi + 1, s);
-  return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
-}
 /// One geometry from many coloured boxes, each placed by a matrix (so boxes can be turned and tilted).
 export function mergeBoxes(list) {
-  const pos = [], nrm = [], col = [], idx = [], c = new THREE.Color(), g0 = new THREE.BoxGeometry(1, 1, 1);
+  const pos = [], nrm = [], col = [], uvs = [], idx = [], c = new THREE.Color(), g0 = new THREE.BoxGeometry(1, 1, 1);
   const nm = new THREE.Matrix3(), v = new THREE.Vector3();
   for (const { m, color } of list) {
     const p = g0.attributes.position, n = g0.attributes.normal, base = pos.length / 3;
+    for (const t of g0.attributes.uv.array) uvs.push(t + 2);   // rounded-box faces (graphics.js)
     nm.getNormalMatrix(m); c.setHex(color);
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).applyMatrix4(m); pos.push(v.x, v.y, v.z);
@@ -27,7 +22,7 @@ export function mergeBoxes(list) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); if (pos.length) g.setIndex(idx);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); if (pos.length) g.setIndex(idx);
   return g;
 }
 const boxAt = (x, y, z, sx, sy, sz, color, rot = null) => {
@@ -35,32 +30,6 @@ const boxAt = (x, y, z, sx, sy, sz, color, rot = null) => {
   if (rot) m.multiply(rot);
   return { m: m.multiply(new THREE.Matrix4().makeScale(sx, sy, sz)), color };
 };
-
-// ---------- clouds ----------
-const CLOUD_Y = 112, CLOUD_CELL = 6, CLOUD_N = 64, CLOUD_TILE = CLOUD_CELL * CLOUD_N;
-function cloudGeometry() {
-  const on = (i, j) => { const ii = ((i % CLOUD_N) + CLOUD_N) % CLOUD_N, jj = ((j % CLOUD_N) + CLOUD_N) % CLOUD_N;
-    // Wrap the noise so the tile repeats seamlessly.
-    const a = ii / CLOUD_N * Math.PI * 2, b = jj / CLOUD_N * Math.PI * 2;
-    const n = valueNoise(Math.cos(a) * 3 + 10, Math.sin(a) * 3 + Math.cos(b) * 3 + 20, 7) * 0.6 + valueNoise(Math.sin(b) * 6 + 40, Math.cos(a) * 6 + 50, 9) * 0.4;
-    return n > 0.56; };
-  const pos = [], nrm = [], idx = [];
-  const quad = (pts, n) => { const b = pos.length / 3; for (const p of pts) { pos.push(...p); nrm.push(...n); } idx.push(b, b + 1, b + 2, b, b + 2, b + 3); };
-  const h = 2.4, s = CLOUD_CELL;
-  for (let j = 0; j < CLOUD_N; j++) for (let i = 0; i < CLOUD_N; i++) {
-    if (!on(i, j)) continue;
-    const x0 = i * s, x1 = x0 + s, z0 = j * s, z1 = z0 + s;
-    quad([[x0, h, z0], [x0, h, z1], [x1, h, z1], [x1, h, z0]], [0, 1, 0]);
-    quad([[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]], [0, -1, 0]);
-    if (!on(i + 1, j)) quad([[x1, 0, z0], [x1, h, z0], [x1, h, z1], [x1, 0, z1]], [1, 0, 0]);
-    if (!on(i - 1, j)) quad([[x0, 0, z1], [x0, h, z1], [x0, h, z0], [x0, 0, z0]], [-1, 0, 0]);
-    if (!on(i, j + 1)) quad([[x1, 0, z1], [x1, h, z1], [x0, h, z1], [x0, 0, z1]], [0, 0, 1]);
-    if (!on(i, j - 1)) quad([[x0, 0, z0], [x0, h, z0], [x1, h, z0], [x1, 0, z0]], [0, 0, -1]);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setIndex(idx);
-  return g;
-}
 
 // ---------- glowing dots (halos, fireflies) ----------
 function glowPoints(max, color) {
@@ -96,22 +65,6 @@ const POT = 0xb5643a, LEAF = 0x4f8a3a, LEAF2 = 0x6aa04a, FLOWER = [0xd94a6a, 0xe
 
 export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, lights, glow, skyOpen }) {
   const state = { wind: 0, t: 0 };
-  // Clouds: one tile of blocky clouds, repeated 3 × 3 round you and drifting with the wind.
-  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.86, depthWrite: false, fog: false });
-  // Clouds have their own haze: they melt into the horizon colour far away instead of ending at an edge.
-  const cloudU = { uHor: { value: new THREE.Color(0.72, 0.84, 0.96) } };
-  cloudMat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, cloudU);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCw;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCw = (modelMatrix * vec4(position, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uHor; varying vec3 vCw;')
-      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
-        float cd = length(vCw.xz - cameraPosition.xz);
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, uHor, smoothstep(140.0, 430.0, cd));
-        gl_FragColor.a *= 1.0 - smoothstep(330.0, 520.0, cd);`);
-  };
-  const cloudGeo = cloudGeometry(), clouds = [];
-  for (let i = 0; i < 9; i++) { const m = new THREE.Mesh(cloudGeo, cloudMat); m.renderOrder = 4; m.frustumCulled = false; scene.add(m); clouds.push(m); }
-
   // Birds: three flocks circling high up, each bird a body and two flapping wings.
   const BIRDS = 18, birdMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const birdBody = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.16, 0.6), birdMat, BIRDS), birdWing = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.04, 0.28), birdMat, BIRDS * 2);
@@ -147,6 +100,69 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   const halos = glowPoints(400, 0xffb45a); scene.add(halos);
   let haloT = 0;
 
+  // ---------- flames, embers, smoke, falling leaves and dust ----------
+  // All drawn as points that always face you. Flames and embers are brighter than white, so they glow; smoke and
+  // leaves are lit by the daylight; dust only shows where it catches the sun.
+  const pts = (max, attrs, vert, frag, opts) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(max * 3), 3));
+    for (const [name, size] of attrs) g.setAttribute(name, new THREE.Float32BufferAttribute(new Float32Array(max * size), size));
+    g.setDrawRange(0, 0);
+    const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uTime: { value: 0 }, uScale: { value: 500 }, uLight: { value: new THREE.Color(1, 1, 1) }, uAlpha: { value: 1 } },
+      vertexShader: vert, fragmentShader: frag, ...opts });
+    const p = new THREE.Points(g, mat); p.frustumCulled = false; p.renderOrder = 7; scene.add(p);
+    return p;
+  };
+  const SIZE_VERT = (extra = '') => `attribute float size; attribute float phase; ${extra}
+    uniform float uScale; uniform float uTime; varying float vPhase;
+    void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; vPhase = phase; gl_PointSize = size * uScale / max(-mv.z, 0.3);`;
+  // A flame: a flickering teardrop, white-hot at its heart, orange at the edge.
+  const flames = pts(400, [['size', 1], ['phase', 1]], SIZE_VERT() + '}', /* glsl */ `
+    uniform float uTime; varying float vPhase;
+    void main() {
+      vec2 p = gl_PointCoord * 2.0 - 1.0; p.y = -p.y;
+      float t = uTime * (7.0 + fract(vPhase * 7.1) * 3.0) + vPhase * 10.0;
+      float h = clamp((p.y + 0.7) / 1.6, 0.0, 1.0);
+      float wob = (sin(t + p.y * 4.0) * 0.09 + sin(t * 1.9 + p.y * 9.0) * 0.04) * h;
+      float w = mix(0.5, 0.04, pow(h, 0.8)) * (0.9 + 0.1 * sin(t * 2.3));
+      float x = (p.x - wob) / w;
+      float flame = smoothstep(1.0, 0.25, abs(x)) * smoothstep(-0.95, -0.5, p.y) * smoothstep(0.9, 0.3 + 0.2 * sin(t * 1.3), p.y);
+      float core = smoothstep(0.7, 0.0, abs(x)) * smoothstep(-0.8, -0.45, p.y) * smoothstep(0.35, -0.2, p.y);
+      vec3 col = mix(vec3(1.0, 0.22, 0.03), vec3(1.0, 0.62, 0.18), h * 0.4 + core) + vec3(1.0, 0.9, 0.7) * core * core * 1.5;
+      gl_FragColor = vec4(col * flame * 3.2, 1.0);
+    }`, { blending: THREE.AdditiveBlending });
+  // Embers drifting up from fires.
+  const EMB = 160, embers = pts(EMB, [['size', 1], ['phase', 1]], SIZE_VERT() + '}', /* glsl */ `
+    varying float vPhase;
+    void main() { float d = length(gl_PointCoord - 0.5) * 2.0; float a = smoothstep(1.0, 0.0, d); gl_FragColor = vec4(vec3(1.0, 0.45, 0.1) * a * a * 4.0 * vPhase, 1.0); }`, { blending: THREE.AdditiveBlending });
+  const emb = Array.from({ length: EMB }, () => ({ x: 0, y: -999, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1 }));
+  // Smoke curling up from campfires.
+  const SMK = 60, smoke = pts(SMK, [['size', 1], ['phase', 1]], SIZE_VERT() + '}', /* glsl */ `
+    uniform vec3 uLight; varying float vPhase;
+    void main() { vec2 p = gl_PointCoord - 0.5; float d = length(p) * 2.0; float a = smoothstep(1.0, 0.2, d) * (0.85 + 0.15 * sin(atan(p.y, p.x) * 3.0 + vPhase * 20.0));
+      gl_FragColor = vec4(uLight * 0.55, a * 0.32 * fract(vPhase)); }`, {});
+  const smk = Array.from({ length: SMK }, () => ({ x: 0, y: -999, z: 0, life: 0, max: 1, s: 0 }));
+  // Leaves fluttering down under the trees.
+  const LEAF = 70, leaves = pts(LEAF, [['size', 1], ['phase', 1], ['tint', 3]], SIZE_VERT('attribute vec3 tint; varying vec3 vTint;') + 'vTint = tint; }', /* glsl */ `
+    uniform vec3 uLight; uniform float uTime; varying float vPhase; varying vec3 vTint;
+    void main() {
+      vec2 p = gl_PointCoord - 0.5; float a = uTime * (1.5 + fract(vPhase * 3.7)) + vPhase * 6.0;
+      p = mat2(cos(a), -sin(a), sin(a), cos(a)) * p; p.x *= 1.0 + 0.6 * abs(sin(a * 0.7));
+      if (length(vec2(p.x * 2.2, p.y)) > 0.42) discard;
+      gl_FragColor = vec4(vTint * uLight * (0.85 + 0.3 * p.y), 1.0);
+    }`, {});
+  const lf = Array.from({ length: LEAF }, () => ({ x: 0, y: -999, z: 0, floor: 0, ph: Math.random() * 6.3, set: false }));
+  // Dust and pollen hanging in the air, glinting where the sun catches it.
+  const DUST = 140, dust = pts(DUST, [['size', 1], ['phase', 1]], SIZE_VERT() + '}', /* glsl */ `
+    uniform float uAlpha; uniform float uTime; varying float vPhase;
+    void main() { float d = length(gl_PointCoord - 0.5) * 2.0; float a = smoothstep(1.0, 0.0, d); float tw = 0.4 + 0.6 * max(0.0, sin(uTime * 2.0 + vPhase * 40.0));
+      gl_FragColor = vec4(vec3(1.0, 0.95, 0.8) * a * uAlpha * tw, 1.0); }`, { blending: THREE.AdditiveBlending });
+  const dst = Array.from({ length: DUST }, () => ({ x: 0, y: -999, z: 0, ph: Math.random() * 100 }));
+  for (let i = 0; i < DUST; i++) dust.geometry.attributes.phase.setX(i, Math.random());
+  const fires = [];   // [x, y, z, kind] for every flame near you (0 torch, 1 campfire, 2 lamp)
+  const LEAFY = new Set([8, 10, 12, 25, 125, 127, 129, 131, 133, 134, 158]);
+  const LEAF_TINT = { 8: [0.18, 0.38, 0.1], 10: [0.3, 0.45, 0.14], 12: [0.14, 0.28, 0.14], 25: [0.25, 0.42, 0.12], 125: [0.12, 0.36, 0.08], 127: [0.95, 0.55, 0.68], 129: [0.75, 0.62, 0.12], 131: [0.36, 0.48, 0.18], 133: [0.18, 0.4, 0.14], 134: [0.2, 0.42, 0.12], 158: [0.1, 0.3, 0.12] };
+
   // A spot near (px, pz) on grass or among flowers, or null.
   const grassy = (px, pz, r) => {
     for (let t = 0; t < 8; t++) {
@@ -158,7 +174,6 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   };
   const M = new THREE.Matrix4(), R = new THREE.Matrix4(), S = new THREE.Matrix4(), Z = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  const _grey = new THREE.Color(0.34, 0.36, 0.40);
   const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _sc = new THREE.Vector3(1, 1, 1);
   let rainK = 0;
   /// Rain falling round the player. `rain` is how hard it is coming down, 0 to 1.
@@ -209,24 +224,94 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
     splashMat.opacity = 0.45 * Math.min(rainK, 1);
   }
 
-  function update(dt, { P, day, warm, under, horizon, rain = 0 }) {
-    if (horizon) cloudU.uHor.value.copy(horizon);
+  const _lc = new THREE.Color();
+  function updateParticles(dt, P, day, under, rain, light, px) {
+    for (const p of [flames, embers, smoke, leaves, dust]) { p.material.uniforms.uTime.value = state.t; p.material.uniforms.uScale.value = px; }
+    halos.material.uniforms.uScale.value = fireflies.material.uniforms.uScale.value = px * 0.75;
+    _lc.setRGB(0.25 + 0.75 * day, 0.27 + 0.73 * day, 0.33 + 0.67 * day); if (light) _lc.copy(light);
+    smoke.material.uniforms.uLight.value.copy(_lc); leaves.material.uniforms.uLight.value.copy(_lc);
+    // Flames: one on every torch, lamp and campfire near you.
+    const fpos = flames.geometry.attributes.position, fsz = flames.geometry.attributes.size, fph = flames.geometry.attributes.phase;
+    let nf = 0;
+    for (const f of fires) {
+      if (nf >= 400) break;
+      const dx = f[0] - P.x, dz = f[2] - P.z; if (dx * dx + dz * dz > 48 * 48) continue;
+      fpos.setXYZ(nf, f[0], f[1] + (f[3] === 1 ? 0.32 : 0.1), f[2]); fsz.setX(nf, f[3] === 1 ? 1.1 : f[3] === 2 ? 0.32 : 0.42); fph.setX(nf, (f[0] * 7.3 + f[2] * 3.1) % 10); nf++;
+    }
+    flames.geometry.setDrawRange(0, nf); fpos.needsUpdate = fsz.needsUpdate = fph.needsUpdate = true;
+    // Embers: born at a flame (campfires most of all), rising, drifting, fading.
+    const ep = embers.geometry.attributes.position, es = embers.geometry.attributes.size, ea = embers.geometry.attributes.phase;
+    for (let i = 0; i < EMB; i++) {
+      const e = emb[i];
+      e.life -= dt;
+      if (e.life <= 0 && fires.length && Math.random() < dt * 6) {
+        const f = fires[Math.floor(Math.random() * fires.length)];
+        if (f[3] === 1 || Math.random() < 0.25) {
+          e.x = f[0] + (Math.random() - 0.5) * 0.3; e.y = f[1] + 0.2; e.z = f[2] + (Math.random() - 0.5) * 0.3;
+          e.vx = (Math.random() - 0.5) * 0.5; e.vz = (Math.random() - 0.5) * 0.5; e.vy = 0.8 + Math.random() * (f[3] === 1 ? 1.6 : 0.6);
+          e.max = e.life = 0.8 + Math.random() * (f[3] === 1 ? 1.8 : 0.7);
+        }
+      }
+      if (e.life > 0) { e.x += (e.vx + Math.sin(state.t * 3 + i) * 0.3) * dt; e.y += e.vy * dt; e.z += (e.vz + Math.cos(state.t * 2.6 + i) * 0.3) * dt; e.vy *= 1 - dt * 0.4; }
+      ep.setXYZ(i, e.x, e.life > 0 ? e.y : -999, e.z); es.setX(i, 0.045); ea.setX(i, Math.max(0, e.life / e.max));
+    }
+    embers.geometry.setDrawRange(0, EMB); ep.needsUpdate = es.needsUpdate = ea.needsUpdate = true;
+    // Smoke from campfires.
+    const sp = smoke.geometry.attributes.position, ss = smoke.geometry.attributes.size, sa = smoke.geometry.attributes.phase;
+    const camp = fires.filter((f) => f[3] === 1);
+    for (let i = 0; i < SMK; i++) {
+      const m = smk[i];
+      m.life -= dt;
+      if (m.life <= 0 && camp.length && Math.random() < dt * 3) {
+        const f = camp[Math.floor(Math.random() * camp.length)];
+        m.x = f[0]; m.y = f[1] + 0.7; m.z = f[2]; m.max = m.life = 3 + Math.random() * 3; m.s = 0.4 + Math.random() * 0.3;
+      }
+      if (m.life > 0) { m.y += dt * 0.9; m.x += Math.sin(state.t * 0.5 + i) * dt * 0.35 + dt * 0.25; m.z += Math.cos(state.t * 0.4 + i * 1.3) * dt * 0.3; }
+      const k = m.life > 0 ? m.life / m.max : 0;
+      sp.setXYZ(i, m.x, m.life > 0 ? m.y : -999, m.z); ss.setX(i, m.s * (1 + (1 - k) * 3.5)); sa.setX(i, Math.floor(i * 7.13) + Math.min(k * 3, 1) * Math.min((1 - k) * 4, 1) * 0.999);
+    }
+    smoke.geometry.setDrawRange(0, SMK); sp.needsUpdate = ss.needsUpdate = sa.needsUpdate = true;
+    // Leaves: a few at a time, wherever there are leaves overhead, swaying down to the ground.
+    const lp = leaves.geometry.attributes.position, ls = leaves.geometry.attributes.size, lph = leaves.geometry.attributes.phase, lt = leaves.geometry.attributes.tint;
+    for (let i = 0; i < LEAF; i++) {
+      const l = lf[i];
+      if (!l.set || l.y <= l.floor || Math.abs(l.x - P.x) > 20 || Math.abs(l.z - P.z) > 20) {
+        l.set = false; l.y = -999;
+        if (!under && Math.random() < dt * 1.5) {
+          const x = Math.floor(P.x + (Math.random() - 0.5) * 30), z = Math.floor(P.z + (Math.random() - 0.5) * 30);
+          const g = groundY(x, z);
+          for (let y = Math.floor(Math.max(g, P.y - 6)); y < Math.min(H - 1, P.y + 14); y++) {
+            const b = world.get(x, y, z);
+            if (LEAFY.has(b) && isAir(x, y - 1, z)) {
+              const t = LEAF_TINT[b] || LEAF_TINT[8];
+              l.x = x + Math.random(); l.y = y - 0.1; l.z = z + Math.random(); l.floor = g; l.set = true;
+              lt.setXYZ(i, t[0], t[1], t[2]); break;
+            }
+          }
+        }
+      }
+      if (l.set) {
+        l.y -= dt * (0.55 + 0.25 * Math.sin(state.t * 1.3 + l.ph));
+        l.x += (Math.sin(state.t * 1.1 + l.ph) * 0.6 + 0.25) * dt; l.z += Math.cos(state.t * 0.9 + l.ph * 1.7) * 0.5 * dt;
+      }
+      lp.setXYZ(i, l.x, l.y, l.z); ls.setX(i, 0.16); lph.setX(i, l.ph);
+    }
+    leaves.geometry.setDrawRange(0, LEAF); lp.needsUpdate = ls.needsUpdate = lph.needsUpdate = lt.needsUpdate = true;
+    // Dust: a cloud of motes round you, drifting; it only shows in daylight, away from the rain.
+    const dp = dust.geometry.attributes.position, ds = dust.geometry.attributes.size;
+    for (let i = 0; i < DUST; i++) {
+      const d = dst[i];
+      if (Math.abs(d.x - P.x) > 9 || Math.abs(d.z - P.z) > 9 || Math.abs(d.y - P.y - 1.5) > 5) { d.x = P.x + (Math.random() - 0.5) * 18; d.z = P.z + (Math.random() - 0.5) * 18; d.y = P.y + 1.5 + (Math.random() - 0.5) * 8; }
+      d.x += Math.sin(state.t * 0.21 + d.ph) * dt * 0.15; d.y += Math.sin(state.t * 0.17 + d.ph * 2.1) * dt * 0.08; d.z += Math.cos(state.t * 0.19 + d.ph * 1.3) * dt * 0.15;
+      dp.setXYZ(i, d.x, d.y, d.z); ds.setX(i, 0.022);
+    }
+    dust.geometry.setDrawRange(0, DUST); dp.needsUpdate = ds.needsUpdate = true;
+    dust.material.uniforms.uAlpha.value = under ? 0 : Math.max(0, day - 0.3) * 1.4 * (1 - rain);
+  }
+
+  function update(dt, { P, day, warm, under, horizon, rain = 0, light = null, px = 500 }) {
     updateRain(dt, P, rain, under);
     state.t += dt; state.wind += dt * 1.1;
-    // Clouds: white by day, glowing pink and orange at sunrise and sunset, dark blue-grey at night.
-    const tx = Math.floor((P.x - state.wind) / CLOUD_TILE), tz = Math.floor(P.z / CLOUD_TILE);
-    clouds.forEach((m, k) => { m.position.set((tx + (k % 3) - 1) * CLOUD_TILE + state.wind, CLOUD_Y, (tz + Math.floor(k / 3) - 1) * CLOUD_TILE); m.visible = !under; });
-    cloudMat.color.setRGB(0.25 + 0.75 * day, 0.28 + 0.72 * day, 0.38 + 0.62 * day).lerp(new THREE.Color(1, 0.7, 0.62), Math.min(warm, 1) * 0.55);
-    cloudMat.emissive.setRGB(0.1 + 0.25 * day, 0.11 + 0.25 * day, 0.15 + 0.25 * day);
-    cloudMat.opacity = 0.55 + 0.33 * day;
-    // Rain clouds are low, heavy and grey, and they close over the sky.
-    if (rainK > 0.01) {
-      const k = Math.min(rainK, 1);
-      cloudMat.color.lerp(_grey, k * 0.75);
-      cloudMat.emissive.multiplyScalar(1 - k * 0.5);
-      cloudMat.opacity = Math.min(1, cloudMat.opacity + k * 0.42);
-    }
-
     // Birds circle in the daytime sky (they roost at night).
     flocks.forEach((f, fi) => {
       if (!f.set || Math.hypot(f.cx - P.x, f.cz - P.z) > 70) {
@@ -286,6 +371,7 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
       haloT = 0.5;
       const hp = halos.geometry.attributes.position, hph = halos.geometry.attributes.phase, hs = halos.geometry.attributes.size, n = world.n;
       let k = 0;
+      fires.length = 0;
       const pcx = Math.floor(P.x / 16), pcz = Math.floor(P.z / 16);
       for (let cz = pcz - 3; cz <= pcz + 3 && k < 400; cz++) for (let cx = pcx - 3; cx <= pcx + 3 && k < 400; cx++) {
         const set = lights.get(cx + ',' + cz); if (!set) continue;
@@ -294,12 +380,14 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
           const x = i % n, z = Math.floor(i / n) % n, y = Math.floor(i / (n * n)), b = world.cells[i];
           const g = glow(b); if (!g) continue;
           hp.setXYZ(k, x + 0.5, y + (b === 56 ? 0.75 : 0.5), z + 0.5); hph.setX(k, (x * 13 + z * 7) % 10); hs.setX(k, b === 58 ? 2.8 : b === 56 ? 1.6 : 2.2); k++;
+          if (b === 56 || b === 58 || b === 46) fires.push([x + 0.5, y + (b === 56 ? 0.72 : b === 58 ? 0.32 : 0.62), z + 0.5, b === 58 ? 1 : b === 46 ? 2 : 0]);
         }
       }
       halos.geometry.setDrawRange(0, k); hp.needsUpdate = hph.needsUpdate = hs.needsUpdate = true;
     }
     halos.material.uniforms.uAlpha.value = 0.12 + 0.8 * (1 - day);
     halos.material.uniforms.uTime.value = state.t;
+    updateParticles(dt, P, day, under, rain, light, px);
   }
 
   // City details, made once for each city when you first come near it.

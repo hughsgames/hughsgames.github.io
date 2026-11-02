@@ -1,6 +1,8 @@
 // Polis World (computer version): the game itself.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import { H, WL, CS, T, BLOCKS, IS_CUBE, IS_SOLID, IS_CROSS, IS_CUT, GLOW, WATER, FALLING, IS_WATER, IS_WATERY, WATER_AMT, World, buildAtlas, tileUV, tileSheet, shared, blockMaterial, waterMaterial, meshChunk, makeSky, waterHeight } from './engine.js';
+import { H, WL, CS, T, BLOCKS, IS_CUBE, IS_SOLID, IS_CROSS, IS_CUT, GLOW, WATER, FALLING, IS_WATER, IS_WATERY, WATER_AMT, World, buildAtlas, tileUV, tileSheet, shared, blockMaterial, setBlockQuality, waterMaterial, meshChunk, makeSky, setSkyQuality, waterHeight, surfaceTable, normalAtlas } from './engine.js';
+import { createGraphics, QUALITY, installRoundBoxes, boxUvs } from './graphics.js';
+import { createFarLand } from './farland.js';
 import { ITEM, SPEED, toolDamage, LOGS, RECIPES, Inventory } from './items.js';
 import { createDesigner, scrollPanel } from './designer.js';
 import { TALK, ORDERS } from './talk.js';
@@ -48,18 +50,15 @@ document.body.dataset.mode = input.mode;
 
 // ---------- renderer, scene, lights ----------
 const canvas = $('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// No hardware smoothing on the screen itself: on Balanced and Amazing the world is drawn into a picture of its own
+// first (smoothed there), and on Fast every pixel counts.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 600);
+const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 6000);   // far enough to see the far land and the open sea
 scene.fog = new THREE.Fog(0x9cc4ee, 60, 150);
-const sky = makeSky();
-scene.add(sky);
 const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x6b5a45, 1.2);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2dd, 2.6);
@@ -69,10 +68,17 @@ Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, n
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
+// The lights shine in every drawing pass (the world, then the water and see-through things).
+hemi.layers.enableAll(); sun.layers.enableAll();
+installRoundBoxes();
+const gfx = createGraphics(renderer, { shared, sun });
+const sky = makeSky(gfx.settings);
+scene.add(sky);
+gfx.onChange((q) => setSkyQuality(sky, q));
 
 function resize() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false);
+  gfx.resize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -80,8 +86,8 @@ addEventListener('resize', resize);
 resize();
 
 // ---------- game state ----------
-let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null, jungle = null;
-const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color(), rain: 0 };   // the light right now, for the sky and its life
+let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null, jungle = null, farland = null;
+const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color(), rain: 0, light: new THREE.Color(1, 1, 1), px: 500 };   // the light right now, for the sky and its life
 // The weather. It clouds over, rains for a while, then clears, and does it again later in the day.
 // `now` is how hard it is raining this instant; `until` is the clock reading when this spell ends.
 const W = { now: 0, want: 0, next: -1 };
@@ -105,11 +111,12 @@ function buildChunk(cx, cz) {
   let group = chunks.get(k);
   if (group) { for (const m of group.children) m.geometry.dispose(); group.clear(); }
   else { group = new THREE.Group(); chunks.set(k, group); scene.add(group); }
+  if (farland) farland.setLoaded(cx, cz, true);
   for (const [geo, mat, shadow] of [[g.solid, mats.solid, true], [g.cut, mats.cut, true], [g.water, mats.water, false]]) {
     if (!geo) continue;
     const m = new THREE.Mesh(geo, mat);
     m.castShadow = shadow; m.receiveShadow = true;
-    if (mat === mats.water) m.renderOrder = 5;
+    if (mat === mats.water) { m.renderOrder = 5; m.userData.water = true; }
     group.add(m);
   }
 }
@@ -136,7 +143,7 @@ function streamChunks(budgetMs) {
   for (const [cx, cz] of want) { buildChunk(cx, cz); if (performance.now() - t0 > budgetMs) break; }
   for (const [k, group] of chunks) {
     const [cx, cz] = k.split(',').map(Number);
-    if (Math.hypot(cx - pcx, cz - pcz) > viewChunks + 2) { for (const m of group.children) m.geometry.dispose(); scene.remove(group); chunks.delete(k); }
+    if (Math.hypot(cx - pcx, cz - pcz) > viewChunks + 2) { for (const m of group.children) m.geometry.dispose(); scene.remove(group); chunks.delete(k); if (farland) farland.setLoaded(cx, cz, false); }
   }
 }
 const dist2 = ([cx, cz]) => (cx * CS + 8 - P.x) ** 2 + (cz * CS + 8 - P.z) ** 2;
@@ -235,7 +242,7 @@ function currentAt(x, y, z) {
 
 // ---------- the player's body ----------
 function boxMesh(w, h, d, color, x, y, z) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+  const m = new THREE.Mesh(boxUvs(new THREE.BoxGeometry(w, h, d)), new THREE.MeshLambertMaterial({ color }));
   m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
   return m;
 }
@@ -289,7 +296,8 @@ const fpArm = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.45), [0, 0, 0
 fpArm.position.set(0, 0, 0.12);
 fpHand.add(fpArm);
 // Drawn on top of everything, so your hand never disappears into a wall you're standing against.
-const onTop = (m) => { m.renderOrder = 999; for (const mat of [].concat(m.material)) { mat.depthTest = false; mat.depthWrite = false; } };
+// (Counted as see-through, so it is drawn after the water and everything else, in every graphics setting.)
+const onTop = (m) => { m.renderOrder = 999; for (const mat of [].concat(m.material)) { mat.depthTest = false; mat.depthWrite = false; mat.transparent = true; } };
 onTop(fpArm);
 fpHand.position.set(0.3, -0.3, -0.9);
 fpHand.rotation.set(0.25, -0.18, 0);
@@ -449,6 +457,7 @@ $('paused').addEventListener('click', () => { if (G.started) requestLock(); });
 
 // ---------- aiming: which block or creature is in front of you ----------
 const ray = new THREE.Raycaster();
+ray.layers.enableAll();   // creatures drawn in the see-through pass (a fading jellyfish, say) can still be clicked
 function aimFrom(sx, sy) {
   if (sx === undefined) ray.setFromCamera(new THREE.Vector2(0, 0), camera);
   else ray.setFromCamera(new THREE.Vector2((sx / innerWidth) * 2 - 1, -(sy / innerHeight) * 2 + 1), camera);
@@ -1587,7 +1596,7 @@ const FISH = {
 };
 const fishMat = new Map();
 function fmat(color, opts = {}) { const k = color + JSON.stringify(opts); let m = fishMat.get(k); if (!m) { m = new THREE.MeshLambertMaterial({ color, ...opts }); fishMat.set(k, m); } return m; }
-function fbox(w, h, d, color, x, y, z, opts) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), fmat(color, opts)); m.position.set(x, y, z); return m; }
+function fbox(w, h, d, color, x, y, z, opts) { const m = new THREE.Mesh(boxUvs(new THREE.BoxGeometry(w, h, d)), fmat(color, opts)); m.position.set(x, y, z); return m; }
 function makeSwimmer(kind) {
   const f = FISH[kind], g = new THREE.Group(), L = f.len;
   let tail = null, fins = [];
@@ -1872,7 +1881,7 @@ function spawnGuides() {
 // Each city's people are drawn as instances (one mesh per body part for the whole crowd), so a city can have
 // well over a hundred people walking about without slowing the game down.
 const crowds = new Map();
-const PART_GEO = new THREE.BoxGeometry(1, 1, 1);
+const PART_GEO = boxUvs(new THREE.BoxGeometry(1, 1, 1));
 const MODEL_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
 const CROWD_MAT = new THREE.MeshLambertMaterial({ color: 0xffffff });   // one material for every body part of every crowd
 const MODELS = {};   // tool, load and workplace models, made once and shared by every city
@@ -2820,7 +2829,7 @@ let camCur = 5.5;
 
 // ---------- day and night ----------
 let localLight = 1, localT = 0;
-const SUN_STEP = Math.PI / 720, SHADOW_TEXEL = 96 / 2048;      // the shadow camera is 96 blocks across, 2048 texels
+const SUN_STEP = Math.PI / 720;
 const _toSun = new THREE.Vector3(), _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _target = new THREE.Vector3();
 const C = (r, g, b) => new THREE.Color(r, g, b);
 /// The weather turns on its own: long dry spells, then it clouds over, rains, and clears again.
@@ -2860,22 +2869,27 @@ function updateDaylight(dt) {
   light *= 1 - W.now * 0.3;          // a grey sky under the rain
   const dayK = (light - 0.38) / 0.62;
   const warm = Math.max(0, 1 - Math.abs(hour - 6.5) / 1.5) + Math.max(0, 1 - Math.abs(hour - 18.8) / 1.5);
-  const up = hour >= 6 && hour <= 18;
+  const warmK = Math.min(warm, 1) * (1 - W.now * 0.8);
+  // The sun gives the light (and the shadows) from first light until dusk is nearly over; then the moon does. The swap
+  // happens when the light is dim, so the shadows don't jump in broad daylight.
+  const up = hour >= 5 && hour < 19.8;
+  const rain = Math.min(W.now, 1);
   // The sun moves in small steps (a quarter of a degree, about once a second), not every frame: a shadow map that turns a
   // tiny bit each frame makes every shadow edge crawl and shimmer.
   const arc = Math.round(Math.PI * (up ? (hour - 6) / 12 : (((hour + 6) % 24) / 12)) / SUN_STEP) * SUN_STEP;
   const toSun = _toSun.set(Math.cos(arc), Math.max(Math.sin(arc), 0.28), 0.45).normalize();
   // The shadow follows you, but only in whole shadow-map texels (measured across the sun's view), so the shadows stay
   // perfectly still as you walk instead of jumping every few steps.
+  const texel = gfx.settings.shadowR * 2 / gfx.settings.shadow;
   _sx.crossVectors(_up, toSun).normalize(); _sy.crossVectors(toSun, _sx);
-  const u = Math.round((_sx.x * P.x + _sx.y * P.y + _sx.z * P.z) / SHADOW_TEXEL) * SHADOW_TEXEL;
-  const v = Math.round((_sy.x * P.x + _sy.y * P.y + _sy.z * P.z) / SHADOW_TEXEL) * SHADOW_TEXEL;
+  const u = Math.round((_sx.x * P.x + _sx.y * P.y + _sx.z * P.z) / texel) * texel;
+  const v = Math.round((_sy.x * P.x + _sy.y * P.y + _sy.z * P.z) / texel) * texel;
   const w = toSun.x * P.x + toSun.y * P.y + toSun.z * P.z;
   const target = _target.set(0, 0, 0).addScaledVector(_sx, u).addScaledVector(_sy, v).addScaledVector(toSun, w);
   sun.position.copy(target).addScaledVector(toSun, 150);
   sun.target.position.copy(target);
-  sun.color = C(1, 0.96, 0.88).lerp(C(1, 0.66, 0.4), Math.min(warm, 1) * 0.85);
-  if (dayK < 0.05) sun.color = C(0.6, 0.68, 1);
+  sun.color = C(1, 0.96, 0.88).lerp(C(1, 0.66, 0.4), warmK * 0.85);
+  if (!up || dayK < 0.05) sun.color = C(0.6, 0.68, 1);
   sun.intensity = 0.35 + 2.4 * dayK;
   localT -= dt;
   if (localT <= 0) { localT = 0.25; localGoal = world.skyLight(Math.floor(P.x), Math.floor(P.y + 1.5), Math.floor(P.z)); }
@@ -2884,40 +2898,108 @@ function updateDaylight(dt) {
   hemi.intensity = (0.35 + 1.25 * dayK) * adapt;
   hemi.color = C(0.55, 0.64, 1).lerp(C(0.78, 0.86, 1), dayK);
   hemi.groundColor = C(0.25, 0.22, 0.2).lerp(C(0.45, 0.38, 0.3), dayK);
-  const top = C(0.04, 0.06, 0.16).lerp(C(0.28, 0.5, 0.86), dayK);
-  const horizon = C(0.1, 0.13, 0.25).lerp(C(0.72, 0.84, 0.96), dayK).lerp(C(0.98, 0.6, 0.38), Math.min(warm, 1) * 0.6 * (0.3 + dayK));
-  // Rain takes the blue out of the sky and the warmth out of the light.
-  if (W.now > 0.01) {
-    const k = Math.min(W.now, 1) * 0.72;
-    top.lerp(C(0.30, 0.33, 0.38), k);
-    horizon.lerp(C(0.52, 0.55, 0.60), k);
-    hemi.color.lerp(C(0.62, 0.66, 0.72), k);
-    sun.intensity *= 1 - k * 0.45;
+  if (rain > 0.01) { hemi.color.lerp(C(0.62, 0.66, 0.72), rain * 0.72); sun.intensity *= 1 - rain * 0.72 * 0.45; }
+  // ----- the sky (linear light; these land on the intended screen colours after the tone curve) -----
+  // Where the sun and moon really are: unlike the light that casts shadows, these go all the way down to the horizon.
+  const sArc = Math.PI * (hour - 6) / 12, nArc = Math.PI * (((hour + 6) % 24) - 0) / 12;
+  const sunDir = _sunDir.set(Math.cos(sArc), Math.sin(sArc), 0.42).normalize();
+  const moonDir = _moonDir.set(Math.cos(nArc), Math.sin(nArc), 0.3).normalize();
+  const night = 1 - dayK;
+  const zenith = C(0.0136, 0.0167, 0.0402).lerp(C(0.061, 0.173, 0.71), dayK);
+  const horizon = C(0.0256, 0.0316, 0.0652).lerp(C(0.264, 0.6, 1.4), dayK);
+  // At sunrise and sunset the whole low sky warms, and the horizon on the sun's side glows orange and pink.
+  horizon.lerp(C(0.95, 0.42, 0.22), warmK * 0.55 * (0.25 + 0.75 * dayK));
+  zenith.lerp(C(0.09, 0.12, 0.38), warmK * 0.35 * dayK);
+  if (rain > 0.01) { zenith.lerp(C(0.124, 0.139, 0.165).multiplyScalar(0.3 + 0.7 * dayK), rain * 0.8); horizon.lerp(C(0.228, 0.254, 0.294).multiplyScalar(0.3 + 0.7 * dayK), rain * 0.8); }
+  shared.uZenith.value.copy(zenith); shared.uHorizon.value.copy(horizon);
+  shared.uGround.value.copy(horizon).multiplyScalar(0.55);
+  shared.uWarmCol.value.setRGB(1.0, 0.24, 0.09).lerp(C(0.95, 0.35, 0.55), 0.25);
+  shared.uWarm.value = warmK * (0.25 + 0.75 * dayK);
+  shared.uSunDir.value.copy(sunDir);
+  const sunUp = Math.max(0, Math.min(1, (sunDir.y + 0.04) / 0.12));
+  shared.uSunGlow.value.copy(sun.color).multiplyScalar((0.45 + warmK * 0.5) * sunUp * (1 - rain * 0.85));
+  shared.uSunDisk.value.setRGB(60, 54, 44).lerp(C(48, 20, 6), warmK).multiplyScalar(sunUp * (1 - rain));
+  shared.uNight.value = Math.max(0, Math.min(1, (night - 0.25) / 0.6)) * (1 - rain);
+  shared.uMoonDir.value.copy(moonDir);
+  // The moon's phase changes from night to night: full, then a fat half, then back.
+  const day = Math.floor(G.clock / 1440), ph = 1.25 * (1 - Math.cos(day * 0.6)) / 2;
+  _side.crossVectors(_up, moonDir).normalize();
+  shared.uMoonLit.value.copy(moonDir).negate().multiplyScalar(Math.cos(ph)).addScaledVector(_side, Math.sin(ph)).normalize();
+  _starM.makeRotationAxis(_axis.set(0.2, 0.9, 0.38).normalize(), G.clock / 1440 * Math.PI * 2);
+  shared.uStarRot.value.setFromMatrix4(_starM);
+  // Clouds: a few on a fine day, more on some days than others, a grey lid when it rains. They drift with the wind.
+  shared.uCover.value = Math.min(1, 0.4 + 0.12 * Math.sin(day * 1.7 + 0.5) + rain * 0.62);
+  shared.uWind.value.x += dt * 9; shared.uWind.value.y += dt * 3.5;
+  const cloudSun = shared.uCloudSun.value;
+  if (sunDir.y > -0.1) {
+    shared.uCloudSunDir.value.copy(sunDir).setY(Math.max(sunDir.y, 0.04)).normalize();
+    cloudSun.setRGB(2.6, 2.45, 2.2).lerp(C(2.6, 1.05, 0.45), warmK).multiplyScalar(Math.max(0.03, sunUp) * (1 - rain * 0.75));
+  } else {
+    shared.uCloudSunDir.value.copy(moonDir);
+    cloudSun.setRGB(0.06, 0.07, 0.1);
   }
-  sky.material.uniforms.top.value.copy(top);
-  sky.material.uniforms.horizon.value.copy(horizon);
-  sky.material.uniforms.sunDir.value.copy(up ? toSun : toSun.clone().negate());
-  sky.material.uniforms.night.value = 1 - dayK;
-  sky.material.uniforms.warm.value = Math.min(warm, 1) * (0.25 + 0.75 * dayK);
+  shared.uCloudAmb.value.copy(zenith).multiplyScalar(1.6).lerp(C(0.42, 0.43, 0.46).multiplyScalar(0.25 + 0.75 * dayK), rain * 0.6).addScalar(0.01);
+  // A rainbow, for a little while after a shower, if the sun is out and low enough.
+  rainbowT = W.want > 0 ? 1 : Math.max(0, rainbowT - dt / 90);
+  shared.uRainbow.value = (W.want === 0 && rainbowT > 0 && W.now < 0.25 && sunDir.y > 0.05 && sunDir.y < 0.7) ? Math.min(rainbowT * 1.6, 1) * (1 - W.now * 4) : 0;
   look.day = dayK; look.warm = warm; look.horizon.copy(horizon);
-  const fogC = horizon.clone().multiplyScalar(0.12 + 0.88 * localLight);
+  // What the drifting smoke and falling leaves are lit by, and how big a point looks on screen.
+  look.light.copy(hemi.color).multiplyScalar(hemi.intensity * 0.42).add(_lc2.copy(sun.color).multiplyScalar(sun.intensity * 0.22));
+  look.px = gfx.pixelHeight / (2 * Math.tan(camera.fov * Math.PI / 360));
   // Water: its colour follows the daylight, and with your eyes under water everything fades into blue close by.
   const deep = C(0.02, 0.17, 0.36).multiplyScalar(0.15 + 0.85 * dayK);
   shared.uDeep.value.copy(deep); shared.uDay.value = 0.12 + 0.88 * dayK;
-  shared.uSunDir.value.copy(up ? toSun : toSun.clone().negate()); shared.uSunCol.value.copy(sun.color).multiplyScalar(dayK);
-  shared.uSkyCol.value.copy(horizon); shared.uSkyTop.value.copy(top);
+  shared.uSunCol.value.copy(sun.color).multiplyScalar(dayK);
+  shared.uSkyCol.value.copy(horizon); shared.uSkyTop.value.copy(zenith);
   const cx = Math.floor(camera.position.x), cy = Math.floor(camera.position.y), cz = Math.floor(camera.position.z), cb = world.get(cx, cy, cz);
   const under = IS_WATERY[cb] === 1 && camera.position.y < cy + waterHeight(cb, world.get(cx, cy + 1, cz)) - 0.02;
   shared.uCamUnder.value = under ? 1 : 0;
   look.under = under;
-  if (under) { const suit = G.worn && G.worn.head === 'divingSuit'; scene.fog.color.copy(deep).multiplyScalar(0.9 * localLight + 0.1); scene.fog.near = suit ? 4 : 0.5; scene.fog.far = (18 + 22 * dayK * localLight) * (suit ? 2.4 : 1); if (suit && !G.talked.has('_dive')) { G.talked.add('_dive'); addStars(1, 'You walked under the sea in Leonardo\'s diving hood!'); } }
-  else if (jungle && jungle.state.mist) { scene.fog.color.setRGB(0.78, 0.78, 0.74); scene.fog.near = 1.5; scene.fog.far = 9; }   // a swarm of mist mimic moths
-  else { scene.fog.color.copy(fogC); scene.fog.near = viewChunks * CS * 0.45; scene.fog.far = viewChunks * CS * 1.15; }
+  // Haze: thin at noon, thicker at dawn (morning mist in the valleys), thick in the rain, and always closing in
+  // just before the edge of the land that has been drawn.
+  const mist = Math.max(0, 1 - Math.abs(hour - 6.3) / 1.8);
+  shared.uFogDensity.value = 0.0005 + 0.0035 * mist + 0.0055 * rain;
+  shared.uFogBase.value = 34 + (1 - mist) * 14; shared.uFogFall.value = 0.035;
+  scene.fog.color.copy(horizon);
+  if (under) {
+    const suit = G.worn && G.worn.head === 'divingSuit';
+    scene.fog.color.copy(deep).multiplyScalar(0.9 * localLight + 0.1); scene.fog.near = suit ? 4 : 0.5; scene.fog.far = (18 + 22 * dayK * localLight) * (suit ? 2.4 : 1);
+    if (suit && !G.talked.has('_dive')) { G.talked.add('_dive'); addStars(1, 'You walked under the sea in Leonardo\'s diving hood!'); }
+    shared.uFogMode.value = 1;
+  } else if (jungle && jungle.state.mist) { scene.fog.color.setRGB(0.78, 0.78, 0.74); scene.fog.near = 1.5; scene.fog.far = 9; shared.uFogMode.value = 1; }   // a swarm of mist mimic moths
+  else { scene.fog.near = viewChunks * CS * 0.66; scene.fog.far = viewChunks * CS * 1.06; shared.uFogMode.value = 0; }
+  shared.uFogNear.value = scene.fog.near; shared.uFogFar.value = scene.fog.far; shared.uFogFlat.value.copy(scene.fog.color);
+  if (farland && shared.uFogMode.value === 0) { shared.uFogNear.value = 1400; shared.uFogFar.value = 3600; scene.fog.near = 200; scene.fog.far = 1600; }
+  if (farland) farland.update();
   $('underwater').hidden = !under;
   shared.uTime.value += dt;
+  shared.uRain.value = rain;
+  // Things dry off slowly after the rain stops.
+  shared.uWet.value += ((W.now > 0.05 ? 1 : 0) - shared.uWet.value) * Math.min(1, dt * (W.now > 0.05 ? 0.05 : 0.012));
+  shared.uProjM.value.copy(camera.projectionMatrix);
   const torch = heldItem()?.id === 'torch';
   shared.uHand.value.set(P.x, P.y + 1.5, P.z, torch ? 9 : 0);
+  // ----- the finished picture: how bright, what colour, how much sunbeam -----
+  const gr = gfx.grade, beams = gfx.beams;
+  gr.exposure = 1.1 * (1 + 0.45 * night) * (1 + 0.55 * (1 - localLight)) * (under ? 1.15 : 1);
+  gr.tint.setRGB(1, 1, 1).lerp(C(1.08, 1.0, 0.88), warmK * 0.8 * dayK).lerp(C(0.86, 0.93, 1.12), night * 0.8);
+  gr.sat = 1.1 - rain * 0.18 - night * 0.15;
+  gr.bloom = 0.04 + night * 0.025;
+  beams.dir.copy(toSun);
+  beams.color.copy(sun.color).multiplyScalar(sun.intensity);
+  beams.density = under ? 0.03 : up ? (0.0025 + 0.004 * warmK + 0.005 * mist) * Math.min(1, dayK * 1.5) * (1 - rain * 0.85) : 0;
+  beams.under = under ? 1 : 0;
+  if (under) {
+    beams.color.multiply(C(0.35, 0.75, 0.95));
+    let sy = cy; while (sy < H - 1 && IS_WATERY[world.get(cx, sy + 1, cz)]) sy++;
+    beams.waterY = sy + waterHeight(world.get(cx, sy, cz), world.get(cx, sy + 1, cz));
+  }
+  beams.maxDist = under ? 28 : gfx.settings.shadowR;
+  beams.ext = under ? 0.06 : 0.008;
+  beams.g = under ? 0.5 : 0.6;
 }
+let rainbowT = 0;
+const _lc2 = new THREE.Color(), _sunDir = new THREE.Vector3(), _moonDir = new THREE.Vector3(), _side = new THREE.Vector3(), _axis = new THREE.Vector3(), _starM = new THREE.Matrix4();
 let localGoal = 1;
 
 // ---------- survival ----------
@@ -3625,8 +3707,10 @@ function openDesigner(d, i) {
   refreshPaused();
 }
 function makeDesigner() {
+  // The designer has a studio light of its own: plain blocks, without the weather, cloud shadows or rain of the world.
+  const studio = { solid: blockMaterial(atlasTex, 'solid', QUALITY.fast, true), cut: blockMaterial(atlasTex, 'cut', QUALITY.fast, true) };
   designer = createDesigner({
-    mats, ghostTex: atlasTex, rle, message,
+    mats: studio, ghostTex: atlasTex, rle, message,
     iconOf: (id) => ICONS[id] ?? '', itemOf: (b) => blockItem(b), count: (id) => inv.count(id), free: () => D.free,
     onSave(design, index) {
       if (index >= 0 && designs[index]) designs[index] = design; else designs.push(design);
@@ -3707,6 +3791,24 @@ function refreshSoundBtns() {
   for (const id of ['btnSound', 'btnSound2']) { const b = $(id); if (b) b.textContent = 'Sound: ' + (sound.on ? 'on' : 'off'); }
   for (const id of ['btnMusic', 'btnMusic2']) { const b = $(id); if (b) b.textContent = 'Music: ' + (sound.musicOn ? 'on' : 'off'); }
 }
+// The graphics setting: Fast, Balanced or Amazing. It is kept in this browser (not in the saved world).
+const GFX_ORDER = ['fast', 'balanced', 'amazing'];
+const GFX_HINT = {
+  fast: 'Fast: the simple look, for older computers and phones.',
+  balanced: 'Balanced: glowing light, sunbeams, clear water and real clouds — made for phones and smaller computers.',
+  amazing: 'Amazing: everything — reflections in the water, sharper shadows and the smoothest edges. Best on a computer.',
+};
+function refreshGraphicsUI() {
+  const q = gfx.quality;
+  for (const id of ['btnGfx', 'btnGfx2']) { const b = $(id); if (b) b.textContent = 'Graphics: ' + QUALITY[q].name; }
+  for (const id of ['gfxHint', 'gfxHint2']) { const h = $(id); if (h) h.textContent = GFX_HINT[q] + (gfx.floatOK ? '' : ' (This browser can only show Fast.)'); }
+}
+for (const id of ['btnGfx', 'btnGfx2']) $(id)?.addEventListener('click', () => {
+  let i = GFX_ORDER.indexOf(gfx.quality);
+  for (let k = 0; k < 3; k++) { i = (i + 1) % 3; if (gfx.setQuality(GFX_ORDER[i])) break; }
+  refreshGraphicsUI(); sound.play('click');
+});
+refreshGraphicsUI();
 for (const id of ['btnSound', 'btnSound2']) $(id)?.addEventListener('click', () => { sound.start(); sound.setOn(!sound.on, sound.musicOn); refreshSoundBtns(); sound.play('click'); });
 for (const id of ['btnMusic', 'btnMusic2']) $(id)?.addEventListener('click', () => { sound.start(); sound.setOn(sound.on, !sound.musicOn); refreshSoundBtns(); sound.play('click'); });
 refreshSoundBtns();
@@ -3821,7 +3923,18 @@ async function boot() {
   atlasTex.magFilter = THREE.NearestFilter;
   atlasTex.minFilter = THREE.NearestMipmapLinearFilter;
   atlasTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  mats = { solid: blockMaterial(atlasTex, 'solid'), cut: blockMaterial(atlasTex, 'cut'), water: waterMaterial(atlasTex) };
+  shared.tMat.value = surfaceTable();
+  shared.tNrm.value = normalAtlas(atlasCanvas);
+  shared.tNrm.value.anisotropy = atlasTex.anisotropy;
+  mats = { solid: blockMaterial(atlasTex, 'solid', gfx.settings), cut: blockMaterial(atlasTex, 'cut', gfx.settings), water: waterMaterial(atlasTex, gfx.settings) };
+  // Changing the graphics setting swaps the water and redraws the blocks with the extras that setting has.
+  gfx.onChange((q) => {
+    setBlockQuality(mats.solid, q); setBlockQuality(mats.cut, q);
+    const old = mats.water; mats.water = waterMaterial(atlasTex, q);
+    for (const g of chunks.values()) for (const m of g.children) if (m.material === old) m.material = mats.water;
+    old.dispose();
+    refreshGraphicsUI();
+  });
   cubeMat = new THREE.MeshLambertMaterial({ map: atlasTex });
   makeDesigner();
   setLoading('Building the world…', 0.05);
@@ -3889,11 +4002,17 @@ function start() {
   try {
     const avoid = [...Object.values(G.placed).map((p) => p.rect), ...Object.values(G.cities).filter(Boolean).map((c) => [c.center[0] - c.R - 4, c.center[1] - c.R - 4, c.center[0] + c.R + 4, c.center[1] + c.R + 4]),
       [G.camp.spawn[0] - 40, G.camp.spawn[1] - 40, G.camp.spawn[0] + 40, G.camp.spawn[1] + 40]];
-    const lanes = ships ? ships.ships.map((q) => [...q.course.a, ...q.course.b, q.t.L / 2 + 3]) : [];   // and out of the warships' way
+    const lanes = ships ? ships.ships.filter((q) => q.course).map((q) => [...q.course.a, ...q.course.b, q.t.L / 2 + 3]) : [];   // (a boat tied up in port has no course)   // and out of the warships' way
     events = createEvents({ scene, world, WL, cities: G.cities, placed: G.placed, avoid, lanes });
   } catch (err) { console.warn('events', err); events = null; }
   for (const [x, y, z] of G.wake || []) wakeWater(x, y, z);
   refreshHotbar(); refreshHud();
+  // The far-off land, out to the horizon.
+  try {
+    farland = createFarLand({ world, shared, colorOf: (b) => tileColor(BLOCKS[b].top), sideOf: (b) => tileColor(BLOCKS[b].side), WL, H, IS_CROSS, IS_WATERY, q: gfx.settings });
+    scene.add(farland.group);
+    gfx.onChange((q) => farland.setQuality(q));
+  } catch (err) { console.warn('farland', err); farland = null; }
   // Build the chunks right around you before showing the world.
   setLoading('Drawing the land…', 0.92);
   streamChunks(500);
@@ -4005,10 +4124,10 @@ function loop(now) {
     hudT -= dt; if (hudT <= 0) { hudT = 0.5; refreshHud(); refreshPaused(); }
     saveTimer -= dt; if (saveTimer <= 0 || (saveSoon && saveTimer < 12)) { saveTimer = 15; saveSoon = false; save(); }
   }
-  if (openPanel !== 'designer') renderer.render(scene, camera);
+  if (openPanel !== 'designer') gfx.render(scene, camera, dt);
   requestAnimationFrame(loop);
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: () => { streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); renderer.render(scene, camera); }, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

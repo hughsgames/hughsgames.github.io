@@ -4,6 +4,7 @@
 // almost everything is a trap. The land itself (the plateau, the trees, the pools, the vines and the flood holes) is
 // built by worldgen.js; this file brings it to life, but only while you're near it.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { boxUvs } from './graphics.js';
 
 // What each creature is called, how tough it is, what it leaves behind, and what Hugh says about it.
 export const JUNGLE = {
@@ -36,7 +37,7 @@ export const JUNGLE = {
 };
 
 // ---------- models ----------
-const BOX = new THREE.BoxGeometry(1, 1, 1);
+const BOX = boxUvs(new THREE.BoxGeometry(1, 1, 1));   // rounded-box faces (graphics.js)
 const MATS = new Map();
 const mat = (c, extra) => { const k = c + (extra ? JSON.stringify(extra) : ''); let m = MATS.get(k); if (!m) { m = new THREE.MeshLambertMaterial({ color: c, ...(extra || {}) }); MATS.set(k, m); } return m; };
 function box(parent, sx, sy, sz, color, x, y, z, m) {
@@ -259,17 +260,18 @@ export function createMegajungle({ scene, group, world, H, IS_WATER, IS_SOLID, m
     }
   }
   function glowRing(x, y, z, color = 0xc040ff) {
-    const r = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.45, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    // Brighter than white, so on Balanced and Amazing it glows. (No real light: a light coming and going would make
+    // every material in the world rebuild itself, and the game would freeze for a moment.)
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+    mat.color.multiplyScalar(4);
+    const r = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.45, 24), mat);
     r.rotation.x = -Math.PI / 2; r.position.set(x, y + 0.1, z); fx.add(r);
     puffs.push({ p: r, vx: 0, vy: 0, vz: 0, life: 1.4, t: 0, size: 1, ring: true });
-    const light = new THREE.PointLight(color, 3, 10); light.position.set(x, y + 0.8, z); fx.add(light);
-    puffs.push({ p: light, life: 1.2, t: 0, light: true });
   }
   function updatePuffs(dt) {
     for (let i = puffs.length - 1; i >= 0; i--) {
       const q = puffs[i]; q.t += dt;
-      if (q.light) { q.p.intensity = Math.max(0, 3 * (1 - q.t / q.life)); }
-      else if (q.ring) { q.p.scale.setScalar(1 + q.t * 5); q.p.material.opacity = Math.max(0, 0.9 * (1 - q.t / q.life)); }
+      if (q.ring) { q.p.scale.setScalar(1 + q.t * 5); q.p.material.opacity = Math.max(0, 0.9 * (1 - q.t / q.life)); }
       else {
         q.vy -= 6 * dt; q.p.position.x += q.vx * dt; q.p.position.y += q.vy * dt; q.p.position.z += q.vz * dt;
         q.p.material.opacity = Math.max(0, 0.9 * (1 - q.t / q.life));

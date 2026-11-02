@@ -5,6 +5,7 @@
 // shoot the great crossbow, paddle the paddle boat on the Arno, and set the mechanical knight and the mechanical
 // lion going. (Some of them could never have worked for real — Leonardo tells you which when you ask him.)
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { boxUvs } from './graphics.js';
 
 // ---------- what each machine is ----------
 // kind says how it moves: fly (flaps up), glide (only ever down), lift (straight up), drive (on the ground),
@@ -38,7 +39,7 @@ export const MACHINES = {
 };
 
 // ---------- building the models ----------
-const BOX = new THREE.BoxGeometry(1, 1, 1);
+const BOX = boxUvs(new THREE.BoxGeometry(1, 1, 1));   // rounded-box faces (graphics.js)
 const MATS = new Map();
 const mat = (c) => { let m = MATS.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); MATS.set(c, m); } return m; };
 function box(parent, sx, sy, sz, color, x, y, z, rx = 0, ry = 0, rz = 0) {

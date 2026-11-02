@@ -144,19 +144,20 @@ export function pose(anim, t, moving, phase) {
 // ---------- tools and workplaces, as little models made of boxes ----------
 /// One mesh from a list of coloured boxes [x0, y0, z0, x1, y1, z1, colour].
 export function boxModel(boxes) {
-  const pos = [], nrm = [], col = [], idx = [], c = new THREE.Color();
+  const pos = [], nrm = [], col = [], uvs = [], idx = [], c = new THREE.Color();
   for (const [x0, y0, z0, x1, y1, z1, hex] of boxes) {
     const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     const base = pos.length / 3;
     c.setHex(hex);
     pos.push(...g.attributes.position.array); nrm.push(...g.attributes.normal.array);
+    for (const v of g.attributes.uv.array) uvs.push(v + 2);   // rounded-box faces (graphics.js)
     for (let i = 0; i < g.attributes.position.count; i++) col.push(c.r, c.g, c.b);
     for (const i of g.index.array) idx.push(base + i);
     g.dispose();
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setIndex(idx);
   return g;
 }
 const W = 0x7a5232, DW = 0x5a3a22, IRON = 0x8a8f96, STONE = 0xc9c2b0, CLAY = 0xb5643a, GOLD = 0xe0b84a, LEAF = 0x4f8a3a;
