@@ -391,7 +391,9 @@ export function createShips({ scene, world, WL, IS_WATERY, cities }) {
     const shaft = new THREE.InstancedMesh(oarGeo, oarMat, oars.length), blade = new THREE.InstancedMesh(bladeGeo, oarMat, oars.length);
     const seats = [];
     for (const o of oars) if (o.b === 0) for (let m = 0; m < t.men[0]; m++) seats.push({ o, x: o.side * (Math.abs(o.x) - 0.75 - (t.outrigger ? 0 : 0) - m * 0.62), y: t.hs - 0.55, z: o.z });
-    for (const m of [shaft, blade]) { m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); body.add(m); }
+    // The oars never leave the ship: one sphere round the ship (in its own space) is enough to skip them when it's out of sight.
+    const oarBound = new THREE.Sphere(new THREE.Vector3(0, t.hs || 1, 0), t.L / 2 + Math.max(...oars.map((o) => o.len || 4), 4) + 2);
+    for (const m of [shaft, blade]) { m.castShadow = true; m.boundingSphere = oarBound; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); body.add(m); }
     // The rowers are real people (two looks, taking turns along the benches), facing the stern as rowers do.
     const rowers = [0, 1].map((k) => new Squad(body, rig(rowerLook(k ? 0xd8c8a8 : 0xe9e0cc, k + type.length)), Math.ceil(seats.length / 2) - (k && seats.length % 2 ? 1 : 0), oarMat));
     seats.forEach((r, i) => { r.squad = rowers[i % 2]; r.i = i >> 1; });

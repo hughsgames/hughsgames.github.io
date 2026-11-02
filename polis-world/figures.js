@@ -45,7 +45,7 @@ export class Squad {
     this.meshes = {};
     for (const k of ['body', ...LIMBS]) {
       const m = new THREE.InstancedMesh(geos[k], material, Math.max(1, count));
-      m.count = count; m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      m.count = count; m.castShadow = true; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       parent.add(m); this.meshes[k] = m;
     }
     this._root = new THREE.Matrix4(); this._up = new THREE.Matrix4(); this._m = new THREE.Matrix4(); this._r = new THREE.Matrix4(); this._e = new THREE.Euler();
@@ -62,7 +62,12 @@ export class Squad {
       this.meshes[k].setMatrixAt(i, m);
     }
   }
-  done() { for (const m of Object.values(this.meshes)) m.instanceMatrix.needsUpdate = true; }
+  done() {
+    for (const m of Object.values(this.meshes)) m.instanceMatrix.needsUpdate = true;
+    // Every so often, measure where the squad has got to (with a little room to move), so the renderer can skip it
+    // when it is behind you or far away — a fleet on the other side of the sea costs nothing.
+    if ((this._n = (this._n || 0) + 1) % 30 === 1) for (const m of Object.values(this.meshes)) { m.computeBoundingSphere(); if (m.boundingSphere.radius >= 0) m.boundingSphere.radius += 4; }
+  }
   set visible(v) { for (const m of Object.values(this.meshes)) m.visible = v; }
 }
 
