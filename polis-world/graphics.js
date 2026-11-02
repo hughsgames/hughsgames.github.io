@@ -17,9 +17,9 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { SKY_GLSL, CLOUD_GLSL, PANO_GLSL, HASH_GLSL } from './shaders.js';
 
 export const QUALITY = {
-  fast: { name: 'Fast', post: false, maxDpr: 1.25, msaa: 0, shadow: 1024, shadowR: 36, rays: 0, raysScale: 0, ssr: false, pano: 0, panoRows: 0, bevel: false, normals: false, minScale: 1 },
-  balanced: { name: 'Balanced', post: true, maxDpr: 1.5, msaa: 0, shadow: 2048, shadowR: 48, rays: 10, raysScale: 0.25, ssr: false, pano: 512, panoRows: 32, bevel: true, normals: true, minScale: 0.6 },
-  amazing: { name: 'Amazing', post: true, maxDpr: 2, msaa: 4, shadow: 4096, shadowR: 64, rays: 20, raysScale: 0.5, ssr: true, pano: 1024, panoRows: 64, bevel: true, normals: true, minScale: 0.6 },
+  fast: { name: 'Fast', post: false, maxDpr: 1.25, msaa: 0, shadow: 1024, shadowR: 36, shadowEvery: 2, rays: 0, raysScale: 0, ssr: false, pano: 0, panoRows: 0, bevel: false, normals: false, minScale: 1 },
+  balanced: { name: 'Balanced', post: true, maxDpr: 1.5, msaa: 0, shadow: 2048, shadowR: 48, shadowEvery: 2, rays: 10, raysScale: 0.25, ssr: false, pano: 512, panoRows: 32, bevel: true, normals: true, minScale: 0.6 },
+  amazing: { name: 'Amazing', post: true, maxDpr: 2, msaa: 4, shadow: 4096, shadowR: 64, shadowEvery: 1, rays: 20, raysScale: 0.5, ssr: true, pano: 1024, panoRows: 64, bevel: true, normals: true, minScale: 0.6 },
 };
 const STORE = 'polis-graphics';
 
@@ -316,13 +316,26 @@ export function createGraphics(renderer, { shared, sun }) {
   // ---------- which pass each thing is drawn in ----------
   // Layer 0: everything solid. Layer 1: water (drawn after a copy of the world is made, so it can look through it).
   // Layer 2: things you can see through, drawn last.
-  function classify(scene) {
+  // Also: only things fairly near you cast shadows. A townsperson forty blocks away throws a shadow a few pixels
+  // big, and drawing it into the sun's shadow picture costs as much as drawing them on screen.
+  const _bc = new THREE.Vector3();
+  function classify(scene, camera) {
+    const reach = Q.shadowR * 0.65, cx = camera.position.x, cz = camera.position.z;
     scene.traverse((o) => {
       if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
       let want = 1;
       if (o.userData.water) want = 2;
       else { const m = o.material; if (Array.isArray(m) ? m.some((x) => x && x.transparent) : m && m.transparent) want = 4; }
       if (o.layers.mask !== want) o.layers.mask = want;
+      if (o.isMesh && !o.isInstancedMesh) {
+        const u = o.userData;
+        if (u.castBase === undefined) u.castBase = o.castShadow;
+        if (u.castBase) {
+          const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+          _bc.copy(g.boundingSphere.center).applyMatrix4(o.matrixWorld);
+          o.castShadow = Math.hypot(_bc.x - cx, _bc.z - cz) - g.boundingSphere.radius < reach;
+        }
+      }
     });
   }
 
@@ -377,14 +390,19 @@ export function createGraphics(renderer, { shared, sun }) {
   function render(scene, camera, dt = 1 / 60) {
     frame++;
     renderer.info.reset();
+    // The sun's shadow picture is redrawn every frame on Amazing, every other frame otherwise (things move slowly
+    // enough that nobody can tell, and it is one of the most expensive things in a frame).
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = frame % (Q.shadowEvery || 1) === 0 || !sun.shadow.map;
     if (!Q.post) {
+      if ((frame & 1) === 0) classify(scene, camera);
       camera.layers.mask = 0xffffffff;
       renderer.setRenderTarget(null);
       renderer.render(scene, camera);
       return;
     }
     adapt(dt);
-    classify(scene);
+    classify(scene, camera);
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     renderPano(camera);
@@ -398,13 +416,11 @@ export function createGraphics(renderer, { shared, sun }) {
     copyMat.uniforms.tColor.value = sceneRT.texture; copyMat.uniforms.tDepth.value = sceneRT.depthTexture; copyMat.uniforms.uInvProj.value.copy(invProj);
     renderer.autoClear = false;
     pass(copyMat, refrRT);
-    // 4. water, then see-through things
-    const shadowAuto = renderer.shadowMap.autoUpdate;
-    renderer.shadowMap.autoUpdate = false;
+    // 4. water, then see-through things (the shadow picture is not redrawn for this pass)
+    renderer.shadowMap.needsUpdate = false;
     camera.layers.mask = 2 | 4;
     renderer.setRenderTarget(sceneRT);
     renderer.render(scene, camera);
-    renderer.shadowMap.autoUpdate = shadowAuto;
     camera.layers.mask = 0xffffffff;
     // 5. sunbeams
     if (volRT && sun.shadow.map && volUniforms.density > 0.0005) {

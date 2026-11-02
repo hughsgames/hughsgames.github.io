@@ -246,20 +246,32 @@ function boxMesh(w, h, d, color, x, y, z) {
   m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
   return m;
 }
+// Every person shares one material; their colours are painted on the boxes themselves.
+const PERSON_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
 function person(look) {
   // Built from the same body parts as the townspeople: a face, hands, sandals, a belt, hair (and maybe a beard or hat).
+  // The boxes that move together (the head, each arm, each leg, the body) are joined into one mesh: the same person,
+  // drawn in a handful of pieces instead of two dozen, which matters a great deal in a busy city.
   const g = new THREE.Group(), joints = {};
   const colors = { eye: 0x1e2a44, white: 0xf2efe8, nose: new THREE.Color(look.skin).offsetHSL(0, 0, -0.06).getHex(), mouth: 0x8a3a32, shoes: 0x5a3a22, belt: 0x6b4a2b, gold: 0xe0b84a, sleeves: look.shirt, ...look };
-  for (const [j, at] of Object.entries(JOINTS)) { const q = new THREE.Group(); q.position.set(...at); (j === 'upper' || j === 'root' ? g : g).add(q); joints[j] = q; }
-  const pupils = [];
+  for (const [j, at] of Object.entries(JOINTS)) { const q = new THREE.Group(); q.position.set(...at); g.add(q); joints[j] = q; }
+  const pupils = [], perJoint = {};
   for (const [name, joint, ctr, size, key] of BODY) {
     let cc = ctr, sz = size, col = colors[key];
     if (name.startsWith('hat')) { const piece = look.hat?.find((q) => q[0] === name); if (!piece) continue; sz = piece[1]; cc = piece[2]; col = piece[3]; }
     if ((name === 'robe' && !look.robe) || (name === 'beard' && !look.beard) || (name === 'hairBack' && !look.longHair) || (name === 'neck' && !look.necklace)) continue;
-    const mesh = boxMesh(sz[0], sz[1], sz[2], col, cc[0], cc[1], cc[2]);
-    // The pupils are kept, so the eyes can follow something instead of staring straight ahead.
-    if (name === 'pupilL' || name === 'pupilR') { mesh.userData.x = cc[0]; mesh.userData.y = cc[1]; pupils.push(mesh); }
-    joints[joint].add(mesh);
+    // The pupils stay separate, so the eyes can follow something instead of staring straight ahead.
+    if (name === 'pupilL' || name === 'pupilR') {
+      const mesh = boxMesh(sz[0], sz[1], sz[2], col, cc[0], cc[1], cc[2]);
+      mesh.castShadow = false; mesh.userData.x = cc[0]; mesh.userData.y = cc[1]; pupils.push(mesh); joints[joint].add(mesh);
+      continue;
+    }
+    (perJoint[joint] ??= []).push([cc[0] - sz[0] / 2, cc[1] - sz[1] / 2, cc[2] - sz[2] / 2, cc[0] + sz[0] / 2, cc[1] + sz[1] / 2, cc[2] + sz[2] / 2, col ?? 0xffffff]);
+  }
+  for (const [j, boxes] of Object.entries(perJoint)) {
+    const mesh = new THREE.Mesh(boxModel(boxes), PERSON_MAT);
+    mesh.castShadow = mesh.receiveShadow = true;
+    joints[j].add(mesh);
   }
   return { g, legs: [joints.legL, joints.legR], arms: [joints.armL, joints.armR], head: joints.head, pupils };
 }
@@ -1944,6 +1956,10 @@ function makeCrowd(id, city) {
   for (const m of Object.values(meshes)) m.instanceColor.needsUpdate = true;
   const models = {};
   for (const kind of ['tool', 'load', 'prop']) for (const [name, list] of Object.entries(extras[kind])) models[kind + name] = instanced(modelGeo(kind, name), MODEL_MAT, list.length);
+  // Everyone in the crowd stays inside the city, so one sphere round the city tells the renderer when the whole crowd
+  // is behind you or outside the sun's shadow area, and it skips drawing it.
+  const bound = new THREE.Sphere(new THREE.Vector3(city.center[0], world.groundY(Math.floor(city.center[0]), Math.floor(city.center[1])), city.center[1]), city.R + 20);
+  for (const m of [...Object.values(meshes), ...Object.values(models)]) { m.boundingSphere = bound; m.frustumCulled = true; }
   // Workplaces stay hidden until the ground under them has been built and we've found which way they can face.
   for (const pe of people) if (pe.prop) models['prop' + pe.prop.name].setMatrixAt(pe.prop.i, ZERO);
   const crowd = { id, city, meshes, models, people, visible: true };
