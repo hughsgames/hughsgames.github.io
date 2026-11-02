@@ -41,7 +41,8 @@ const FS_VERT = /* glsl */ `varying vec2 vUv; void main() { vUv = position.xy * 
 export function createGraphics(renderer, { shared, sun }) {
   const gl = renderer.getContext();
   const isGL2 = renderer.capabilities.isWebGL2;
-  const floatOK = isGL2 && renderer.extensions.has('EXT_color_buffer_float');
+  // The high-range picture only needs half-float colour; some phones offer just that (not full float).
+  const floatOK = isGL2 && (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
   let maxSamples = 0;
   if (floatOK) { try { const s = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.RGBA16F, gl.SAMPLES); maxSamples = s && s.length ? Math.max(...s) : 0; } catch (_) { maxSamples = 0; } }
 
@@ -174,11 +175,12 @@ export function createGraphics(renderer, { shared, sun }) {
       vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, z * 2.0 - 1.0, 1.0);
       vec3 wp = (uCamWorld * vec4(v.xyz / v.w, 1.0)).xyz;
       vec3 rd = wp - uCam; float dist = length(rd); rd /= max(dist, 1e-4);
-      float len = min(dist, uMaxDist), stepL = len / float(STEPS);
+      float len = min(dist, uMaxDist);
       float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy + uFrame * 5.588238, vec2(0.06711056, 0.00583715))));
       float acc = 0.0;
+      // Steps bunch up close to the eye, where shafts of light are sharpest, and spread out further away.
       for (int i = 0; i < STEPS; i++) {
-        float t = (float(i) + jit) * stepL;
+        float a = (float(i) + jit) / float(STEPS), t = len * a * a, stepL = len * 2.0 * a / float(STEPS);
         vec3 p = uCam + rd * t;
         vec4 sc = uShadowMat * vec4(p, 1.0);
         vec3 s = sc.xyz / sc.w;
@@ -190,9 +192,8 @@ export function createGraphics(renderer, { shared, sun }) {
           float c = texture2D(uNoise, q * 0.045 + vec2(uTime * 0.013, uTime * 0.009)).b * texture2D(uNoise, q * 0.031 - vec2(uTime * 0.011, -uTime * 0.007)).b;
           lit *= smoothstep(0.12, 0.5, c) * 2.2;
         }
-        acc += lit * exp(-t * uExt);
+        acc += lit * exp(-t * uExt) * stepL;
       }
-      acc *= stepL;
       float mu = dot(rd, uLightDir);
       float ph = hg(mu, uG) * 0.75 + 0.25 * 0.0796;
       gl_FragColor = vec4(uLightCol * (uDensity * acc * ph), 1.0);
@@ -229,10 +230,11 @@ export function createGraphics(renderer, { shared, sun }) {
     }`, { tSrc: { value: null }, tAdd: { value: null }, uTexel: { value: new THREE.Vector2() } });
 
   // ---------- 7. the screen ----------
-  const grade = { exposure: 1.1, bloom: 0.045, sat: 1.08, contrast: 1.03, vignette: 0.22, tint: new THREE.Color(1, 1, 1), volK: 1 };
+  const grade = { exposure: 1.1, bloom: 0.045, sat: 1.08, contrast: 1.03, vignette: 0.22, tint: new THREE.Color(1, 1, 1), volK: 1, flare: 1 };
   const compMat = passMat(/* glsl */ `
     ${HASH_GLSL}
-    uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tVol;
+    uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tVol; uniform sampler2D tDepth; uniform sampler2D tPano;
+    uniform vec3 uSunUV; uniform vec3 uFlareCol; uniform float uAspect; uniform vec2 uCloudUV;
     uniform float uBloom; uniform float uExposure; uniform float uSat; uniform float uContrast; uniform float uVignette; uniform float uTime; uniform float uVolK;
     uniform vec3 uTint; uniform float uLevels;
     varying vec2 vUv;
@@ -269,6 +271,35 @@ export function createGraphics(renderer, { shared, sun }) {
       #ifdef BLOOM
         c = mix(c, texture2D(tBloom, vUv).rgb / uLevels, uBloom);
       #endif
+      #ifdef FLARE
+        // A lens flare when you look towards the sun: a glow and a horizontal streak round it, and soft coloured rings
+        // along the line from the sun through the middle of the picture. Only as much as the sun itself is showing:
+        // hidden behind a hill or a cloud, it fades away.
+        if (uSunUV.z > 0.0) {
+          float vis = 0.0;
+          for (int i = 0; i < 5; i++) {
+            vec2 o = vec2(float(i == 1) - float(i == 2), float(i == 3) - float(i == 4)) * 0.006;
+            vis += step(0.99999, texture2D(tDepth, uSunUV.xy + o).r);
+          }
+          vis *= 0.2 * uSunUV.z * (1.0 - texture2D(tPano, uCloudUV).a);
+          if (vis > 0.001) {
+            vec2 asp = vec2(uAspect, 1.0), d = (vUv - uSunUV.xy) * asp;
+            float r = length(d);
+            vec3 fl = uFlareCol * (exp(-r * 16.0) * 0.22 + exp(-abs(d.y) * 220.0) * exp(-abs(d.x) * 2.6) * 0.25);
+            vec2 axis = (vec2(0.5) - uSunUV.xy);
+            for (int k = 0; k < 5; k++) {
+              float t = float(k) == 0.0 ? 0.35 : float(k) == 1.0 ? 0.7 : float(k) == 2.0 ? 1.15 : float(k) == 3.0 ? 1.45 : 1.9;
+              float sz = float(k) == 0.0 ? 0.035 : float(k) == 1.0 ? 0.07 : float(k) == 2.0 ? 0.02 : float(k) == 3.0 ? 0.11 : 0.05;
+              vec3 tint = float(k) == 0.0 ? vec3(0.4, 0.7, 1.0) : float(k) == 1.0 ? vec3(0.5, 1.0, 0.6) : float(k) == 2.0 ? vec3(1.0, 0.8, 0.5) : float(k) == 3.0 ? vec3(0.7, 0.5, 1.0) : vec3(1.0, 0.6, 0.4);
+              float g = length((vUv - (uSunUV.xy + axis * t)) * asp);
+              fl += uFlareCol * tint * smoothstep(sz, sz * 0.55, g) * 0.035 * (0.6 + 0.4 * smoothstep(sz * 0.5, sz, g));
+            }
+            float ring = length((vUv - (uSunUV.xy + axis * 1.0)) * asp);
+            fl += uFlareCol * vec3(0.6, 0.8, 1.0) * smoothstep(0.02, 0.0, abs(ring - 0.28)) * 0.02;
+            c += fl * vis;
+          }
+        }
+      #endif
       c = aces(c * uTint * uExposure);
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
       c = max(mix(vec3(l), c, uSat), 0.0);
@@ -279,7 +310,8 @@ export function createGraphics(renderer, { shared, sun }) {
       c += (hash12(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (1.5 / 255.0);
       gl_FragColor = vec4(c, 1.0);
     }`, { tScene: { value: null }, tBloom: { value: null }, tVol: { value: null }, uBloom: { value: 0.04 }, uExposure: { value: 1.1 }, uSat: { value: 1 }, uContrast: { value: 1 }, uVignette: { value: 0.2 },
-    uTime: shared.uTime, uVolK: { value: 1 }, uTint: { value: new THREE.Color(1, 1, 1) }, uLevels: { value: 6 }, uTexel: { value: new THREE.Vector2() } });
+    uTime: shared.uTime, uVolK: { value: 1 }, uTint: { value: new THREE.Color(1, 1, 1) }, uLevels: { value: 6 }, uTexel: { value: new THREE.Vector2() },
+    tDepth: { value: null }, tPano: { value: null }, uSunUV: { value: new THREE.Vector3() }, uFlareCol: { value: new THREE.Color() }, uAspect: { value: 1 }, uCloudUV: { value: new THREE.Vector2() } });
 
   // ---------- which pass each thing is drawn in ----------
   // Layer 0: everything solid. Layer 1: water (drawn after a copy of the world is made, so it can look through it).
@@ -315,7 +347,7 @@ export function createGraphics(renderer, { shared, sun }) {
     shared.uPost.value = Q.post ? 1 : 0;
     volMat.defines.STEPS = Math.max(4, Q.rays); volMat.needsUpdate = true;
     panoMat.defines.STEPS = Q.pano >= 1024 ? 14 : 10; panoMat.needsUpdate = true;
-    compMat.defines = {}; if (Q.rays) compMat.defines.VOL = ''; if (Q.post) compMat.defines.BLOOM = ''; if (Math.min(Q.msaa, maxSamples) === 0) compMat.defines.FXAA = ''; compMat.needsUpdate = true;
+    compMat.defines = {}; if (Q.rays) compMat.defines.VOL = ''; if (Q.post) compMat.defines.BLOOM = ''; if (Q.pano) compMat.defines.FLARE = ''; if (Math.min(Q.msaa, maxSamples) === 0) compMat.defines.FXAA = ''; compMat.needsUpdate = true;
     resize(W, H);
     allocPano();
     for (const f of listeners) f(Q, S.q);
@@ -403,11 +435,20 @@ export function createGraphics(renderer, { shared, sun }) {
     // 7. the screen
     const cu = compMat.uniforms;
     cu.tScene.value = sceneRT.texture; cu.tBloom.value = blooms.length ? blooms[0].up.texture : blackTex; cu.uLevels.value = Math.max(1, blooms.length); cu.uTexel.value.set(1 / rw, 1 / rh);
+    // Where the sun is on the screen, for the lens flare (z: how strongly, 0 when it's behind you or down).
+    _sv.copy(shared.uSunDir.value).multiplyScalar(1000).add(camera.position).project(camera);
+    const sunUp = Math.max(0, Math.min(1, shared.uSunDir.value.y * 8));
+    const onScreen = _sv.z < 1 && Math.abs(_sv.x) < 1.15 && Math.abs(_sv.y) < 1.15;
+    cu.uSunUV.value.set(_sv.x * 0.5 + 0.5, _sv.y * 0.5 + 0.5, onScreen ? sunUp * grade.flare : 0);
+    cu.uFlareCol.value.copy(shared.uSunDisk.value).multiplyScalar(0.02);
+    cu.uAspect.value = rw / rh; cu.tDepth.value = sceneRT.depthTexture; cu.tPano.value = panoRT ? panoRT.texture : blackTex;
+    const sd = shared.uSunDir.value; cu.uCloudUV.value.set(Math.atan2(sd.z, sd.x) * 0.15915494 + 0.5, Math.sqrt(Math.max(sd.y, 0)));
     cu.uBloom.value = grade.bloom; cu.uExposure.value = grade.exposure; cu.uSat.value = grade.sat; cu.uContrast.value = grade.contrast; cu.uVignette.value = grade.vignette; cu.uTint.value.copy(grade.tint);
     pass(compMat, null);
     renderer.autoClear = autoClear;
   }
-  const blackTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); blackTex.needsUpdate = true;
+  const blackTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1); blackTex.needsUpdate = true;
+  const _sv = new THREE.Vector3();
   // What the sunbeams look like right now (set by the game from the time of day and the weather).
   const volUniforms = { density: 0, color: new THREE.Color(1, 0.9, 0.7), dir: new THREE.Vector3(0, 1, 0), maxDist: 48, ext: 0.01, g: 0.7, under: 0, waterY: 31.9 };
 

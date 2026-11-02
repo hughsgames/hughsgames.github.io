@@ -2917,7 +2917,7 @@ function updateDaylight(dt) {
   shared.uWarm.value = warmK * (0.25 + 0.75 * dayK);
   shared.uSunDir.value.copy(sunDir);
   const sunUp = Math.max(0, Math.min(1, (sunDir.y + 0.04) / 0.12));
-  shared.uSunGlow.value.copy(sun.color).multiplyScalar((0.45 + warmK * 0.5) * sunUp * (1 - rain * 0.85));
+  shared.uSunGlow.value.copy(sun.color).multiplyScalar((0.32 + warmK * 0.5) * sunUp * (1 - rain * 0.85));
   shared.uSunDisk.value.setRGB(60, 54, 44).lerp(C(48, 20, 6), warmK).multiplyScalar(sunUp * (1 - rain));
   shared.uNight.value = Math.max(0, Math.min(1, (night - 0.25) / 0.6)) * (1 - rain);
   shared.uMoonDir.value.copy(moonDir);
@@ -2987,7 +2987,7 @@ function updateDaylight(dt) {
   gr.bloom = 0.04 + night * 0.025;
   beams.dir.copy(toSun);
   beams.color.copy(sun.color).multiplyScalar(sun.intensity);
-  beams.density = under ? 0.03 : up ? (0.0025 + 0.004 * warmK + 0.005 * mist) * Math.min(1, dayK * 1.5) * (1 - rain * 0.85) : 0;
+  beams.density = under ? 0.03 : up ? (0.003 + 0.009 * warmK + 0.008 * mist) * Math.min(1, dayK * 1.5) * (1 - rain * 0.85) : 0;
   beams.under = under ? 1 : 0;
   if (under) {
     beams.color.multiply(C(0.35, 0.75, 0.95));
@@ -2996,7 +2996,7 @@ function updateDaylight(dt) {
   }
   beams.maxDist = under ? 28 : gfx.settings.shadowR;
   beams.ext = under ? 0.06 : 0.008;
-  beams.g = under ? 0.5 : 0.6;
+  beams.g = under ? 0.5 : 0.7;
 }
 let rainbowT = 0;
 const _lc2 = new THREE.Color(), _sunDir = new THREE.Vector3(), _moonDir = new THREE.Vector3(), _side = new THREE.Vector3(), _axis = new THREE.Vector3(), _starM = new THREE.Matrix4();
@@ -4129,5 +4129,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

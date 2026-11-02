@@ -88,7 +88,7 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   rainMesh.frustumCulled = false; rainMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); rainMesh.visible = false; scene.add(rainMesh);
   const splashMat = new THREE.MeshBasicMaterial({ color: 0xcfe4f4, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const SPLASH = 90;
-  const splashMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), splashMat, SPLASH);
+  const splashMesh = new THREE.InstancedMesh(new THREE.RingGeometry(0.07, 0.11, 14), splashMat, SPLASH);
   splashMesh.frustumCulled = false; splashMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); splashMesh.visible = false; scene.add(splashMesh);
   const drops = Array.from({ length: RAIN }, () => ({ x: 0, y: -1000, z: 0, v: 0, set: false }));
   const splashes = Array.from({ length: SPLASH }, () => ({ x: 0, y: -1000, z: 0, t: 0 }));
@@ -221,7 +221,7 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
       _sc.set(1, 1, 1);
     }
     splashMesh.instanceMatrix.needsUpdate = true;
-    splashMat.opacity = 0.45 * Math.min(rainK, 1);
+    splashMat.opacity = 0.32 * Math.min(rainK, 1);
   }
 
   const _lc = new THREE.Color();

@@ -731,14 +731,15 @@ void main() {
   vec3 V = normalize(cameraPosition - vWp);
   float spec = mA.r, rough = max(mA.g, 0.045), metal = mA.b;
   // Rain: things out under the open sky get dark and shiny, and puddles gather on flat ground.
-  float wet = 0.0;
+  float wet = 0.0, pud = 0.0;
+  vec3 Npud = Ng;
   #ifdef WEATHER
   if (uWet > 0.003 && mB.a > 0.0) {
     float open = smoothstep(0.8, 0.97, vSky);
     wet = uWet * open * mix(0.3, 1.0, smoothstep(0.2, 0.9, Ng.y)) * mB.a;
     if (Ng.y > 0.9 && open > 0.0) {
       float n = texture2D(uNoise, vWp.xz * 0.019).g * 0.75 + texture2D(uNoise, vWp.xz * 0.083).a * 0.25;
-      float pud = smoothstep(0.54, 0.6, n) * smoothstep(0.35, 0.85, uWet) * open * mB.a;
+      pud = smoothstep(0.54, 0.6, n) * smoothstep(0.35, 0.85, uWet) * open * mB.a;
       if (pud > 0.001) {
         vec2 rg = vec2(0.0);
         for (int i = 0; i < 2; i++) {
@@ -749,11 +750,12 @@ void main() {
           float tt = fract(uTime * 1.4 + h), d = length(fc - cc), rr = tt * 0.42;
           rg += normalize(fc - cc + 1e-5) * sin((d - rr) * 70.0) * exp(-abs(d - rr) * 28.0) * (1.0 - tt);
         }
-        N = normalize(mix(N, normalize(vec3(-rg.x * 0.25 * uRain, 1.0, -rg.y * 0.25 * uRain)), pud));
+        Npud = normalize(vec3(-rg.x * 0.25 * uRain, 1.0, -rg.y * 0.25 * uRain));
+        N = normalize(mix(N, Npud, pud));
         wet = max(wet, pud);
       }
     }
-    albedo *= 1.0 - 0.42 * wet;
+    albedo *= (1.0 - 0.42 * wet) * (1.0 - 0.35 * pud);
     rough = mix(rough, 0.05, wet);
     spec = mix(spec, 1.0, wet * 0.85);
   }
@@ -803,6 +805,14 @@ void main() {
     col += envSky(R, rough) * Fr * (amb * hor * hor * (1.0 - rough * 0.75) * (0.25 + 0.75 * spec));
   }
   #endif
+  #ifdef WEATHER
+  // A puddle mirrors the sky, more and more the lower you look across it.
+  if (pud > 0.001) {
+    vec3 Rp = reflect(-V, Npud);
+    float Fp = 0.12 + 0.7 * pow(1.0 - clamp(dot(Npud, V), 0.0, 1.0), 3.0);
+    col = mix(col, envSky(Rp, 0.02) * vSky * vAO, pud * Fp);
+  }
+  #endif
   // Gems, ore and snow glitter: tiny facets that each catch the sun at their own angle.
   if (mB.b > 0.0) {
     vec3 cell = floor(vWp * 20.0 + Ng * 0.5);
@@ -822,8 +832,11 @@ void main() {
   if (vWd > -50.0) {
     float under = vWd - vWp.y;
     if (under > 0.0) {
-      float c = sin(vWp.x * 1.7 + uTime * 1.3 + sin(vWp.z * 1.1 + uTime)) * sin(vWp.z * 1.9 - uTime * 1.1 + sin(vWp.x * 0.9));
-      col += col * max(c, 0.0) * 0.45 * exp(-under * 0.22) * uDay * vSky;
+      // Two layers of ripples drifting past each other; where they line up the light is focused into bright threads.
+      vec2 cq = vWp.xz + L.xz / max(L.y, 0.25) * under;
+      float n1 = texture2D(uNoise, cq * 0.06 + vec2(uTime * 0.013, uTime * 0.009)).g, n2 = texture2D(uNoise, cq * 0.06 + vec2(0.5 - uTime * 0.011, 0.3 + uTime * 0.012)).g;
+      float c = pow(1.0 - min(abs(n1 - n2) * 3.0, 1.0), 6.0) * 1.6;
+      col += col * c * exp(-under * 0.2) * uDay * vSky * shadow;
       // How much water the light passes through on its way to your eye. (When the finished-picture path is on and you
       // look in from above, the water surface works this out itself, for fish and divers too.)
       if (uPost < 0.5 || uCamUnder > 0.5) {
