@@ -74,6 +74,9 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 @media (max-width: 720px) {
   #compass { top: auto; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); width: min(300px, calc(100vw - 32px)); min-width: 0; }
   #message { bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important; }
+  /* On a phone the compass sits just above the hotbar, so the joystick and buttons move up out of its way. */
+  body[data-mode="touch"] #joystick, body[data-mode="touch"] #touchBtns { bottom: calc(146px + env(safe-area-inset-bottom, 0px)); }
+  body[data-mode="touch"] #message { bottom: calc(292px + env(safe-area-inset-bottom, 0px)) !important; }
 }
 /* On the map: you are an arrow pointing the way you face. */
 .pin.you.arrow { width: 0; height: 0; border-radius: 0; background: none; border: 0; box-shadow: none; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 18px solid #ff3b30; filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #000); }
