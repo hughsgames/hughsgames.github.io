@@ -3933,7 +3933,7 @@ async function boot() {
   setLoading('Loading pictures…', 0.02);
   await loadAtlas();
   await makeIcons();
-  const atlasCanvas = buildAtlas(atlasImg, extraImg);
+  const atlasCanvas = buildAtlas(atlasImg, extraImg, 4);   // four times sharper than the original art (see buildAtlas)
   atlasTex = new THREE.CanvasTexture(atlasCanvas);
   atlasTex.colorSpace = THREE.SRGBColorSpace;
   atlasTex.magFilter = THREE.NearestFilter;

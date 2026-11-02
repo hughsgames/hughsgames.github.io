@@ -297,23 +297,31 @@ export const SKY_FALLOFF = [1, 0.84, 0.68, 0.53, 0.40, 0.29, 0.16];
 export const CELL = 16, PAD = 3, TILE = 10;
 /// Copies each 10 × 10 picture into a 16 × 16 cell with wrapped borders, so far-away (blurred) blocks don't bleed.
 /// `img` holds tiles 0–63 (8 × 8), `extra` holds tiles 64–79 (8 × 2).
-export function buildAtlas(img, extra) {
+export function buildAtlas(img, extra, scale = 1) {
+  // At scale 4 every picture is drawn four times sharper: each pixel of the original art becomes a 4 × 4 patch with a
+  // faint grain of its own (stone and earth most, metal and glass least), so blocks look finely made up close and
+  // exactly as before from a distance (the far-away copies the graphics card makes average the grain away).
+  const C = CELL * scale, Pd = PAD * scale, Tl = TILE * scale;
   const c = document.createElement('canvas');
-  c.width = CELL * 8; c.height = CELL * TILE_ROWS;
+  c.width = C * 8; c.height = C * TILE_ROWS;
   const g = c.getContext('2d');
   g.imageSmoothingEnabled = false;
   const sheet = tileSheet(img, extra);
   const out = new ImageData(c.width, c.height);
+  const grain = (t, x, y) => { let h = (t * 9973 + x * 374761393 + y * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296 - 0.5; };
   for (let t = 0; t < 8 * TILE_ROWS; t++) {
-    const cx = (t % 8) * CELL, cy = Math.floor(t / 8) * CELL, sx = (t % 8) * TILE, sy = Math.floor(t / 8) * TILE;
-    for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) {
-      const tx = ((x - PAD) % TILE + TILE) % TILE, ty = ((y - PAD) % TILE + TILE) % TILE;
-      const src = srcPixel(sheet, sx + tx, sy + ty);
+    const cx = (t % 8) * C, cy = Math.floor(t / 8) * C, sx = (t % 8) * TILE, sy = Math.floor(t / 8) * TILE;
+    const k = scale > 1 ? 0.075 * (SURF[t] ? 0.25 + 0.75 * SURF[t][3] : 0.6) : 0;
+    for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+      const tx = ((x - Pd) % Tl + Tl) % Tl, ty = ((y - Pd) % Tl + Tl) % Tl;
+      const src = srcPixel(sheet, sx + Math.floor(tx / scale), sy + Math.floor(ty / scale));
       const o = ((cy + y) * c.width + cx + x) * 4;
-      out.data[o] = src[0]; out.data[o + 1] = src[1]; out.data[o + 2] = src[2]; out.data[o + 3] = src[3];
+      const f = k ? 1 + grain(t, tx, ty) * k + grain(t, tx >> 1, ty >> 1) * k * 0.6 : 1;
+      out.data[o] = Math.min(255, src[0] * f); out.data[o + 1] = Math.min(255, src[1] * f); out.data[o + 2] = Math.min(255, src[2] * f); out.data[o + 3] = src[3];
     }
   }
   g.putImageData(out, 0, 0);
+  c.userData = { scale };
   return c;
 }
 let srcData = null;
@@ -595,19 +603,31 @@ export function surfaceTable() {
 /// The bumps in each picture, worked out from how light or dark its pixels are: dark cracks and mortar sink in,
 /// light stones stand out. Same layout as the picture atlas, so the same texture coordinates find both.
 export function normalAtlas(atlas) {
-  const w = atlas.width, h = atlas.height;
+  const w = atlas.width, h = atlas.height, sc = (atlas.userData && atlas.userData.scale) || 1;
   const src = atlas.getContext('2d').getImageData(0, 0, w, h).data;
-  const ht = new Float32Array(w * h);
+  let ht = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) {
     const a = src[i * 4 + 3] / 255;
     const l = (0.2126 * src[i * 4] + 0.7152 * src[i * 4 + 1] + 0.0722 * src[i * 4 + 2]) / 255;
     ht[i] = a > 0.5 ? Math.pow(l, 0.8) : 0.25;
   }
+  // At higher resolution the bumps come in two sizes: broad ones, a pixel of the original art across (so a wall still
+  // looks rough from a distance), and fine ones from the grain (so it looks like real stone close up).
+  if (sc > 1) {
+    const blur = (src, r) => {
+      const tmp = new Float32Array(w * h), out2 = new Float32Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0; for (let k = -r; k <= r; k++) a += src[y * w + Math.min(w - 1, Math.max(0, x + k))]; tmp[y * w + x] = a / (2 * r + 1); }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0; for (let k = -r; k <= r; k++) a += tmp[Math.min(h - 1, Math.max(0, y + k)) * w + x]; out2[y * w + x] = a / (2 * r + 1); }
+      return out2;
+    };
+    const broad = blur(ht, sc), fine = blur(ht, 1);
+    for (let i = 0; i < w * h; i++) ht[i] = broad[i] * 0.75 + fine[i] * 0.25;
+  }
   const out = document.createElement('canvas'); out.width = w; out.height = h;
   const g = out.getContext('2d'), img = g.createImageData(w, h);
   const at = (x, y) => ht[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const s = 2.6, dx = (at(x + 1, y) - at(x - 1, y)) * 0.5 * s, dy = (at(x, y + 1) - at(x, y - 1)) * 0.5 * s;
+    const s = 2.6 * (sc > 1 ? sc * 1.1 : 1), dx = (at(x + 1, y) - at(x - 1, y)) * 0.5 * s, dy = (at(x, y + 1) - at(x, y - 1)) * 0.5 * s;
     const nx = -dx, ny = dy, l = Math.hypot(nx, ny, 1), o = (y * w + x) * 4;
     img.data[o] = Math.round((nx / l * 0.5 + 0.5) * 255); img.data[o + 1] = Math.round((ny / l * 0.5 + 0.5) * 255);
     img.data[o + 2] = Math.round((1 / l * 0.5 + 0.5) * 255); img.data[o + 3] = 255;
@@ -684,7 +704,9 @@ vec3 envSky(vec3 r, float rough) {
 float D_GGX(float NoH, float a) { float a2 = a * a; float d = NoH * NoH * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
 float V_Smith(float NoV, float NoL, float a) { float k = a * 0.5; return 0.25 / ((NoV * (1.0 - k) + k) * (NoL * (1.0 - k) + k)); }
 void main() {
-  vec4 tex = texture2D(map, vUv);
+  // A slightly sharper choice of detail level than the graphics card's own, so ground seen at a low angle keeps its
+  // crisp pixels instead of going soft.
+  vec4 tex = texture2D(map, vUv, -0.6);
   #ifdef CUT
     if (tex.a < 0.5) discard;
   #endif
@@ -719,7 +741,7 @@ void main() {
   #endif
   #ifdef NORMALMAP
   if (mA.a > 0.01) {
-    vec3 tn = texture2D(tNrm, vUv).xyz * 2.0 - 1.0;
+    vec3 tn = texture2D(tNrm, vUv, -0.6).xyz * 2.0 - 1.0;
     tn.xy *= mA.a * uNrmK * (1.0 - edgeK);
     vec3 dp1 = dFdx(vWp), dp2 = dFdy(vWp); vec2 du1 = dFdx(vUv), du2 = dFdy(vUv);
     vec3 dp2perp = cross(dp2, Ng), dp1perp = cross(Ng, dp1);

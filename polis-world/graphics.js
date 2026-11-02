@@ -341,7 +341,7 @@ export function createGraphics(renderer, { shared, sun }) {
   }
 
   // ---------- sizes, quality and the automatic resolution ----------
-  const dyn = { ema: 1 / 60, t: 0 };
+  const dyn = { ema: 1 / 60, t: 0, wait: 6 };
   function resize(w, h) {
     W = w; H = h;
     dpr = Math.min(devicePixelRatio || 1, Q.maxDpr);
@@ -351,7 +351,7 @@ export function createGraphics(renderer, { shared, sun }) {
   }
   function applyQuality() {
     Q = QUALITY[S.q];
-    scale = 1; dyn.t = 0;
+    scale = 1; dyn.t = 0; dyn.wait = 6;
     renderer.toneMapping = Q.post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
     sun.shadow.mapSize.set(Q.shadow, Q.shadow);
@@ -371,8 +371,10 @@ export function createGraphics(renderer, { shared, sun }) {
     dyn.ema += (Math.min(dt, 0.1) - dyn.ema) * 0.04;
     dyn.t += dt;
     if (dyn.t < 2.5) return;
-    if (dyn.ema > 1 / 44 && scale > Q.minScale + 0.01) { scale = Math.max(Q.minScale, scale - 0.1); dyn.t = 0; allocTargets(); }
-    else if (dyn.ema < 1 / 57 && scale < 0.999 && dyn.t > 6) { scale = Math.min(1, scale + 0.05); dyn.t = 0; allocTargets(); }
+    // Down quickly when frames are slow; back up slowly, and after coming down wait longer before trying again, so it
+    // settles instead of see-sawing.
+    if (dyn.ema > 1 / 44 && scale > Q.minScale + 0.01) { scale = Math.max(Q.minScale, scale - 0.1); dyn.t = 0; dyn.wait = Math.min(dyn.wait * 2, 60); allocTargets(); }
+    else if (dyn.ema < 1 / 57 && scale < 0.999 && dyn.t > dyn.wait) { scale = Math.min(1, scale + 0.05); dyn.t = 0; allocTargets(); }
   }
 
   // ---------- drawing a frame ----------
@@ -394,7 +396,8 @@ export function createGraphics(renderer, { shared, sun }) {
     // The sun's shadow picture is redrawn every frame on Amazing, every other frame otherwise (things move slowly
     // enough that nobody can tell, and it is one of the most expensive things in a frame).
     renderer.shadowMap.autoUpdate = false;
-    renderer.shadowMap.needsUpdate = frame % (knobs.shadowEvery ?? Q.shadowEvery ?? 1) === 0 || !sun.shadow.map;
+    const every = knobs.shadowEvery ?? (scale < 0.999 ? 2 : Q.shadowEvery ?? 1);   // a struggling machine redraws them half as often
+    renderer.shadowMap.needsUpdate = frame % every === 0 || !sun.shadow.map;
     if (!Q.post) {
       if ((frame & 1) === 0) classify(scene, camera);
       camera.layers.mask = 0xffffffff;
