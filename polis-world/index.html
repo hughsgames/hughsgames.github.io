@@ -225,6 +225,7 @@ body.designing #crosshair { display: block !important; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center; font-weight: 700; }
 .lkeys kbd { font: 900 13px var(--body); background: rgba(255, 255, 255, 0.12); border-radius: 5px; padding: 3px 8px; white-space: nowrap; justify-self: start; }
 #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.8s; }
+#glLost { z-index: 40; }
 #fade.on { opacity: 1; }
 
 /* The building designer: parts on the left, the 3D plot in the middle, the chosen part on the right. */
@@ -486,6 +487,13 @@ body.designing #crosshair { display: block !important; }
     <div class="lkeys"><span><kbd>W A S D</kbd> walk</span><span><kbd>Mouse</kbd> look</span><span><kbd>Space</kbd> jump · swim</span><span><kbd>E</kbd> things</span><span><kbd>M</kbd> map</span><span><kbd>H</kbd> all controls</span></div>
     <p class="saveinfo" style="margin:0">Everything runs here in your browser, and your game is saved on this computer.</p>
     <p class="saveinfo" style="margin:0;font-size:11px;opacity:0.65">Version <span id="buildStamp">—</span></p>
+  </div>
+</div>
+<div id="glLost" class="overlay" hidden>
+  <div class="panel card">
+    <h2>The picture took a break</h2>
+    <div class="body" id="glLostText">Your device paused the game's 3D picture. Phones and tablets sometimes do this when you switch to another app or when they need memory back. Your world is saved.</div>
+    <button class="go" id="glLostGo" type="button">Carry on</button>
   </div>
 </div>
 <div id="hurt"></div>

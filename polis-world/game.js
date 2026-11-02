@@ -20,7 +20,7 @@ import { createMegajungle, JUNGLE } from './megajungle.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '2 Nov 2026, 15:50 UTC';
+const BUILD = '2 Nov 2026, 19:10 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -3998,6 +3998,27 @@ $('btnRestore').addEventListener('click', () => {
 });
 setUpLaunch();
 if (new URLSearchParams(location.search).has('debug')) launch();   // (testing: straight into the game)
+
+// ---------- if the device takes the 3D picture away ----------
+// A phone or tablet sometimes drops a page's 3D drawing when you switch to another app or it needs memory back, and
+// a computer can do the same when its graphics chip restarts. The game can't rebuild it all in place, so it saves your
+// world and offers to carry on: one tap reloads the page and goes straight back into your world.
+const RESUME_KEY = 'polis-resume';
+let glLost = false;
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();   // (so the browser may give the picture back later)
+  if (glLost) return;
+  glLost = true;
+  if (world && G.started) save();
+  closePanels(true); $('glLost').hidden = false;
+  try { document.exitPointerLock?.(); } catch (_) { /* not held */ }
+}, false);
+canvas.addEventListener('webglcontextrestored', () => { $('glLostText').textContent = 'The picture is ready again. Your world is saved.'; }, false);
+$('glLostGo').addEventListener('click', () => {
+  try { if (world && G.started) { save(); sessionStorage.setItem(RESUME_KEY, '1'); } } catch (_) { /* storage off: the launch page will ask */ }
+  location.reload();
+});
+try { if (sessionStorage.getItem(RESUME_KEY) === '1') { sessionStorage.removeItem(RESUME_KEY); if (readSave(SAVE_KEY)) launch(); } } catch (_) { /* no storage */ }
 
 // ---------- start-up ----------
 const atlasImg = new Image(), extraImg = new Image(), extraIcons = new Image();

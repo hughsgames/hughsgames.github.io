@@ -349,7 +349,7 @@ export function createGraphics(renderer, { shared, sun }) {
   renderer.debug.onShaderError = (g, program, vs, fs) => {
     const log = (sh) => (g.getShaderInfoLog(sh) || '').trim();
     console.error('THREE.WebGLProgram: Shader Error ' + g.getError() + ' - VALIDATE_STATUS ' + g.getProgramParameter(program, g.VALIDATE_STATUS) + '\n\nProgram Info Log: ' + (g.getProgramInfoLog(program) || '').trim() + '\n' + log(vs) + '\n' + log(fs));
-    if (Q.post) fallback = fallback || 'a shader would not build';
+    if (Q.post && !g.isContextLost()) fallback = fallback || 'a shader would not build';
   };
   function fallBack() {
     console.warn('Graphics: switching to Fast, because ' + fallback + '.');
@@ -407,6 +407,7 @@ export function createGraphics(renderer, { shared, sun }) {
   }
   renderer.info.autoReset = false;   // count everything drawn in a frame, across all the passes
   function render(scene, camera, dt = 1 / 60) {
+    if (gl.isContextLost()) return;   // the device has taken the picture away for now (the game offers to carry on)
     if (fallback && Q.post) fallBack();
     frame++;
     renderer.info.reset();
@@ -433,7 +434,7 @@ export function createGraphics(renderer, { shared, sun }) {
     renderer.setRenderTarget(sceneRT);
     if (checkFB) {
       checkFB = false;
-      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { fallback = 'the high-range picture is not supported here'; camera.layers.mask = 0xffffffff; renderer.autoClear = autoClear; return; }
+      if (!gl.isContextLost() && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { fallback = 'the high-range picture is not supported here'; camera.layers.mask = 0xffffffff; renderer.autoClear = autoClear; return; }
     }
     renderer.render(scene, camera);
     // 3. the copy
