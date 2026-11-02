@@ -30,6 +30,9 @@ polis-world/        the game (everything below is in here)
 | `index.html` | the page, all the CSS, the launch screen, the HUD markup |
 | `game.js` | the game itself: the player, controls, crafting, talking, saves, panels |
 | `engine.js` | blocks, the world in memory, chunk meshes with light and shade, materials, sky |
+| `graphics.js` | the picture: the three quality settings, the drawing passes (clouds, world, water, sunbeams, glow, the finished image), automatic resolution, rounded boxes for people and animals |
+| `shaders.js` | shader code shared by the sky, the clouds, the haze and the blocks |
+| `farland.js` | the land beyond the loaded chunks, drawn as coarse columns out to the horizon, and the sea under everything |
 | `worldgen.js` | builds the whole world in a background worker, from the same map as the iPhone game |
 | `cityplans.js` | the great cities, built as whole cities rather than a monument with huts |
 | `data.js` | the map, block pictures, item icons and history text (generated — don't hand-edit) |
@@ -76,12 +79,51 @@ polis-world/        the game (everything below is in here)
   itself whenever a window opens, and that must not be mistaken for a refusal.
 - `data.js` is ~175 KB of generated data. Read it, don't rewrite it.
 
+## Graphics
+
+- Three settings, **Fast**, **Balanced** and **Amazing** (`QUALITY` in `graphics.js`). The game
+  picks one for the machine (`detectQuality`: no graphics chip → Fast; phones, tablets and
+  Intel/Mali/Adreno-class chips → Balanced; otherwise Amazing), and the Graphics button on the
+  launch screen and in the controls window changes it. The choice is kept under the key
+  `polis-graphics`, **separate from the save**: nothing about graphics ever touches the world.
+- Balanced and Amazing draw into a high-range (half-float) picture and finish it themselves:
+  tone curve, glow, sunbeams from the shadow map, a cloud picture, reflections, lens flare. Fast
+  draws straight to the screen, like the game before November 2026. A struggling machine lowers
+  its own resolution (down to 60 %) and redraws shadows every other frame. If a shader won't
+  build or the high-range picture isn't supported, the game drops to Fast by itself.
+- `classify()` puts everything on one of three layers each frame: solid (mask 1), water
+  (`userData.water`, mask 2), see-through (mask 4). Lights and raycasters use
+  `layers.enableAll()`; anything new that must be seen in every pass needs the same.
+- **Never add dynamic lights** (PointLight, SpotLight): every block material recompiles and
+  every frame gets slower. Glows are additive points or meshes brighter than white (the glow
+  pass picks them up); lightning brightens the hemisphere light instead.
+- People and animals get rounded edges from a patch to `MeshLambertMaterial` that only acts on
+  geometry whose uvs are shifted by +2 — call `boxUvs(geo)` on any new box-built model.
+- Block vertices are packed small (normals as bytes, uvs as shorts, light as bytes): keep the
+  format the same in `buildChunk`, the far land and the block shaders. Shader colours are
+  linear light; the sky colours in `updateDaylight` were fitted so they land on the intended
+  screen colours after the tone curve.
+- Screen-space slopes (`dFdx`, `fwidth`) only inside `#if __VERSION__ >= 300` or with
+  `extensions: { derivatives: true }`, so Fast still runs on a WebGL1-only browser.
+- Weather: showers, steady rain and downpours (`W.want` 0.35 / 0.7 / 1). Only a downpour turns
+  into a thunderstorm: the sky darkens (`storm.dark`) and lightning strikes every 6–16 s.
+
 ## Testing before pushing
 
 There's no test suite. What works: serve this folder over plain HTTP, open it with Playwright,
 stub the Three.js CDN with a local copy if the network is walled off, then start a world and
 watch for console errors. Worth checking after any change: the world builds, the launch screen
 offers *Continue my world*, an existing save still loads, and the hotbar icons aren't blurry.
+
+- Headless Chromium draws with SwiftShader, so the game picks Fast. To test another setting,
+  set `polis-graphics` to `{"q":"amazing","auto":false}` in an init script.
+- For steady screenshots, stop the game's own loop (`window.requestAnimationFrame = () => 0`)
+  and draw frames with `polisDebug.render()` (it takes an optional function to adjust things
+  just before drawing). `polisDebug.strike(x, z)` calls down lightning.
+- Run once with `--disable-webgl2` too: Fast must still work on WebGL1.
+- Only measure speed on a real graphics chip, e.g. William's Mac loading a pushed branch through
+  `raw.githack.com`. Warm the chip up first, then time back-to-back `gfx.render` calls each
+  followed by a one-pixel `readPixels`; GPU timer queries are unreliable on Apple chips.
 
 ## The other two versions
 

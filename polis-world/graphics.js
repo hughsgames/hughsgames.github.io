@@ -121,6 +121,7 @@ export function createGraphics(renderer, { shared, sun }) {
   function allocTargets() {
     freeTargets();
     if (!Q.post) return;
+    checkFB = true;
     rw = Math.max(16, Math.round(W * dpr * scale)); rh = Math.max(16, Math.round(H * dpr * scale));
     const samples = knobs.samples ?? Math.min(Q.msaa, maxSamples);
     sceneRT = new THREE.WebGLRenderTarget(rw, rh, { ...hdr, depthBuffer: true, samples, depthTexture: new THREE.DepthTexture(rw, rh, THREE.UnsignedIntType) });
@@ -340,6 +341,21 @@ export function createGraphics(renderer, { shared, sun }) {
     });
   }
 
+  // ---------- if this machine can't draw the full picture after all ----------
+  // A graphics chip can say it supports everything and still fail to build one of the shaders, or refuse the
+  // high-range picture. If that happens on Balanced or Amazing, drop to Fast (which needs neither) and remember it,
+  // rather than leave a black screen. The error is still logged, the way three.js would.
+  let checkFB = false, fallback = '';
+  renderer.debug.onShaderError = (g, program, vs, fs) => {
+    const log = (sh) => (g.getShaderInfoLog(sh) || '').trim();
+    console.error('THREE.WebGLProgram: Shader Error ' + g.getError() + ' - VALIDATE_STATUS ' + g.getProgramParameter(program, g.VALIDATE_STATUS) + '\n\nProgram Info Log: ' + (g.getProgramInfoLog(program) || '').trim() + '\n' + log(vs) + '\n' + log(fs));
+    if (Q.post) fallback = fallback || 'a shader would not build';
+  };
+  function fallBack() {
+    console.warn('Graphics: switching to Fast, because ' + fallback + '.');
+    fallback = ''; S.q = 'fast'; S.auto = false; store(); applyQuality();
+  }
+
   // ---------- sizes, quality and the automatic resolution ----------
   const dyn = { ema: 1 / 60, t: 0, wait: 6 };
   function resize(w, h) {
@@ -391,6 +407,7 @@ export function createGraphics(renderer, { shared, sun }) {
   }
   renderer.info.autoReset = false;   // count everything drawn in a frame, across all the passes
   function render(scene, camera, dt = 1 / 60) {
+    if (fallback && Q.post) fallBack();
     frame++;
     renderer.info.reset();
     // The sun's shadow picture is redrawn every frame on Amazing, every other frame otherwise (things move slowly
@@ -414,6 +431,10 @@ export function createGraphics(renderer, { shared, sun }) {
     renderer.autoClear = true;
     camera.layers.mask = 1;
     renderer.setRenderTarget(sceneRT);
+    if (checkFB) {
+      checkFB = false;
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { fallback = 'the high-range picture is not supported here'; camera.layers.mask = 0xffffffff; renderer.autoClear = autoClear; return; }
+    }
     renderer.render(scene, camera);
     // 3. the copy
     invProj.copy(camera.projectionMatrixInverse);
@@ -499,6 +520,7 @@ export function installRoundBoxes() {
   L.fragmentShader = L.fragmentShader
     .replace('#include <common>', '#include <common>\nvarying vec2 vBoxUv;')
     .replace('#include <normal_fragment_maps>', /* glsl */ `#include <normal_fragment_maps>
+      #if __VERSION__ >= 300   // (screen-space slopes; an old browser without them just gets square edges)
       if (vBoxUv.x > 1.5) {
         vec2 bu = vBoxUv - 2.0;
         vec3 dp1 = dFdx(-vViewPosition), dp2 = dFdy(-vViewPosition);
@@ -513,7 +535,8 @@ export function installRoundBoxes() {
           vec3 bend = (Tu / su) * (bu.x < 0.5 ? -tx : tx) + (Tv / sv) * (bu.y < 0.5 ? -ty : ty);
           normal = normalize(normal + bend * 0.9);
         }
-      }`);
+      }
+      #endif`);
 }
 /// Mark a box geometry's faces as rounded-box faces (shift its texture coordinates up by 2).
 export function boxUvs(geo) {

@@ -1570,7 +1570,7 @@ export function makeSky(q = { pano: 0 }) {
   const geo = new THREE.SphereGeometry(400, 32, 16);
   const uniforms = Object.assign({}, shared);
   const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, depthTest: true, fog: false, uniforms,
+    side: THREE.BackSide, depthWrite: false, depthTest: true, fog: false, uniforms, extensions: { derivatives: true },   // (the stars use fwidth)
     defines: q.pano ? { PANO: '' } : {},
     vertexShader: `varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
     fragmentShader: SKY_FRAG,

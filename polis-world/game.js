@@ -20,7 +20,7 @@ import { createMegajungle, JUNGLE } from './megajungle.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '27 Oct 2026, 23:55 UTC';
+const BUILD = '2 Nov 2026, 15:50 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
