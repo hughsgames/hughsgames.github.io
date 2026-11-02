@@ -225,6 +225,39 @@ export class Sound {
     if (!this.ctx || !this.on) return;
     const r = (a, b) => a + Math.random() * (b - a);
     switch (what) {
+      case 'thunder': {  // arg: { delay: seconds until it arrives, near: 0 far … 1 right overhead }
+        const c = this.ctx, t0 = c.currentTime + (arg?.delay || 0), near = arg?.near ?? 0.5;
+        // A close strike cracks like a giant whip and thumps you in the chest.
+        if (near > 0.35) {
+          this.noise(3200, { dur: 0.2, gain: 0.42 * near, q: 0.5, sweepTo: 800, when: t0 });
+          this.noise(900, { dur: 0.55, gain: 0.3 * near, q: 0.7, sweepTo: 180, when: t0 + 0.03 });
+          this.tone(68, { type: 'sine', dur: 1.3, gain: 0.32 * near, slideTo: 34, when: t0 + 0.02 });
+        }
+        // Then the rumble: deep noise that rolls, swelling and fading a few times as the sound arrives from different
+        // parts of the bolt. Further off, it is lower, softer and longer.
+        if (!this.brown) {
+          const n = c.sampleRate * 8, buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+          let v = 0, peak = 0;
+          for (let i = 0; i < n; i++) { v = (v + 0.04 * (Math.random() * 2 - 1)) * 0.985; d[i] = v; peak = Math.max(peak, Math.abs(v)); }
+          for (let i = 0; i < n; i++) d[i] /= peak;
+          this.brown = buf;
+        }
+        const dur = 3.5 + (1 - near) * 2.5, rolls = [];
+        for (let at = 0.03; rolls.length < 6 && at < dur * 0.7; at += 0.25 + Math.random() * 0.7) rolls.push([at, (0.55 + Math.random() * 0.45) * (rolls.length ? 0.85 : 1)]);
+        const curve = new Float32Array(256), vol = 0.5 + 0.45 * near;
+        for (let i = 0; i < 256; i++) {
+          const t = i / 255 * dur;
+          let e = 0; for (const [at, g] of rolls) { const x = t - at; e += x < 0 ? Math.exp(x * 30) * g : Math.exp(-x * 1.8) * g; }
+          curve[i] = Math.max(0.0001, e * Math.exp(-t * 0.4) * Math.min(1, (dur - t) / 0.3) * vol);
+        }
+        const src = c.createBufferSource(); src.buffer = this.brown;
+        const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.6;
+        f.frequency.setValueAtTime(200 + 500 * near, t0); f.frequency.exponentialRampToValueAtTime(80, t0 + dur);
+        const g = c.createGain(); g.gain.value = 0; g.gain.setValueCurveAtTime(curve, t0, dur);
+        src.connect(f); f.connect(g); g.connect(this.sfx);
+        src.start(t0, Math.random() * (8 - dur)); src.stop(t0 + dur);
+        break;
+      }
       case 'dig':        // chipping away at a block
         if (arg === 'stone') this.noise(1400, { dur: 0.09, gain: 0.3, q: 1.6, sweepTo: 700 });
         else if (arg === 'wood') this.noise(620, { dur: 0.11, gain: 0.3, q: 2.2, sweepTo: 320 });

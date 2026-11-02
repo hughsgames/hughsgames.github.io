@@ -2883,7 +2883,7 @@ function updateDaylight(dt) {
   let light = 1;
   if (hour < 5 || hour >= 20) light = 0.38; else if (hour < 7) light = 0.38 + (hour - 5) / 2 * 0.62; else if (hour >= 18) light = 1 - (hour - 18) / 2 * 0.62;
   light *= 1 - W.now * 0.3;          // a grey sky under the rain
-  const dayK = (light - 0.38) / 0.62;
+  const dayK = Math.max(0, (light - 0.38) / 0.62);   // (at night the rain can't make it any darker than night)
   const warm = Math.max(0, 1 - Math.abs(hour - 6.5) / 1.5) + Math.max(0, 1 - Math.abs(hour - 18.8) / 1.5);
   const warmK = Math.min(warm, 1) * (1 - W.now * 0.8);
   // The sun gives the light (and the shadows) from first light until dusk is nearly over; then the moon does. The swap
@@ -2915,6 +2915,9 @@ function updateDaylight(dt) {
   hemi.color = C(0.55, 0.64, 1).lerp(C(0.78, 0.86, 1), dayK);
   hemi.groundColor = C(0.25, 0.22, 0.2).lerp(C(0.45, 0.38, 0.3), dayK);
   if (rain > 0.01) { hemi.color.lerp(C(0.62, 0.66, 0.72), rain * 0.72); sun.intensity *= 1 - rain * 0.72 * 0.45; }
+  // Under a thunderstorm it gets properly gloomy, so the lightning has something to light up.
+  const dark = storm.dark;
+  if (dark > 0.001) { hemi.intensity *= 1 - 0.32 * dark * (0.4 + 0.6 * dayK); sun.intensity *= 1 - 0.5 * dark * dayK; }
   // ----- the sky (linear light; these land on the intended screen colours after the tone curve) -----
   // Where the sun and moon really are: unlike the light that casts shadows, these go all the way down to the horizon.
   const sArc = Math.PI * (hour - 6) / 12, nArc = Math.PI * (((hour + 6) % 24) - 0) / 12;
@@ -2926,7 +2929,11 @@ function updateDaylight(dt) {
   // At sunrise and sunset the whole low sky warms, and the horizon on the sun's side glows orange and pink.
   horizon.lerp(C(0.95, 0.42, 0.22), warmK * 0.55 * (0.25 + 0.75 * dayK));
   zenith.lerp(C(0.09, 0.12, 0.38), warmK * 0.35 * dayK);
-  if (rain > 0.01) { zenith.lerp(C(0.124, 0.139, 0.165).multiplyScalar(0.3 + 0.7 * dayK), rain * 0.8); horizon.lerp(C(0.228, 0.254, 0.294).multiplyScalar(0.3 + 0.7 * dayK), rain * 0.8); }
+  if (rain > 0.01) {
+    const g = 0.3 + 0.7 * dayK;   // a grey lid of cloud; slate-blue and much darker in a thunderstorm, lighter low down
+    zenith.lerp(C(0.124, 0.139, 0.165).lerp(C(0.066, 0.076, 0.104), dark).multiplyScalar(g), rain * 0.8);
+    horizon.lerp(C(0.228, 0.254, 0.294).lerp(C(0.15, 0.165, 0.205), dark).multiplyScalar(g), rain * 0.8);
+  }
   shared.uZenith.value.copy(zenith); shared.uHorizon.value.copy(horizon);
   shared.uGround.value.copy(horizon).multiplyScalar(0.55);
   shared.uWarmCol.value.setRGB(1.0, 0.24, 0.09).lerp(C(0.95, 0.35, 0.55), 0.25);
@@ -2949,12 +2956,12 @@ function updateDaylight(dt) {
   const cloudSun = shared.uCloudSun.value;
   if (sunDir.y > -0.1) {
     shared.uCloudSunDir.value.copy(sunDir).setY(Math.max(sunDir.y, 0.04)).normalize();
-    cloudSun.setRGB(2.6, 2.45, 2.2).lerp(C(2.6, 1.05, 0.45), warmK).multiplyScalar(Math.max(0.03, sunUp) * (1 - rain * 0.75));
+    cloudSun.setRGB(2.6, 2.45, 2.2).lerp(C(2.6, 1.05, 0.45), warmK).multiplyScalar(Math.max(0.03, sunUp) * (1 - rain * 0.75) * (1 - 0.6 * dark));
   } else {
     shared.uCloudSunDir.value.copy(moonDir);
     cloudSun.setRGB(0.06, 0.07, 0.1);
   }
-  shared.uCloudAmb.value.copy(zenith).multiplyScalar(1.6).lerp(C(0.42, 0.43, 0.46).multiplyScalar(0.25 + 0.75 * dayK), rain * 0.6).addScalar(0.01);
+  shared.uCloudAmb.value.copy(zenith).multiplyScalar(1.6).lerp(C(0.42, 0.43, 0.46).multiplyScalar(0.25 + 0.75 * dayK), rain * 0.6).multiplyScalar(1 - 0.4 * dark).addScalar(0.01);
   // A rainbow, for a little while after a shower, if the sun is out and low enough.
   rainbowT = W.want > 0 ? 1 : Math.max(0, rainbowT - dt / 90);
   shared.uRainbow.value = (W.want === 0 && rainbowT > 0 && W.now < 0.25 && sunDir.y > 0.05 && sunDir.y < 0.7) ? Math.min(rainbowT * 1.6, 1) * (1 - W.now * 4) : 0;
@@ -2999,7 +3006,7 @@ function updateDaylight(dt) {
   const gr = gfx.grade, beams = gfx.beams;
   gr.exposure = 1.1 * (1 + 0.45 * night) * (1 + 0.55 * (1 - localLight)) * (under ? 1.15 : 1);
   gr.tint.setRGB(1, 1, 1).lerp(C(1.08, 1.0, 0.88), warmK * 0.8 * dayK).lerp(C(0.86, 0.93, 1.12), night * 0.8);
-  gr.sat = 1.1 - rain * 0.18 - night * 0.15;
+  gr.sat = 1.1 - rain * 0.18 - night * 0.15 - dark * 0.08;
   gr.bloom = 0.04 + night * 0.025;
   beams.dir.copy(toSun);
   beams.color.copy(sun.color).multiplyScalar(sun.intensity);
@@ -3013,8 +3020,118 @@ function updateDaylight(dt) {
   beams.maxDist = under ? 28 : gfx.settings.shadowR;
   beams.ext = under ? 0.06 : 0.008;
   beams.g = under ? 0.5 : 0.7;
+  updateStorm(dt, under);
 }
 let rainbowT = 0;
+
+// ---------- thunderstorms ----------
+// In a real downpour the sky goes dark, and now and then lightning strikes somewhere in view: a jagged white-hot bolt
+// from the clouds to the ground, a flash that lights up the clouds round it and the land below, and thunder rolling in
+// a moment later (sound is slower than light: about a third of a kilometre a second). Some flashes stay inside the
+// clouds and only light them up from within.
+const storm = { t: 10, flash: 0, ft: 9, dark: 0, sheet: false, warm: false };
+// The bolt: ribbons that always turn their face to you, each with a white-hot core and a violet glow round it.
+const boltMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+  uniforms: { uK: { value: 0 }, uPx: { value: 0.002 } },
+  // prof: which side (-1 or 1), how bright, how thick the white-hot core is. The glow round it is several times wider,
+  // and the core is never drawn thinner than a pixel, so a far bolt doesn't break up into dashes.
+  vertexShader: /* glsl */ `
+    uniform float uPx; attribute vec3 dir; attribute vec3 prof; varying vec2 vP; varying float vCore;
+    void main() {
+      vec3 w = (modelMatrix * vec4(position, 1.0)).xyz;
+      vec3 toCam = cameraPosition - w; float px = length(toCam) * uPx;
+      vec3 side = normalize(cross(dir, normalize(toCam)) + vec3(1e-4, 0.0, 1e-4));
+      float core = max(prof.z, px * 0.75), hw = max(core * 14.0, px * 12.0);
+      vP = prof.xy; vCore = core / hw;
+      gl_Position = projectionMatrix * viewMatrix * vec4(w + side * prof.x * hw, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform float uK; varying vec2 vP; varying float vCore;
+    void main() {
+      float x = abs(vP.x);
+      float core = 1.0 - smoothstep(vCore * 0.4, vCore, x), glow = exp(-x * 4.0) - exp(-4.0);
+      gl_FragColor = vec4((vec3(0.85, 0.9, 1.0) * core * 30.0 + vec3(0.6, 0.55, 1.0) * glow * 2.6) * vP.y * uK, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+});
+function boltGeometry(pos = [0, 0, 0, 0, 0, 0, 0, 0, 0], dir = [0, 1, 0, 0, 1, 0, 0, 1, 0], prof = [0, 0, 0, 0, 0, 0, 0, 0, 0], idx = [0, 1, 2]) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('dir', new THREE.Float32BufferAttribute(dir, 3));
+  g.setAttribute('prof', new THREE.Float32BufferAttribute(prof, 3));
+  g.setIndex(idx);
+  return g;
+}
+// It starts as a single empty triangle, drawn once so its shader is ready before the first strike.
+const bolt = new THREE.Mesh(boltGeometry(), boltMat);
+bolt.frustumCulled = false; bolt.renderOrder = 8; scene.add(bolt);
+function shapeBolt(x, z, top, ground) {
+  const pos = [], dir = [], prof = [], idx = [];
+  // A strip along a path of points: each point gets two vertices, which the shader pushes out sideways.
+  const strip = (pts, w, b, tip) => {
+    const base = pos.length / 3;
+    pts.forEach((p, i) => {
+      const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
+      const ww = tip && i === pts.length - 1 ? w * 0.25 : w;
+      for (const s of [-1, 1]) { pos.push(p[0], p[1], p[2]); dir.push(c[0] - a[0], c[1] - a[1], c[2] - a[2]); prof.push(s, b, ww); }
+      if (i > 0) { const k = base + (i - 1) * 2; idx.push(k, k + 1, k + 3, k, k + 3, k + 2); }
+    });
+  };
+  const path = (x0, y0, z0, y1, jag) => { const pts = [[x0, y0, z0]]; let px = x0, pz = z0; for (let y = y0 - 7; y > y1; y -= 5 + Math.random() * 6) { px += (Math.random() - 0.5) * jag; pz += (Math.random() - 0.5) * jag; pts.push([px, y, pz]); } pts.push([px + (Math.random() - 0.5) * 2, y1, pz + (Math.random() - 0.5) * 2]); return pts; };
+  const main = path(x, top, z, ground, 7);
+  strip(main, 0.3, 1, false);
+  const forks = 2 + Math.floor(Math.random() * 3);
+  for (let k = 0; k < forks; k++) {   // forks, fainter, that stop in mid-air
+    const from = main[1 + Math.floor(Math.random() * Math.max(1, main.length - 3))];
+    strip(path(from[0], from[1], from[2], Math.max(ground + 10, from[1] - 20 - Math.random() * 30), 9), 0.16, 0.5, true);
+  }
+  bolt.geometry.dispose();
+  bolt.geometry = boltGeometry(pos, dir, prof, idx);
+}
+/// Lightning at (x, z): a bolt down to the ground there, or with `sheet` a flash that stays in the clouds above it.
+function strike(x, z, sheet = false) {
+  const dist = Math.hypot(x - P.x, z - P.z);
+  const ground = world.inb(Math.floor(x), Math.floor(z)) ? world.groundY(Math.floor(x), Math.floor(z)) : WL;
+  if (!sheet) shapeBolt(x, z, 165, Math.max(ground, WL));
+  storm.sheet = sheet; storm.ft = 0;
+  shared.uFlashDir.value.set(x - camera.position.x, 175 - camera.position.y, z - camera.position.z).normalize();
+  sound.play('thunder', { delay: dist / 340, near: Math.max(0, Math.min(1, 1 - (dist - 70) / 150)) * (sheet ? 0.5 : 1) });
+  if (!sheet && !G.talked.has('_thunder')) { G.talked.add('_thunder'); message('A thunderstorm! Lightning is a giant spark between the clouds and the ground, hotter than the surface of the sun. Thunder is the boom of the air it heats.'); }
+}
+function updateStorm(dt, under) {
+  // The gloom gathers over a downpour, and lifts as it passes.
+  storm.dark += ((W.want === 1 && W.now > 0.5 ? 1 : 0) - storm.dark) * Math.min(1, dt * 0.07);
+  const heavy = W.want === 1 && W.now > 0.7 && !under;
+  storm.t -= dt;
+  if (heavy && storm.t <= 0) {
+    storm.t = 6 + Math.random() * 10;
+    // Most strikes land somewhere ahead of you, so you get to see the bolts and not only the flashes.
+    const ahead = Math.random() < 0.65;
+    const a = ahead ? Math.PI / 2 - P.yaw + (Math.random() - 0.5) * 1.4 : Math.random() * Math.PI * 2, dist = 70 + Math.random() * 150;
+    strike(P.x + Math.cos(a) * dist, P.z + Math.sin(a) * dist, Math.random() < 0.3);
+  }
+  // A strike is a few strokes down the same channel, a few hundredths of a second apart: the bolt flickers, and
+  // the flash with it, then the glow dies away.
+  const ft = storm.ft += dt;
+  const stroke = ft < 0.07 ? 1 : ft < 0.13 ? 0.18 : ft < 0.2 ? 0.85 : ft < 0.26 ? 0.15 : ft < 0.3 ? 0.55 : Math.max(0, 0.3 - (ft - 0.3) * 1.5);
+  storm.flash = ft < 0.3 ? stroke : ft < 1.2 ? 0.55 * Math.exp(-(ft - 0.3) * 8) : 0;
+  boltMat.uniforms.uK.value = storm.sheet ? 0 : stroke;
+  boltMat.uniforms.uPx.value = 1 / Math.max(1, look.px);
+  bolt.visible = !storm.warm || (!storm.sheet && ft < 0.5);
+  storm.warm = true;
+  if (storm.flash > 0.001) {
+    const k = storm.flash * (storm.sheet ? 0.45 : 1);
+    hemi.intensity += 1.8 * k; hemi.color.lerp(C(0.8, 0.86, 1), Math.min(1, k * 0.7));
+    shared.uZenith.value.add(_lc2.setRGB(0.08, 0.09, 0.13).multiplyScalar(k));
+    shared.uHorizon.value.add(_lc2.setRGB(0.12, 0.13, 0.18).multiplyScalar(k));
+    shared.uGround.value.copy(shared.uHorizon.value).multiplyScalar(0.55);
+    if (!under) scene.fog.color.copy(shared.uHorizon.value);
+    look.light.add(_lc2.setRGB(0.9, 0.95, 1.2).multiplyScalar(k));
+  }
+  shared.uFlash.value = storm.flash;
+}
 const _lc2 = new THREE.Color(), _sunDir = new THREE.Vector3(), _moonDir = new THREE.Vector3(), _side = new THREE.Vector3(), _axis = new THREE.Vector3(), _starM = new THREE.Matrix4();
 let localGoal = 1;
 
@@ -4145,5 +4262,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, storm, strike, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

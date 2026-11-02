@@ -547,7 +547,7 @@ export const shared = {
   // Night: the moon, which side of it is lit, the stars turning overhead. And a rainbow after the rain.
   uNight: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0, -1, 0) }, uMoonLit: { value: new THREE.Vector3(0, 1, 0) }, uStarRot: { value: new THREE.Matrix3() }, uRainbow: { value: 0 },
   // Weather on the ground: how hard it is raining and how wet everything has got.
-  uRain: { value: 0 }, uWet: { value: 0 },
+  uRain: { value: 0 }, uWet: { value: 0 }, uFlash: { value: 0 }, uFlashDir: { value: new THREE.Vector3(0, 1, 0) },
   // The finished-picture path: whether it is on, the copy of the world the water looks through, and their sizes.
   uPost: { value: 0 }, tRefr: { value: null }, uRefrSize: { value: new THREE.Vector2(1, 1) }, uScreen: { value: new THREE.Vector2(1, 1) },
   uProjM: { value: new THREE.Matrix4() }, uBevel: { value: 0.14 }, uNrmK: { value: 1 },
@@ -1480,7 +1480,7 @@ ${SKY_GLSL}
 ${CLOUD_GLSL}
 ${PANO_GLSL}
 uniform sampler2D tPano; uniform float uPanoOn; uniform vec3 uSunDisk; uniform float uNight; uniform vec3 uMoonDir; uniform vec3 uMoonLit;
-uniform mat3 uStarRot; uniform float uRainbow; uniform float uTime; uniform vec3 uCloudSunDir; uniform vec3 uCloudSun; uniform vec3 uCloudAmb;
+uniform mat3 uStarRot; uniform float uRainbow; uniform float uTime; uniform vec3 uCloudSunDir; uniform vec3 uCloudSun; uniform vec3 uCloudAmb; uniform float uFlash; uniform vec3 uFlashDir;
 varying vec3 vDir;
 vec4 flatClouds(vec3 rd) {
   if (rd.y < 0.015) return vec4(0.0);
@@ -1559,6 +1559,8 @@ void main() {
       c += rb * rb * uRainbow * (1.0 - x * x) * 0.35 * smoothstep(0.0, 0.1, d.y) * dot(c, vec3(0.3));
     }
   }
+  // Lightning lights the clouds from inside: all of them a little, the ones round the strike a lot.
+  if (uFlash > 0.001) cl.rgb += vec3(0.7, 0.72, 1.0) * cl.a * uFlash * (0.12 + 0.9 * pow(max(dot(d, uFlashDir), 0.0), 8.0));
   c = c * (1.0 - cl.a) + cl.rgb + behind * (1.0 - cl.a);
   gl_FragColor = vec4(c, 1.0);
   #include <tonemapping_fragment>

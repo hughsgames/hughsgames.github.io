@@ -82,9 +82,35 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
 
   // Rain: a column of falling streaks that keeps up with you, and a ring of splashes where they land.
   // A drop only gets a place if the sky is open above it, so it never rains indoors or underground.
+  // Each drop is a thin streak that turns to face you, brightest at its falling head, and lit by the sky: grey by day,
+  // dim at night, white in a lightning flash. Far off it is never drawn thinner than a pixel (it gets fainter
+  // instead), so distant drops don't flicker in and out.
   const RAIN = 1100, RAIN_R = 15;
-  const rainMat = new THREE.MeshBasicMaterial({ color: 0xbcd8ee, transparent: true, opacity: 0.6, depthWrite: false, fog: false });
-  const rainMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.048, 0.95, 0.048), rainMat, RAIN);
+  const rainMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false,
+    uniforms: { uLight: { value: new THREE.Color(0.8, 0.85, 0.9) }, uAlpha: { value: 0.5 }, uPx: { value: 0.002 } },
+    vertexShader: /* glsl */ `
+      uniform float uPx; varying vec2 vQ; varying float vA;
+      void main() {
+        vec3 c = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+        vec3 toCam = cameraPosition - c; float dist = max(length(toCam), 0.05);
+        vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), toCam / dist) + vec3(1e-4, 0.0, 1e-4));
+        float hw = max(0.008, 0.6 * dist * uPx);
+        vA = 0.008 / hw * smoothstep(0.4, 1.5, dist);   // (a drop right in front of your eye would be a blur)
+        vQ = position.xy * 2.0;
+        gl_Position = projectionMatrix * viewMatrix * vec4(c + side * position.x * hw * 2.0 + vec3(0.0, position.y * 0.95, 0.0), 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uLight; uniform float uAlpha; varying vec2 vQ; varying float vA;
+      void main() {
+        float across = 1.0 - vQ.x * vQ.x;
+        float along = smoothstep(1.0, -0.3, vQ.y) * smoothstep(-1.0, -0.8, vQ.y);
+        gl_FragColor = vec4(uLight, across * along * uAlpha * vA);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const rainMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), rainMat, RAIN);
   rainMesh.frustumCulled = false; rainMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); rainMesh.visible = false; scene.add(rainMesh);
   const splashMat = new THREE.MeshBasicMaterial({ color: 0xcfe4f4, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const SPLASH = 90;
@@ -174,10 +200,10 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   };
   const M = new THREE.Matrix4(), R = new THREE.Matrix4(), S = new THREE.Matrix4(), Z = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _sc = new THREE.Vector3(1, 1, 1);
+  const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _sc = new THREE.Vector3(1, 1, 1), _rt = new THREE.Color();
   let rainK = 0;
   /// Rain falling round the player. `rain` is how hard it is coming down, 0 to 1.
-  function updateRain(dt, P, rain, under) {
+  function updateRain(dt, P, rain, under, light, px) {
     rainK += (rain - rainK) * Math.min(dt * 0.6, 1);     // the sky takes its time to change its mind
     const on = rainK > 0.015 && !under;
     rainMesh.visible = on; splashMesh.visible = on;
@@ -208,7 +234,10 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
       rainMesh.setMatrixAt(i, _m4);
     }
     rainMesh.instanceMatrix.needsUpdate = true;
-    rainMat.opacity = 0.26 + 0.34 * Math.min(rainK, 1);
+    rainMat.uniforms.uAlpha.value = 0.4 + 0.45 * Math.min(rainK, 1);
+    rainMat.uniforms.uPx.value = 1 / px;
+    if (light) rainMat.uniforms.uLight.value.copy(light).multiply(_rt.setRGB(1.05, 1.12, 1.25));
+    if (light) splashMat.color.copy(light).multiply(_rt.setRGB(1.1, 1.15, 1.25));
     // The splashes: a flat ring that spreads and fades where each drop hit.
     for (let i = 0; i < SPLASH; i++) {
       const sp = splashes[i];
@@ -310,7 +339,7 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
   }
 
   function update(dt, { P, day, warm, under, horizon, rain = 0, light = null, px = 500 }) {
-    updateRain(dt, P, rain, under);
+    updateRain(dt, P, rain, under, light, px);
     state.t += dt; state.wind += dt * 1.1;
     // Birds circle in the daytime sky (they roost at night).
     flocks.forEach((f, fi) => {
