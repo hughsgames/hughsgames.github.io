@@ -54,6 +54,7 @@ export function createGraphics(renderer, { shared, sun }) {
   const store = () => { try { localStorage.setItem(STORE, JSON.stringify({ q: S.q, auto: S.auto })); } catch (_) { /* no storage */ } };
   let Q = QUALITY[S.q];
   const listeners = [];
+  const knobs = { samples: null, shadowEvery: null };   // for measuring on real machines; never saved
 
   // ---------- full-screen passes ----------
   const fsGeo = new THREE.BufferGeometry();
@@ -121,7 +122,7 @@ export function createGraphics(renderer, { shared, sun }) {
     freeTargets();
     if (!Q.post) return;
     rw = Math.max(16, Math.round(W * dpr * scale)); rh = Math.max(16, Math.round(H * dpr * scale));
-    const samples = Math.min(Q.msaa, maxSamples);
+    const samples = knobs.samples ?? Math.min(Q.msaa, maxSamples);
     sceneRT = new THREE.WebGLRenderTarget(rw, rh, { ...hdr, depthBuffer: true, samples, depthTexture: new THREE.DepthTexture(rw, rh, THREE.UnsignedIntType) });
     sceneRT.depthTexture.minFilter = sceneRT.depthTexture.magFilter = THREE.NearestFilter;
     refrRT = new THREE.WebGLRenderTarget(Math.ceil(rw / 2), Math.ceil(rh / 2), hdr);
@@ -393,7 +394,7 @@ export function createGraphics(renderer, { shared, sun }) {
     // The sun's shadow picture is redrawn every frame on Amazing, every other frame otherwise (things move slowly
     // enough that nobody can tell, and it is one of the most expensive things in a frame).
     renderer.shadowMap.autoUpdate = false;
-    renderer.shadowMap.needsUpdate = frame % (Q.shadowEvery || 1) === 0 || !sun.shadow.map;
+    renderer.shadowMap.needsUpdate = frame % (knobs.shadowEvery ?? Q.shadowEvery ?? 1) === 0 || !sun.shadow.map;
     if (!Q.post) {
       if ((frame & 1) === 0) classify(scene, camera);
       camera.layers.mask = 0xffffffff;
@@ -476,6 +477,7 @@ export function createGraphics(renderer, { shared, sun }) {
     setAuto(v) { S.auto = !!v; store(); if (!S.auto && scale !== 1) { scale = 1; allocTargets(); } },
     onChange(f) { listeners.push(f); },
     get targets() { return { sceneRT, refrRT, volRT, panoRT, blooms }; },
+    knobs, setScale(v) { scale = v; allocTargets(); }, realloc: () => allocTargets(),
   };
 }
 
