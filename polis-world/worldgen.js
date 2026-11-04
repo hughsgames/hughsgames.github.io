@@ -1321,8 +1321,10 @@ class Stamper {
     this.fill(ax - 5, gy + 10, cz - 7, ax + 5, gy + 10, cz - 1, B.marble);
     for (const dx of [-4, -2, 2, 4]) this.fill(ax + dx, gy + 11, cz - 7, ax + dx, gy + 12, cz - 1, B.stoneBricks);
     for (const dx of [-4, 4]) for (const dz of [-6, -2]) this.fill(ax + dx, gy, cz + dz, ax + dx, gy + 9, cz + dz, B.column);
-    this.disc(ax, cz + 4, gy - 1, 3.5, B.stoneBricks); this.disc(ax, cz + 4, gy, 2.5, B.water);
-    this.fill(ax, gy, cz + 4, ax, gy + 4, cz + 4, B.limestone); this.put(ax, gy + 5, cz + 4, B.water);
+    // The Meta Sudans: a round pool with a stone kerb, and in the middle a tall cone that water ran down from a bowl
+    // at the top.
+    this.disc(ax, cz + 4, gy - 1, 3.5, B.stoneBricks); this.ring(ax, cz + 4, gy, gy, 3.5, 2.5, B.stoneBricks); this.disc(ax, cz + 4, gy, 2.5, B.water);
+    this.fill(ax, gy, cz + 4, ax, gy + 4, cz + 4, B.limestone); this.basin(ax, cz + 4, ax, cz + 4, gy + 5, B.limestone, true);
     // The road in from the city, with kerbstones.
     this.fill(cx - A - 34, gy - 1, cz - 1, cx - A - 2, gy - 1, cz + 1, B.cobblestone);
     this.fill(cx - A - 34, gy - 1, cz - 2, cx - A - 2, gy - 1, cz - 2, B.stoneBricks);
@@ -1789,7 +1791,7 @@ class Stamper {
     for (let x = -4; x <= 4; x += 2) for (let y = 4; y <= 8; y += 4) { this.put(px + x, gy + y, pz - 6, B.glass); this.put(px + x, gy + y, pz + 6, B.glass); }
     this.fill(cx + 17, gy, cz - 1, cx + 33, gy, cz + 9, B.stoneBricks);         // the Piazza della Signoria
     this.statue(px - 3, pz + 9, gy + 1, B.marble);                               // David, in white marble, as he stood here from 1504
-    this.put(px + 3, gy + 1, pz + 9, B.water); this.fill(px + 2, gy + 1, pz + 8, px + 4, gy + 1, pz + 8, B.marble);   // and a fountain
+    this.basin(px + 3, pz + 9, px + 3, pz + 9, gy + 1, B.marble);              // and a fountain
 
     // ---- the Arno, and the Ponte Vecchio with the shops along it ----
     const rz = cz + 24;
@@ -2158,6 +2160,57 @@ function mjTree(w, x, gy, z, s, T, seed, pools) {
   }
 }
 
+/// Still water that nothing holds in looks wrong (a block of water standing on a floor, a pool beside an open gap), and
+/// pours away the moment anything near it changes. Once everything is built, each still water block from just below sea
+/// level up gets a kerb or bank beside it wherever it stands higher than the ground next to it (of whatever that ground
+/// is: grass, sand, marble…; built up from the ground if that's a few blocks lower, and where a ravine or a cave cuts in
+/// beside a river or the sea, a wall of rock between them), a gap in a pool's surface filled, and a block under it if it
+/// hangs in the air. A step down to lower water is left as it is: that's how two waters meet.
+function holdWater(w) {
+  const n = w.n, c = w.cells, NN = n * n;
+  const open = (b) => !SOLID[b] && !WATERY[b];
+  const BANK = new Set([B.grass, B.dirt, B.stone, B.sand, B.gravel, B.snow, B.clay, B.sandstone, B.cobblestone, B.planks, B.snowyGrass,
+    B.mossyCobble, B.brick, B.marble, B.blueTile, B.limestone, B.mudBrick, B.carvedStone, B.stoneBricks, B.granite, B.blackMarble,
+    B.atlStone, B.terracotta, B.mosaic, B.plaster, B.jerusalemStone, B.jade, B.rammedEarth, B.mountainSoil, B.blackSand, B.waterMoss,
+    B.greenMarble, B.blueMarble, B.redMarble, B.purpleMarble, B.obsidian]);
+  const bankOf = (b) => (BANK.has(b) ? b : B.stoneBricks);
+  let banks = 0, filled = 0, held = 0;
+  const queue = [];   // gaps just filled, to look at in their turn
+  for (let y = WL - 6; y < H - 1; y++) for (let z = 1; z < n - 1; z++) for (let x = 1; x < n - 1; x++) {
+    const i0 = (y * n + z) * n + x;
+    if (c[i0] !== B.water) continue;
+    queue.push(i0);
+    while (queue.length) look(queue.pop());
+  }
+  return { banks, filled, held };
+  function look(i) {
+    if (c[i] !== B.water) return;
+    const x = i % n, z = Math.floor(i / n) % n;
+    if (x < 1 || z < 1 || x >= n - 1 || z >= n - 1) return;
+    const sides = [i - 1, i + 1, i - n, i + n];
+    if (open(c[i - NN])) {   // hangs in the air: a block under it, like the ones beside it
+      const like = sides.map((j) => c[j]).find((b) => SOLID[b]);
+      c[i - NN] = bankOf(like ?? B.stoneBricks); held++;
+    }
+    for (const j of sides) {
+      if (!open(c[j])) continue;
+      const under = c[j - NN];
+      if (SOLID[under]) {   // stands higher than the ground beside it: a bank of that ground
+        c[j] = bankOf(under); banks++;
+        const site = w.protected.get(j - NN);
+        if (site !== undefined) w.protected.set(j, site);
+      } else if (WATERY[under] && [j - 1, j + 1, j - n, j + n].filter((q) => WATERY[c[q]]).length >= 3) {   // a gap in the surface
+        c[j] = B.water; filled++; queue.push(j);
+      } else if (!WATERY[under]) {   // beside a dip: a bank built up from its floor (in a deep ravine, a wall of rock)
+        let k = j - NN;
+        while (k - NN >= 0 && open(c[k - NN])) k -= NN;
+        const floor = c[k - NN], b = j - k <= 4 * NN ? bankOf(floor) : B.stone;
+        if (k - NN >= 0 && (SOLID[floor] || (WATERY[floor] && j - k > 4 * NN))) for (let q = k; q <= j; q += NN) { c[q] = b; banks++; }
+      }
+    }
+  }
+}
+
 function post(msg, p) { self.postMessage({ type: 'progress', msg, p }); }
 
 self.onmessage = (e) => {
@@ -2187,6 +2240,7 @@ self.onmessage = (e) => {
   const cities = st.addCities(placed, taken, cityInfo, siteIndex);
   const land = w.nearestLand(spawn[0], spawn[1]);
   const camp = campPlan(w, land[0], land[1]);
+  holdWater(w);
   post('Almost ready…', 0.95);
   const prot = new Int32Array(w.protected.size * 2);
   let k = 0;

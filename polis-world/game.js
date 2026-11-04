@@ -21,7 +21,7 @@ import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '4 Nov 2026, 04:36 UTC';
+const BUILD = '4 Nov 2026, 16:02 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();

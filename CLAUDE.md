@@ -81,6 +81,16 @@ polis-world/        the game (everything below is in here)
   fallback only triggers if the lock has **never once** held — the game releases the mouse
   itself whenever a window opens, and that must not be mistaken for a refusal.
 - `data.js` is ~175 KB of generated data. Read it, don't rewrite it.
+- **Water must be held in.** Still water with open air beside or under it hangs there like a glass block (the
+  game only lets water flow once something near it changes). Build fountains with `basin()` (a kerb all round, a floor,
+  filled in down to the ground), sink pools into a floor rather than standing them on it, and give a river or moat one
+  level all along rather than following the ground in steps. After everything is built, `holdWater` in `worldgen.js`
+  banks up whatever is left (a kerb of the ground beside it, a wall of rock where a ravine cuts in beside a river).
+  Check a change with an audit that lists still water at or above y 26 with air beside or under it; there should be
+  none apart from a few natural steps where two rivers meet.
+- A change to a monument that alters ground heights near it can move the houses round it (`plotGround` reads the
+  ground), which would put a player's saved edits on top of different buildings. Diff the generated world before and
+  after: the city plans (`cities`) must come out the same.
 
 ## Graphics
 

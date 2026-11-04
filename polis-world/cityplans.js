@@ -255,15 +255,18 @@ Object.assign(Stamper.prototype, {
   market(r, gy, st, seed) {
     this.flattenRaw(r, gy, st.avenue);
     const cols = [B.brick, B.blueTile, B.planks, B.goldBlock, B.limestone];
+    const mx = (r[0] + r[2]) >> 1, mz = (r[1] + r[3]) >> 1;
     for (let z = r[1] + 1; z <= r[3] - 1; z += 3) for (let x = r[0] + 1; x <= r[2] - 1; x += 4) {
       if (x + 1 > r[2] || z + 1 > r[3]) continue;
+      if (x <= mx + 1 && x + 2 >= mx - 1 && z <= mz + 1 && z + 1 >= mz - 1) continue;   // (the fountain stands here)
       const c = cols[Math.floor(hash(x, z, seed + 11) * cols.length)];
       // A stall: two posts, an awning, a counter with goods on it.
       this.fill(x, gy, z, x, gy + 1, z, B.fence); this.fill(x + 2 <= r[2] ? x + 2 : x + 1, gy, z, x + 2 <= r[2] ? x + 2 : x + 1, gy + 1, z, B.fence);
       this.fill(x, gy + 2, z - 0, Math.min(x + 2, r[2]), gy + 2, z, c);
       this.put(x + 1, gy, z + 1 <= r[3] ? z + 1 : z, [B.planks, B.clay, B.oakLog][Math.floor(hash(x, z, seed + 12) * 3)]);
     }
-    this.put((r[0] + r[2]) >> 1, gy, (r[1] + r[3]) >> 1, B.water);
+    // The fountain in the middle of the market, where people came for their water.
+    this.basin(mx, mz, mx, mz, gy, B.stoneBricks);
   },
   garden(r, gy, style, seed) {
     this.flattenRaw(r, gy, B.grass);
@@ -306,20 +309,35 @@ Object.assign(Stamper.prototype, {
       if (wl.trim && (x + z) % 3 === 0) this.put(x, g + Math.floor(h / 2), z, wl.trim);
     }
     if (spec.moat) {
+      // The water lies level all the way round, at the height of the sea and rivers it joins (if it followed the ground
+      // it would stand in steps, held in by nothing).
+      const lv = WL - 1;
       for (let z = cz - R - 4; z <= cz + R + 4; z++) for (let x = cx - R - 4; x <= cx + R + 4; x++) {
         const d = spec.shape === 'circle' ? Math.hypot(x - cx, z - cz) - R : Math.max(Math.abs(x - cx), Math.abs(z - cz)) - R;
         if (d < 2 || d > 4 || !this.w.inb(x, z) || gate(x, z)) continue;
         if (this.w.hasWater(x, z) || this.w.protected.has(this.w.idx(x, this.ground(x, z) - 1, z))) continue;
         const g = this.ground(x, z);
-        if (g > WL + 8) continue;
-        for (let y = g - 3; y < g - 1; y++) this.raw(x, y, z, B.water);
-        this.raw(x, g - 4, z, B.clay);
-        for (let y = g - 1; y < g + 4; y++) this.raw(x, y, z, 0);
+        if (g > WL + 8 || g - 1 < lv) continue;
+        for (let y = lv - 1; y <= lv; y++) this.raw(x, y, z, B.water);
+        this.raw(x, lv - 2, z, B.clay);
+        for (let y = lv + 1; y < g + 4; y++) this.raw(x, y, z, 0);
       }
     }
   },
 
   // ---------- famous buildings ----------
+  /// A fountain basin: water (x0..x1 × z0..z1, at height y) held in by a stone kerb one block wide all round, on a
+  /// floor of the same stone, with nothing standing in the water. Unless `raised` (a bowl up on a column), anything
+  /// open under the floor is filled in down to the ground, so a basin never hangs in the air.
+  basin(x0, z0, x1, z1, y, b, raised = false) {
+    for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+      if (!raised) for (let yy = y - 2, k = 0; yy > 0 && k < 8 && !SOLID[this.w.get(x, yy, z)]; yy--, k++) this.put(x, yy, z, b);
+      this.put(x, y - 1, z, b);
+      const inside = x >= x0 && x <= x1 && z >= z0 && z <= z1;
+      this.put(x, y, z, inside ? B.water : b);
+      if (inside) for (let yy = y + 1; yy <= y + 2; yy++) this.put(x, yy, z, 0);
+    }
+  },
   ring(cx, cz, y0, y1, rOut, rIn, b) { for (let z = Math.floor(cz - rOut - 1); z <= cz + rOut + 1; z++) for (let x = Math.floor(cx - rOut - 1); x <= cx + rOut + 1; x++) { const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz); if (d <= rOut && d > rIn) this.fill(x, y0, z, x, y1, z, b); } },
   disc(cx, cz, y, r, b) { for (let z = Math.floor(cz - r - 1); z <= cz + r + 1; z++) for (let x = Math.floor(cx - r - 1); x <= cx + r + 1; x++) if (Math.hypot(x + 0.5 - cx, z + 0.5 - cz) <= r) this.put(x, y, z, b); },
   dome(cx, cz, y0, r, b, oculus = 0) {
@@ -732,9 +750,9 @@ const CITY_PLANS = {
         for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (x === x0 || x === x1 || z === z0 || z === z1) this.fill(x, gy, z, x, gy + 8, z, B.brick);
         // The great cold hall, with three cross-vaults and a plunge pool.
         this.fill(x0 + 3, gy, z0 + 3, x0 + 20, gy + 11, z0 + 14, B.brick);
-        this.fill(x0 + 4, gy - 2, z0 + 4, x0 + 19, gy + 11, z0 + 13, 0);   // open to the vaults above
+        this.fill(x0 + 4, gy, z0 + 4, x0 + 19, gy + 11, z0 + 13, 0);   // open to the vaults above (the marble floor stays)
         this.fill(x0 + 5, gy - 2, z0 + 5, x0 + 18, gy - 2, z0 + 12, B.marble);
-        this.fill(x0 + 5, gy - 1, z0 + 5, x0 + 18, gy - 1, z0 + 12, B.water);
+        this.fill(x0 + 5, gy - 1, z0 + 5, x0 + 18, gy - 1, z0 + 12, B.water);   // sunk into the floor, a walk of marble all round
         for (const cx of [x0 + 7.5, x0 + 12.5, x0 + 17.5]) this.dome(cx, z0 + 8.5, gy + 8, 5.2, B.limestone, 0);
         for (let x = x0 + 4; x <= x0 + 19; x += 5) for (const z of [z0 + 4, z0 + 13]) this.fill(x, gy, z, x, gy + 7, z, B.column);
         this.fill(x0 + 10, gy, z0 + 14, x0 + 13, gy + 4, z0 + 14, 0);
@@ -752,13 +770,15 @@ const CITY_PLANS = {
         this.fill(x0 + 3, gy + 5, z1 - 3, x1 - 3, gy + 5, z1 - 2, B.limestone);
         this.fill(x0 + 14, gy, z1, x0 + 17, gy + 4, z1, 0);
       } },
-      { name: 'The Aqueduct', at: [6, 24], size: [48, 5], need: 0.5, noFlatten: true, build(x0, z0, gy) {
-        // Two tiers of arches carrying a channel of fresh water into the city, ending in a tank and a fountain.
+      { name: 'The Aqueduct', at: [6, 24], size: [48, 5], need: 0.5, noFlatten: true, build(xa, z0, gy) {
+        // Two tiers of arches carrying a channel of fresh water into the city, ending in a tank and a fountain. (The
+        // tank and the fountain take the first 8 blocks, so they're on the aqueduct's own ground, where no house goes.)
+        const x0 = xa + 8;
         let top = 0;
-        for (let x = x0; x <= x0 + 47; x++) top = Math.max(top, this.ground(x, z0 + 2));
+        for (let x = x0; x <= x0 + 39; x++) top = Math.max(top, this.ground(x, z0 + 2));
         top = Math.min(top + 15, H - 9);
         const mid = top - 8;
-        for (let x = x0; x <= x0 + 47; x++) {
+        for (let x = x0; x <= x0 + 39; x++) {
           const g = this.ground(x, z0 + 2), bigPier = (x - x0) % 6 === 0, smallPier = (x - x0) % 3 === 0;
           for (let z = z0; z <= z0 + 3; z++) {
             if (bigPier) this.fill(x, g - 1, z, x, mid, z, B.limestone);
@@ -771,13 +791,18 @@ const CITY_PLANS = {
           this.put(x, top + 2, z0, B.limestone); this.put(x, top + 2, z0 + 3, B.limestone);
         }
         // Capped at the far end so the channel stays full.
-        this.fill(x0 + 48, top, z0, x0 + 48, top + 2, z0 + 3, B.limestone);
-        // The castellum at the city end: a tank the water falls into, and a public fountain below it.
-        this.fill(x0 - 4, mid, z0 - 1, x0 - 1, top + 2, z0 + 4, B.limestone);
-        this.fill(x0 - 3, top, z0, x0 - 2, top + 1, z0 + 3, B.water);
-        this.fill(x0 - 3, mid - 1, z0 + 1, x0 - 2, top - 1, z0 + 2, B.water);
-        this.fill(x0 - 6, mid - 2, z0, x0 - 4, mid - 2, z0 + 3, B.stoneBricks);
-        this.fill(x0 - 6, mid - 1, z0 + 1, x0 - 5, mid - 1, z0 + 2, B.water);
+        this.fill(x0 + 40, top, z0, x0 + 40, top + 2, z0 + 3, B.limestone);
+        // The castellum at the city end: a stone tower standing on the ground, with the tank the channel pours into at
+        // the top, and at its foot a public fountain, a stone basin where people filled their jars.
+        let cg = H;
+        for (let z = z0; z <= z0 + 4; z++) for (let x = xa; x <= x0 - 1; x++) cg = Math.min(cg, this.ground(x, z));
+        this.fill(x0 - 4, cg - 1, z0, x0 - 1, top + 2, z0 + 4, B.limestone);
+        this.fill(x0 - 3, top, z0 + 1, x0 - 2, top + 1, z0 + 3, B.water);
+        this.fill(x0 - 3, top + 2, z0 + 1, x0 - 2, top + 2, z0 + 3, 0);          // (open to the sky)
+        this.fill(x0 - 1, top + 1, z0 + 1, x0 - 1, top + 1, z0 + 2, B.water);   // where the channel runs in
+        this.fill(xa, cg + 1, z0, xa + 3, cg + 3, z0 + 4, 0);
+        this.basin(xa + 1, z0 + 1, xa + 2, z0 + 3, cg, B.stoneBricks);
+        this.put(x0 - 5, cg + 2, z0 + 2, B.goldBlock);   // the bronze spout on the tower, over the basin
       } },
     ],
   }),
@@ -792,7 +817,7 @@ const CITY_PLANS = {
         this.fill(x0, gy + 5, z0 + 11, x0 + 19, gy + 5, z0 + 14, B.limestone);
         this.gableRoof(x0, z0 + 11, x0 + 19, z0 + 14, gy + 6, B.brick, true);
         for (let x = x0 + 2; x <= x0 + 18; x += 4) this.fill(x, gy, z0 + 12, x, gy + 4, z0 + 13, B.limestone);
-        this.put(x0 + 10, gy, z0 + 5, B.water); this.fill(x0 + 9, gy - 1, z0 + 4, x0 + 11, gy - 1, z0 + 6, B.marble);
+        this.basin(x0 + 10, z0 + 5, x0 + 10, z0 + 5, gy, B.marble);   // a fountain
         this.statue(x0 + 4, z0 + 4, gy, B.limestone);
       } },
       { name: 'The Temple of Hephaestus', at: [-34, -6], size: [13, 9], build(x0, z0, gy) {
@@ -878,20 +903,27 @@ const CITY_PLANS = {
           if (a > b || c > d) break;
           this.fill(a, y, c, b, y + 2, d, B.brick);
           for (let z = c; z <= d; z++) for (let x = a; x <= b; x++) { this.put(x, y + 2, z, B.grass); if ((x === a || x === b || z === c || z === d) && (x + z) % 2 === 0) this.put(x, y + 3, z, B.oakLeaves); }
-          if (t < 3) for (let x = a + 1; x <= b - 1; x += 3) this.put(x, y + 1, c, B.water);
+          if (t < 3) for (let x = a + 1; x <= b - 1; x += 3) this.put(x, y + 2, c + 1, B.water);   // pools along the front
         }
         oak(this.w, x0 + 7, gy + 12, z0 + 6, 5);
       } },
       { name: 'The Euphrates bridge', at: [-24, -2], size: [6, 5], need: 0.5, build(x0, z0, gy) {
-        // A stretch of the river through the city, crossed by a stone bridge.
+        // A stretch of the river through the city, crossed by a stone bridge. The water lies level all along, at the
+        // height of the river outside the city, however the ground rises and falls beside it. (The riverbed is where it
+        // always was, so the streets and houses beside it stay just as they were.)
+        const cut = [];
         for (let z = z0 - 30; z <= z0 + 30; z++) for (let x = x0; x <= x0 + 5; x++) {
           if (!this.w.inb(x, z)) continue; { const g0 = this.ground(x, z); if (this.w.protected.has(this.w.idx(x, g0 - 1, z)) || this.w.protected.has(this.w.idx(x, g0, z))) continue; }
           if (Math.abs(z - (z0 + 2)) <= 1) { const g = this.ground(x, z); this.fill(x, g - 1, z, x, g - 1, z, B.stoneBricks); if (x === x0 || x === x0 + 5) this.put(x, g, z, B.stoneBricks); continue; }
           const g = this.ground(x, z);
           if (g > WL + 6) continue;
-          for (let y = g - 4; y < g - 1; y++) this.raw(x, y, z, B.water);
+          cut.push([x, z, g]);
+        }
+        const lv = Math.min(WL - 1, ...cut.map((q) => q[2] - 2));
+        for (const [x, z, g] of cut) {
+          for (let y = g - 4; y <= lv; y++) this.raw(x, y, z, B.water);
           this.raw(x, g - 5, z, B.clay);
-          for (let y = g - 1; y < g + 6; y++) this.raw(x, y, z, 0);
+          for (let y = Math.max(lv + 1, g - 4); y < g + 6; y++) this.raw(x, y, z, 0);
         }
       } },
     ],
@@ -978,7 +1010,7 @@ const CITY_PLANS = {
         this.fill(x0, gy, z0, x0 + 10, gy, z0 + 8, B.limestone);
         this.colonnadeRect(x0, z0, x0 + 10, z0 + 8, gy + 1, 3);
         this.fill(x0 + 3, gy, z0 + 3, x0 + 7, gy, z0 + 5, B.grass);
-        this.put(x0 + 5, gy + 1, z0 + 4, B.water);
+        this.basin(x0 + 5, z0 + 4, x0 + 5, z0 + 4, gy + 1, B.marble);   // a fountain in the garden
       } },
       { name: 'The Workshop of Phidias', at: [24, -20], size: [8, 7], build(x0, z0, gy) {
         // Where the sculptor Phidias built the giant statue of Zeus. Archaeologists found his tools, and a cup scratched
@@ -1032,15 +1064,19 @@ const CITY_PLANS = {
     ],
     extra(st, p) {
       // The West Baray: a vast reservoir that stored water for the rice fields.
-      const x0 = p.x - 64, z0 = p.z - 52;
+      // Its water lies level, no higher than the lowest ground round it, inside raised banks.
+      const x0 = p.x - 64, z0 = p.z - 52, cells = [];
       for (let z = z0; z <= z0 + 14; z++) for (let x = x0; x <= x0 + 34; x++) {
         if (!st.w.inb(x, z) || st.w.hasWater(x, z)) continue;
         const g = st.ground(x, z);
         if (g > WL + 6 || st.w.protected.has(st.w.idx(x, g - 1, z))) continue;
-        const rim = x === x0 || x === x0 + 34 || z === z0 || z === z0 + 14;
-        for (let y = g; y < g + 5; y++) if (!st.w.protected.has(st.w.idx(x, y, z))) st.raw(x, y, z, 0);
+        cells.push([x, z, g, x === x0 || x === x0 + 34 || z === z0 || z === z0 + 14]);
+      }
+      const lv = Math.min(WL - 1, ...cells.map((q) => q[2] - 1));
+      for (const [x, z, g, rim] of cells) {
+        for (let y = rim ? g : lv + 1; y < g + 5; y++) if (!st.w.protected.has(st.w.idx(x, y, z))) st.raw(x, y, z, 0);
         if (rim) { st.raw(x, g - 1, z, B.grass); st.raw(x, g, z, B.dirt); st.raw(x, g + 1, z, B.grass); }
-        else { st.raw(x, g - 3, z, B.clay); st.raw(x, g - 2, z, B.water); st.raw(x, g - 1, z, B.water); }
+        else { st.raw(x, lv - 2, z, B.clay); st.raw(x, lv - 1, z, B.water); st.raw(x, lv, z, B.water); }
       }
       // Rice paddies outside the walls.
       for (let z = p.z - 30; z <= p.z - 22; z++) for (let x = p.x + 24; x <= p.x + 40; x++) {
