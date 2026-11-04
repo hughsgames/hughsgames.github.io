@@ -218,6 +218,7 @@ body.designing #crosshair { display: block !important; }
 .pin.event.found { background: rgba(150, 40, 30, 0.92); }
 .pin.you { width: 12px; height: 12px; padding: 0; border-radius: 50%; background: #ff3b30; border: 2px solid #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); pointer-events: none; z-index: 2; }
 /* An animal you've tamed: a green dot, so you can find your horse again. */
+.pin.friend { background: #6fd6ff; color: #0b2230; pointer-events: none; z-index: 1; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
 .pin.tamed { width: 9px; height: 9px; padding: 0; border-radius: 50%; background: #4fbf4a; border: 2px solid rgba(255, 255, 255, 0.9); pointer-events: none; }
 .maphint { font-size: 12px; color: var(--ink-dim); font-weight: 700; margin: 0; }
 
@@ -282,6 +283,27 @@ body.designing #crosshair { display: block !important; }
   .dz-head h2 { font-size: 17px; }
 }
 @media (max-width: 520px) { .slot { width: 38px; height: 38px; } .slot img { width: 32px; height: 32px; } #invGrid { grid-template-columns: repeat(9, minmax(0, 36px)); } }
+/* Playing together */
+.friendsbox { width: min(460px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; box-sizing: border-box; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.friendsbox .fp { margin: 0; font-weight: 800; }
+.flabel { display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px; color: var(--ink-dim); }
+.flabel input, .jin { font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(0, 0, 0, 0.35); color: var(--ink); user-select: text; -webkit-user-select: text; }
+.fcode { font-family: var(--display); font-weight: 800; font-size: 46px; letter-spacing: 0.08em; color: var(--gold); text-align: center; user-select: text; -webkit-user-select: text; }
+.fask { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 10px; background: rgba(76, 175, 80, 0.16); border: 1px solid rgba(120, 200, 120, 0.6); }
+.fask b { font-size: 17px; }
+.fask span { font-weight: 700; color: var(--ink-dim); font-size: 14px; }
+#fList { display: flex; flex-direction: column; gap: 4px; }
+.frow { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+.frow span { color: var(--ink-dim); font-weight: 700; font-size: 13px; flex: 1; }
+.frow button { min-height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--edge); background: rgba(255, 255, 255, 0.08); font-weight: 800; font-size: 13px; }
+.friendsbox .drow button.go { background: var(--green); border-color: transparent; }
+.friendsbox .drow { margin: 2px 0; }
+.fstatus { margin: 0; font-weight: 800; font-size: 14px; color: var(--gold); min-height: 0; }
+.fstatus:empty { display: none; }
+.warnline { color: #f0a58f; }
+#netPill { font-size: 14px; }
+#netPill.knock { background: rgba(60, 140, 70, 0.85); }
+#jStatus { margin: 0; font-weight: 800; font-size: 14px; color: var(--gold); }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } #fade, #hunger { transition: none; } }
 </style>
 
@@ -295,6 +317,7 @@ body.designing #crosshair { display: block !important; }
     <div class="pill"><span id="clock">Day 1 · 7:00</span></div>
     <div class="pill"><div class="label">Hunger</div><div id="hungerWrap"><div id="hunger"></div></div></div>
     <div class="pill" id="healthPill" hidden><div class="label">Health</div><div id="healthWrap"><div id="health"></div></div></div>
+    <div class="pill" id="netPill" hidden></div>
   </div>
 </div>
 <!-- The compass: which way you're facing, the way home, and the place you picked on the map. -->
@@ -306,7 +329,7 @@ body.designing #crosshair { display: block !important; }
 <div id="underwater" hidden></div>
 <div id="crosshair"></div>
 <div id="bottom"><div id="heldName"></div><div id="hotbar"></div></div>
-<div id="tips"><kbd>H</kbd> controls · <kbd>X</kbd> build · <kbd>E</kbd> inventory · <kbd>M</kbd> map</div>
+<div id="tips"><kbd>H</kbd> controls · <kbd>X</kbd> build · <kbd>E</kbd> inventory · <kbd>M</kbd> map · <kbd>P</kbd> play with friends</div>
 <div id="message" hidden></div>
 <div id="toasts"></div>
 
@@ -316,6 +339,7 @@ body.designing #crosshair { display: block !important; }
     <button class="tbtn" id="btnInv">Inventory</button>
     <button class="tbtn" id="btnMap">Map</button>
     <button class="tbtn" id="btnDesign">Designs</button>
+    <button class="tbtn" id="btnFriends">Friends</button>
   </div>
   <div id="touchBtns">
     <button class="tbtn" id="btnMode">Digging</button>
@@ -365,7 +389,7 @@ body.designing #crosshair { display: block !important; }
   <div class="panel">
     <div class="phead"><h2>The World</h2><button class="done" id="mapDone">Done</button></div>
     <div class="mapwrap"><canvas id="mapCanvas" width="560" height="560"></canvas><div id="mapPins"></div><div class="mapnorth">▲ N</div></div>
-    <p class="maphint">Gold labels are places you've visited: click one to travel there. Grey ones you haven't reached yet: click one and a gold marker on your compass shows you the way. North is the top of the map. Blue is your camp. The red arrow is you, pointing the way you're facing, and green dots are animals you've tamed.</p>
+    <p class="maphint">Gold labels are places you've visited: click one to travel there. Grey ones you haven't reached yet: click one and a gold marker on your compass shows you the way. North is the top of the map. Blue is your camp. The red arrow is you, pointing the way you're facing, green dots are animals you've tamed, and light blue names are friends playing with you.</p>
   </div>
 </div>
 
@@ -406,12 +430,13 @@ body.designing #crosshair { display: block !important; }
       <kbd>B</kbd><span>Your designs: design a building, then build copies (R turns it)</span>
       <kbd>X on a machine</kbd><span>Climb into one of Leonardo da Vinci's machines in Florence: fly, glide, drive, paddle or shoot</span>
       <kbd>T</kbd><span>Make a twin of one of your own tamed animals (three twins from each animal a day)</span>
+      <kbd>P</kbd><span>Play with friends: open your world to a friend on another computer, or see who's here</span>
       <kbd>V</kbd><span>First-person or third-person view</span>
       <kbd>X</kbd><span>Build (same as right-click)</span>
       <kbd>Z / C</kbd><span>Camera closer / farther</span>
       <kbd>Esc</kbd><span>Let go of the mouse</span>
     </div>
-    <div class="drow"><button id="btnSound2" type="button">Sound: on</button><button id="btnMusic2" type="button">Music: on</button><button id="btnGfx2" type="button">Graphics: Amazing</button></div>
+    <div class="drow"><button id="btnSound2" type="button">Sound: on</button><button id="btnMusic2" type="button">Music: on</button><button id="btnGfx2" type="button">Graphics: Amazing</button><button id="btnFriends2" type="button">Play with friends</button></div>
     <p class="maphint" id="gfxHint2"></p>
     <p class="maphint">The music changes with the country you're in: a lyre in Greece, a harp on the Nile, a zither in China. It's all made by the game as you play — there's nothing to download.</p>
     <div class="keys" id="helpTouch" hidden>
@@ -423,6 +448,38 @@ body.designing #crosshair { display: block !important; }
       <kbd>Look down</kbd><span>and walk forward to dive under water</span>
       <kbd>Digging / Building</kbd><span>Switch what a tap does</span>
     </div>
+  </div>
+</div>
+
+<div id="friends" class="overlay" hidden>
+  <div class="panel friendsbox">
+    <div class="phead"><h2>Play with friends</h2><button class="done" id="friendsDone">Done</button></div>
+    <div id="fAsk" class="fask" hidden>
+      <b id="fAskName">A friend wants to come into your world</b>
+      <span>They'll be able to build and dig here with you.</span>
+      <div class="drow"><button class="go" id="fAskYes" type="button">Let them in</button><button id="fAskNo" type="button">Not now</button></div>
+    </div>
+    <div id="fStart">
+      <p class="fp">Open your world, and a friend can come in from their own computer or tablet. You choose who comes in.</p>
+      <label class="flabel">Your name <input id="fName" maxlength="14" autocomplete="off" placeholder="Your name"></label>
+      <div class="drow"><button class="go" id="fOpen" type="button">Open my world to friends</button></div>
+      <p class="maphint">Your world stays saved only on this computer, and a spare copy is made before the first friend comes in (bring it back from the start page with "Bring back my older world"). Friends can build and dig too. A free public service puts the computers in touch; nothing about your world is kept there.</p>
+    </div>
+    <div id="fHosting" hidden>
+      <p class="fp">Your code</p>
+      <div id="fCode" class="fcode">—</div>
+      <p class="maphint">Your friend opens <b>hughsgames.github.io</b>, picks Polis World, presses <b>Play in a friend's world</b> and types this code. Up to three friends can come.</p>
+      <p class="maphint warnline" id="fRoom" hidden>There wasn't room in this browser for a spare copy of your world. To be safe, back it up from the start page ("Back up my world").</p>
+    </div>
+    <div id="fGuest" hidden>
+      <p class="fp" id="fGuestText"></p>
+    </div>
+    <div id="fList" hidden></div>
+    <div class="drow">
+      <button id="fStop" type="button" class="fhost">Stop playing together</button>
+      <button id="fLeave" type="button" class="fguest">Go back to my own world</button>
+    </div>
+    <p class="fstatus" id="fStatus"></p>
   </div>
 </div>
 
@@ -467,6 +524,14 @@ body.designing #crosshair { display: block !important; }
     <div id="newConfirm" class="confirm" hidden>
       <p>Start over in a brand-new world? Your stars, things and buildings start again from nothing. Your current world is kept as a backup, so you can bring it back from this page.</p>
       <div class="row"><button id="btnNewNo" class="lbtn alt" type="button">Keep my world</button><button id="btnNewYes" class="lbtn warn" type="button">Start over</button></div>
+    </div>
+    <button id="btnJoin" class="lbtn alt" type="button">Play in a friend's world</button>
+    <div id="joinBox" class="confirm keep" hidden>
+      <p>Ask your friend to press P (or Friends) in their world: they'll see a code like FOX-27.</p>
+      <input id="jName" class="jin" maxlength="14" autocomplete="off" placeholder="Your name" aria-label="Your name">
+      <input id="jCode" class="jin" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="Their code, like FOX-27" aria-label="Your friend's code">
+      <div class="row"><button id="jCancel" class="lbtn alt" type="button">Cancel</button><button id="jGo" class="lbtn" type="button">Join</button></div>
+      <p id="jStatus" hidden></p>
     </div>
     <button id="btnRestore" class="linkbtn" type="button" hidden></button>
     <div class="drow" style="justify-content:center">

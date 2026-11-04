@@ -17,10 +17,11 @@ import { buildRelic, TOMB_TEXT, JADE_TEXT } from './relics.js';
 import { Sound, CITY_LAND } from './audio.js';
 import { createMachines, MACHINES } from './machines.js';
 import { createMegajungle, JUNGLE } from './megajungle.js';
+import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '2 Nov 2026, 19:10 UTC';
+const BUILD = '4 Nov 2026, 03:40 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -154,6 +155,7 @@ function setBlock(x, y, z, b) {
   if (old === b) return;
   world.set(x, y, z, b);
   G.edits.set(world.idx(x, y, z), b);
+  if (net.role && !netApplying) netEdits.push(world.idx(x, y, z), b);   // playing together: everyone else gets it too
   const wet = (IS_WATER[old] || old === 0) && (IS_WATER[b] || b === 0);
   markDirty(x, z, GLOW[b] > 0 || GLOW[old] > 0 ? 9 : wet ? 1 : 5);
   wakeWater(x, y, z);
@@ -217,6 +219,8 @@ function updateWater(i) {
   }
 }
 function updateFlow(dt) {
+  // In a friend's world the host's computer works out where the water runs, and sends the result.
+  if (net.role === 'guest' || guestWorld) { if (flowQ.length) { flowQ.length = 0; flowSet.clear(); } return; }
   flowT -= dt;
   if (flowT > 0 || !flowQ.length) return;
   flowT = 0.25;
@@ -339,6 +343,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') { G.firstPerson = !G.firstPerson; toast(G.firstPerson ? 'First-person view' : 'Third-person view'); }
   if (e.code === 'KeyF') eat();
   if (e.code === 'KeyH') togglePanel('help');
+  if (e.code === 'KeyP') togglePanel('friends');
   if (e.code === 'KeyB') { if (D.mode) endDesign(); togglePanel('designs'); }
   if (e.code === 'KeyR' && D.mode === 'place') { D.rot = (D.rot + 1) % 4; buildGhost(); }
   // T makes a twin of the animal you're looking at, if it's one of yours.
@@ -625,7 +630,7 @@ function soakUp(x, y, z) {
   let n = 0;
   for (let r = 1; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
     if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r || n >= 80) continue;
-    if (IS_WATER[world.get(x + dx, y + dy, z + dz)] && siteOf(x + dx, y + dy, z + dz) === null) { world.set(x + dx, y + dy, z + dz, 0); G.edits.set(world.idx(x + dx, y + dy, z + dz), 0); markDirty(x + dx, z + dz, 1); n++; }
+    if (IS_WATER[world.get(x + dx, y + dy, z + dz)] && siteOf(x + dx, y + dy, z + dz) === null) { world.set(x + dx, y + dy, z + dz, 0); G.edits.set(world.idx(x + dx, y + dy, z + dz), 0); if (net.role) netQuiet.push(world.idx(x + dx, y + dy, z + dz), 0); markDirty(x + dx, z + dz, 1); n++; }
   }
   if (n) message(`The sponge soaked up ${n} blocks of water!`);
 }
@@ -1071,8 +1076,9 @@ function eat() {
 function sleep() {
   const h = (G.clock % 1440) / 60;
   if (h >= 6 && h < 19) { message('You can only sleep at night.'); return; }
+  if (guestWorld) { message(`It's ${netHostName || 'your friend'}'s world, so only ${netHostName || 'they'} can sleep the night away.`); return; }
   $('fade').classList.add('on');
-  setTimeout(() => { G.clock = Math.floor(G.clock / 1440 + (h >= 19 ? 1 : 0)) * 1440 + 6 * 60; $('fade').classList.remove('on'); message('Good morning!'); }, 900);
+  setTimeout(() => { G.clock = Math.floor(G.clock / 1440 + (h >= 19 ? 1 : 0)) * 1440 + 6 * 60; $('fade').classList.remove('on'); message('Good morning!'); netSky(); }, 900);
 }
 
 // ---------- animals ----------
@@ -2853,7 +2859,8 @@ const C = (r, g, b) => new THREE.Color(r, g, b);
 function updateWeather(dt) {
   // On a world that has been played for days, the clock is already high: set the first spell from now.
   if (W.next < 0) { W.next = G.clock + 120 + Math.random() * 480; return; }
-  if (G.clock >= W.next) {
+  // (In a friend's world, their computer decides the weather and sends it.)
+  if (G.clock >= W.next && !guestWorld) {
     if (W.want > 0) {
       // The rain is passing. Dry for a good while before the next one.
       W.want = 0;
@@ -2877,7 +2884,8 @@ function updateWeather(dt) {
 }
 
 function updateDaylight(dt) {
-  G.clock += dt * (openPanel || dialogueOpen ? 0 : 1);
+  // Time stands still while you read a card or look at your things, except when friends are here: it's their day too.
+  G.clock += dt * ((openPanel || dialogueOpen) && !together() ? 0 : 1);
   updateWeather(dt);
   const hour = (G.clock % 1440) / 60;
   let light = 1;
@@ -3030,6 +3038,8 @@ let rainbowT = 0;
 // a moment later (sound is slower than light: about a third of a kilometre a second). Some flashes stay inside the
 // clouds and only light them up from within.
 const storm = { t: 10, flash: 0, ft: 9, dark: 0, sheet: false, warm: false };
+/// A little random-number maker that gives the same numbers for the same seed (mulberry32).
+function seededN(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 // The bolt: ribbons that always turn their face to you, each with a white-hot core and a violet glow round it.
 const boltMat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
@@ -3067,7 +3077,7 @@ function boltGeometry(pos = [0, 0, 0, 0, 0, 0, 0, 0, 0], dir = [0, 1, 0, 0, 1, 0
 // It starts as a single empty triangle, drawn once so its shader is ready before the first strike.
 const bolt = new THREE.Mesh(boltGeometry(), boltMat);
 bolt.frustumCulled = false; bolt.renderOrder = 8; scene.add(bolt);
-function shapeBolt(x, z, top, ground) {
+function shapeBolt(x, z, top, ground, rnd = Math.random) {
   const pos = [], dir = [], prof = [], idx = [];
   // A strip along a path of points: each point gets two vertices, which the shader pushes out sideways.
   const strip = (pts, w, b, tip) => {
@@ -3079,22 +3089,24 @@ function shapeBolt(x, z, top, ground) {
       if (i > 0) { const k = base + (i - 1) * 2; idx.push(k, k + 1, k + 3, k, k + 3, k + 2); }
     });
   };
-  const path = (x0, y0, z0, y1, jag) => { const pts = [[x0, y0, z0]]; let px = x0, pz = z0; for (let y = y0 - 7; y > y1; y -= 5 + Math.random() * 6) { px += (Math.random() - 0.5) * jag; pz += (Math.random() - 0.5) * jag; pts.push([px, y, pz]); } pts.push([px + (Math.random() - 0.5) * 2, y1, pz + (Math.random() - 0.5) * 2]); return pts; };
+  const path = (x0, y0, z0, y1, jag) => { const pts = [[x0, y0, z0]]; let px = x0, pz = z0; for (let y = y0 - 7; y > y1; y -= 5 + rnd() * 6) { px += (rnd() - 0.5) * jag; pz += (rnd() - 0.5) * jag; pts.push([px, y, pz]); } pts.push([px + (rnd() - 0.5) * 2, y1, pz + (rnd() - 0.5) * 2]); return pts; };
   const main = path(x, top, z, ground, 7);
   strip(main, 0.3, 1, false);
-  const forks = 2 + Math.floor(Math.random() * 3);
+  const forks = 2 + Math.floor(rnd() * 3);
   for (let k = 0; k < forks; k++) {   // forks, fainter, that stop in mid-air
-    const from = main[1 + Math.floor(Math.random() * Math.max(1, main.length - 3))];
-    strip(path(from[0], from[1], from[2], Math.max(ground + 10, from[1] - 20 - Math.random() * 30), 9), 0.16, 0.5, true);
+    const from = main[1 + Math.floor(rnd() * Math.max(1, main.length - 3))];
+    strip(path(from[0], from[1], from[2], Math.max(ground + 10, from[1] - 20 - rnd() * 30), 9), 0.16, 0.5, true);
   }
   bolt.geometry.dispose();
   bolt.geometry = boltGeometry(pos, dir, prof, idx);
 }
 /// Lightning at (x, z): a bolt down to the ground there, or with `sheet` a flash that stays in the clouds above it.
-function strike(x, z, sheet = false) {
+/// `seed` shapes the bolt, so friends standing together see the very same one.
+function strike(x, z, sheet = false, seed = Math.floor(Math.random() * 2 ** 31)) {
   const dist = Math.hypot(x - P.x, z - P.z);
   const ground = world.inb(Math.floor(x), Math.floor(z)) ? world.groundY(Math.floor(x), Math.floor(z)) : WL;
-  if (!sheet) shapeBolt(x, z, 165, Math.max(ground, WL));
+  if (!sheet) shapeBolt(x, z, 165, Math.max(ground, WL), seededN(seed));
+  if (net.role === 'host') net.all({ t: 'bolt', x: Math.round(x), z: Math.round(z), s: sheet ? 1 : 0, k: seed });
   storm.sheet = sheet; storm.ft = 0;
   shared.uFlashDir.value.set(x - camera.position.x, 175 - camera.position.y, z - camera.position.z).normalize();
   sound.play('thunder', { delay: dist / 340, near: Math.max(0, Math.min(1, 1 - (dist - 70) / 150)) * (sheet ? 0.5 : 1) });
@@ -3105,7 +3117,7 @@ function updateStorm(dt, under) {
   storm.dark += ((W.want === 1 && W.now > 0.5 ? 1 : 0) - storm.dark) * Math.min(1, dt * 0.07);
   const heavy = W.want === 1 && W.now > 0.7 && !under;
   storm.t -= dt;
-  if (heavy && storm.t <= 0) {
+  if (heavy && storm.t <= 0 && !guestWorld) {   // (in a friend's world, the strikes come from their computer)
     storm.t = 6 + Math.random() * 10;
     // Most strikes land somewhere ahead of you, so you get to see the bolts and not only the flashes.
     const ahead = Math.random() < 0.65;
@@ -3390,13 +3402,16 @@ function toast(text, id) {
   $('toasts').appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
+// A card that comes while another is still open waits its turn, so none is lost (two at once, a welcome and a wonder found).
+const cardQueue = [];
 function showCard(title, sub, body) {
+  if (openPanel === 'card' && !$('card').hidden) { if (cardQueue.length < 6) cardQueue.push([title, sub, body]); return; }
   $('cardTitle').textContent = title; $('cardSub').textContent = sub; $('cardBody').textContent = body;
   openPanel = 'card'; $('card').hidden = false;
   if (document.pointerLockElement) document.exitPointerLock();
   refreshPaused();
 }
-$('cardOk').addEventListener('click', () => { closePanels(); });
+$('cardOk').addEventListener('click', () => { closePanels(); if (cardQueue.length) showCard(...cardQueue.shift()); });
 for (const id of ['invDone', 'mapDone', 'helpDone']) $(id).addEventListener('click', () => closePanels());
 function showDialogue(name, title, text, choices) {
   dialogueOpen = true;
@@ -3418,7 +3433,7 @@ function closeDialogue(who) {
 function refreshPaused() { $('paused').hidden = document.pointerLockElement === canvas || input.freeLook || !G.started || input.mode !== 'desk' || !!openPanel || dialogueOpen; }
 function togglePanel(name) { if (openPanel === name) closePanels(); else { closePanels(true); openPanel = name; renderPanel(); if (document.pointerLockElement) document.exitPointerLock(); } }
 function closePanels(keepUnlocked) {
-  for (const id of ['inventory', 'map', 'help', 'card', 'designs']) $(id).hidden = true;
+  for (const id of ['inventory', 'map', 'help', 'card', 'designs', 'friends']) $(id).hidden = true;
   if (designer && designer.isOpen()) designer.close();
   const was = openPanel || dialogueOpen;
   // Shutting the windows shuts a conversation too. Before this, Escape left the talk box up with the
@@ -3562,6 +3577,8 @@ function renderPanel() {
     $('help').hidden = false;
   } else if (openPanel === 'designs') {
     renderDesigns();
+  } else if (openPanel === 'friends') {
+    renderFriends();
   }
 }
 // The map: the whole world from above, the wonders, and you.
@@ -3619,6 +3636,14 @@ function drawMap() {
     t.className = 'pin tamed'; t.title = `Your ${SPECIES[m.kind].name}`;
     t.style.left = `${(m.x / n) * 100}%`; t.style.top = `${(m.z / n) * 100}%`;
     pins.appendChild(t);
+  }
+  // Friends playing here with you: their names, so you can find each other.
+  for (const o of others.values()) {
+    if (!o.s) continue;
+    const f = document.createElement('div');
+    f.className = 'pin friend'; f.textContent = o.name; f.title = `${o.name} is here`;
+    f.style.left = `${(o.x / n) * 100}%`; f.style.top = `${(o.z / n) * 100}%`;
+    pins.appendChild(f);
   }
   // You: a red dot on top of everything (it used to hide under the Home label).
   const me = document.createElement('div');
@@ -3876,21 +3901,507 @@ $('designName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('n
 let saveTimer = 0, saveSoon = false;
 function scheduleSave() { saveSoon = true; }
 function save() {
+  if (guestWorld) return;   // a guest saves nothing: their own world at home stays exactly as it was
   try {
     const edits = [];
     for (const [i, b] of G.edits) edits.push(i, b);
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
     localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
-      animals: mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame, clones: m.clones || 0, cloneDay: m.cloneDay ?? -1 })) }));
+      animals: keptAnimals() }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
+/// Your own animals (in the pens, and any you've tamed), as they're saved.
+function keptAnimals() { return mobs.filter((m) => !m.dead && !m.mount && !m.follow && (isKept(m) || m.tame)).map((m) => ({ kind: m.kind, x: m.x, z: m.z, home: m.home, young: m.young, age: m.age, bred: m.bred, tame: !!m.tame, clones: m.clones || 0, cloneDay: m.cloneDay ?? -1 })); }
 function load() {
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return s && s.v === 1 ? s : null; } catch (_) { return null; }
 }
 // Only save once the game has started: on the launch page there's nothing to save yet, and saving then would write an empty world over yours.
 addEventListener('visibilitychange', () => { if (document.hidden && world && G.started) save(); });
 addEventListener('pagehide', () => { if (world && G.started) save(); });
+
+// ---------- playing together ----------
+// One computer is the host: its world, its save. Friends join it from their own computers with a code (net.js), once
+// the host has let them in. The host is in charge of the world: every block anyone changes goes to the host, which
+// keeps it (and saves it) and passes it on to everyone; the host also keeps the time of day, the weather and the
+// lightning. Everyone keeps their own body, hunger, things and stars. A guest never saves anything: their own world at
+// home stays exactly as it was, and what they build here stays in the host's world.
+const NAME_KEY = 'polis-name';                       // the name you last played under (kept apart from the world)
+const FRIEND_BACKUPS = 'polis-friend-backups';       // the spare copies made as friends came in (only the newest 3 are kept)
+const net = createNet({ request: netRequest, joined: netJoined, left: netLeft, message: netMessage, lost: netLost });
+const others = new Map();                            // everyone else here: id → { name, body, tag, mount, s (where they are) … }
+let netEdits = [], netQuiet = [], netApplying = false;
+let guestWorld = null;                               // (a guest) the host's world as it arrived; set for as long as you're a guest
+let netMe = -1, netHostName = '', netQueue = [], netAsking = [], netBackedUp = false, netNoRoom = false, netRefused = false, netGoHome = false;
+let netSendT = 0, netIdleT = 0, netSkyT = 0, netLastP = '', netLastLook = '', netWhoSeen = false;
+const together = () => !!guestWorld || (net.role === 'host' && others.size > 0);
+function storedName() { try { return cleanName(localStorage.getItem(NAME_KEY) || ''); } catch (_) { return ''; } }
+function keepName(n) { try { localStorage.setItem(NAME_KEY, n); } catch (_) { /* storage off */ } }
+const NET_TROUBLE = {
+  nolib: "Couldn't fetch the part of the game that connects computers. Check the internet connection and try again.",
+  noserver: "Couldn't reach the free service that puts computers in touch. Check the internet connection and try again in a minute. (Inside Claude this copy of the game can't go online: open hughsgames.github.io instead.)",
+  nobody: "There's no world open with that code. Check it with your friend: it's on their screen.",
+  nowebrtc: "This browser can't play with friends. An up-to-date Chrome, Safari, Edge or Firefox can.",
+  failed: "Couldn't connect to your friend's computer. Some school and office networks block this; at home it normally works.",
+  busy: 'Already playing together.',
+};
+
+// ----- what goes between the computers -----
+/// Where you are, ten times a second: x, y, z, which way you look (yaw, pitch), which way your body faces,
+/// what you're doing (1 digging or swinging, 2 in water) and the animal you're riding.
+function myState() {
+  const r = (v) => Math.round(v * 100) / 100;
+  return [r(P.x), r(P.y), r(P.z), r(P.yaw), r(P.pitch), r(playerBody.g.rotation.y), (breaking || P.swing > 0 ? 1 : 0) | (P.water ? 2 : 0), P.ride ? P.ride.kind : 0];
+}
+function cleanState(a) {
+  if (!Array.isArray(a) || a.length < 7) return null;
+  for (let i = 0; i < 7; i++) if (typeof a[i] !== 'number' || !Number.isFinite(a[i])) return null;
+  return [a[0], a[1], a[2], a[3], a[4], a[5], a[6] | 0, typeof a[7] === 'string' && SPECIES[a[7]] ? a[7] : 0];
+}
+const cleanHeld = (id) => (typeof id === 'string' && ITEM[id] ? id : null);
+function cleanWorn(w) {
+  const ok = (id) => (typeof id === 'string' && ITEM[id] && ITEM[id].wear ? id : null);
+  return w && typeof w === 'object' ? { body: ok(w.body), head: ok(w.head), neck: ok(w.neck) } : { body: null, head: null, neck: null };
+}
+/// Changed blocks, as pairs: the block's place (world.idx) and what's there now. Anything that isn't a real place or a
+/// real block is left out, so nothing a friend's computer sends can spoil the world.
+function cleanEdits(a) {
+  if (!Array.isArray(a) || !world) return [];
+  const max = world.n * world.n * H, out = [];
+  for (let i = 0; i + 1 < a.length; i += 2) {
+    const idx = a[i], b = a[i + 1];
+    if (Number.isInteger(idx) && idx >= 0 && idx < max && Number.isInteger(b) && b >= 0 && b < 256 && BLOCKS[b]) out.push(idx, b);
+  }
+  return out;
+}
+/// Someone else's blocks: changed here too, with the sound and the crumbs if it's near you. (`q` are blocks a sponge
+/// emptied: they mustn't wake the water round them, or it would pour straight back in.)
+function applyEdits(e, q) {
+  if (!world || (!e.length && !q.length)) return;
+  const n = world.n;
+  let near = null;
+  netApplying = true;
+  try {
+    for (let i = 0; i < e.length; i += 2) {
+      const idx = e[i], b = e[i + 1], x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)), old = world.get(x, y, z);
+      if (old === b) continue;
+      setBlock(x, y, z, b);
+      if (!near && Math.abs(x - P.x) < 16 && Math.abs(z - P.z) < 16 && Math.abs(y - P.y) < 12) near = [x, y, z, old, b];
+    }
+    for (let i = 0; i < q.length; i += 2) {
+      const idx = q[i], b = q[i + 1], x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n));
+      if (world.get(x, y, z) === b) continue;
+      world.set(x, y, z, b); G.edits.set(idx, b); markDirty(x, z, 1);
+    }
+  } finally { netApplying = false; }
+  if (near) {
+    const [x, y, z, old, b] = near;
+    if (b === 0 && IS_SOLID[old]) { burst(x + 0.5, y + 0.5, z + 0.5, BLOCKS[old].side); sound.play(LOG_LEAVES[old] ? 'chop' : 'break'); }
+    else if (b && !IS_WATER[b]) sound.play('place');
+  }
+  if (net.role === 'host') scheduleSave();
+}
+function netFlush() {
+  if (!netEdits.length && !netQuiet.length) return;
+  const m = { t: 'e', e: netEdits, q: netQuiet };
+  netEdits = []; netQuiet = [];
+  if (net.role === 'host') net.all(m); else if (net.role === 'guest') net.send(m);
+}
+/// The host's world as a guest needs it: the blocks, the time, the weather, the village and the animals, and where
+/// the host is standing (the guest arrives beside them).
+function worldForGuest() {
+  const edits = [];
+  for (const [i, b] of G.edits) edits.push(i, b);
+  return { t: 'world', wv: WORLD_VERSION, n: world.n, edits, clock: G.clock, want: W.want, now: W.now, relics: [...G.relics], villagers: G.villagers,
+    machines: machines ? machines.state() : undefined, animals: keptAnimals(), at: [P.x, P.y, P.z] };
+}
+/// (A guest) a saved game made from the host's world, with your own things, clothes and stars from your own world at
+/// home if you have one there (only read, never written back), or a starter kit if you don't.
+function guestSave() {
+  const w = guestWorld, own = readSave(SAVE_KEY);
+  const kit = new Inventory();
+  for (const [id, n] of [['bronzePickaxe', 1], ['bronzeAxe', 1], ['apple', 4], ['torch', 3]]) kit.add(id, n);
+  const at = w.at || [G.camp.spawn[0], world.groundY(G.camp.spawn[0], G.camp.spawn[1]), G.camp.spawn[1]];
+  return { v: 1, wv: w.wv, n: w.n, edits: cleanEdits(w.edits), inv: own && Array.isArray(own.inv) ? own.inv.map((x) => (x ? { ...x } : null)) : kit.slots,
+    p: [at[0], at[1], at[2], 0, -0.15], clock: Number(w.clock) || 0, stars: own ? own.stars || 0 : 0, found: own ? own.found || [] : [], talked: own ? own.talked || [] : [],
+    hunger: 10, health: 10, sel: own ? own.sel ?? 0 : 0, fp2: own ? own.fp2 ?? true : true, relics: Array.isArray(w.relics) ? w.relics : [], villagers: Array.isArray(w.villagers) ? w.villagers : [],
+    giftDay: Math.floor((Number(w.clock) || 0) / 1440), worn: own ? own.worn : undefined, machines: w.machines, animals: Array.isArray(w.animals) ? w.animals.filter((a) => a && SPECIES[a.kind]) : [] };
+}
+/// (A guest) just arrived: stand beside the host, say where you are, and catch up on anything that happened meanwhile.
+function guestArrived() {
+  const at = guestWorld.at;
+  if (Array.isArray(at)) {
+    for (const [ox, oz] of [[1.6, 0], [-1.6, 0], [0, 1.6], [0, -1.6], [1.3, 1.3], [-1.3, -1.3], [0, 0]]) {
+      if (!collides(at[0] + ox, at[1], at[2] + oz)) { P.x = at[0] + ox; P.y = at[1]; P.z = at[2] + oz; break; }
+    }
+    P.yaw = Math.atan2(at[0] - P.x, at[2] - P.z) || 0;
+  }
+  guestWorld.edits = null;   // (built: no need to keep that copy)
+  W.want = Number(guestWorld.want) || 0; W.now = Number(guestWorld.now) || 0;
+  $('title').textContent = `${netHostName}'s world`;
+  showCard(`Welcome to ${netHostName}'s world!`, 'Playing together', `You can build and dig here with ${netHostName}. Everything you build stays in ${netHostName}'s world.\n\nYour own world at home is safe: nothing you do here changes it. What you collect here is just for this visit.\n\nPress P (or tap Friends) to see who's here, or to go home.`);
+  netLastP = ''; netLastLook = '';
+  for (const m of netQueue.splice(0)) netMessage(null, m);
+  refreshNetPill();
+  if (!net.role) netLost('closed');
+}
+
+// ----- the host -----
+function netRequest(g) {
+  const h = g.hello || {};
+  if (h.build !== BUILD || h.wv !== WORLD_VERSION) { net.answer(g.id, false, 'version'); return; }
+  netAsking.push(g);
+  g.askT = setTimeout(() => answerFriend(g.id, false), 90000);   // nobody answered: not this time
+  sound.play('star');
+  if (openPanel !== 'friends') togglePanel('friends'); else renderFriends();
+}
+function answerFriend(id, yes) {
+  const i = netAsking.findIndex((g) => g.id === id);
+  if (i < 0) return;
+  const [g] = netAsking.splice(i, 1);
+  clearTimeout(g.askT);
+  net.answer(id, yes);
+  renderFriends();
+  if (yes && !netAsking.length && openPanel === 'friends') closePanels();
+}
+/// Before the first friend comes in, a spare copy of your world, so anything a friend knocks down can be brought back
+/// (the launch page's "Bring back my older world"). Only if there's plenty of room: a full browser couldn't save at all.
+function backupBeforeFriends() {
+  if (netBackedUp) return;
+  netBackedUp = true;
+  try {
+    save();
+    const cur = localStorage.getItem(SAVE_KEY);
+    if (!cur) return;
+    let used = 0;
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); used += k.length + (localStorage.getItem(k) || '').length; }
+    if (used + cur.length * 2 > 2400000) { netNoRoom = true; return; }
+    const key = BACKUP_PREFIX + Date.now();
+    localStorage.setItem(key, cur);
+    const list = JSON.parse(localStorage.getItem(FRIEND_BACKUPS) || '[]').filter((k) => typeof k === 'string' && k.startsWith(BACKUP_PREFIX) && localStorage.getItem(k) !== null);
+    list.push(key);
+    while (list.length > 3) localStorage.removeItem(list.shift());
+    localStorage.setItem(FRIEND_BACKUPS, JSON.stringify(list));
+  } catch (_) { netNoRoom = true; }
+}
+function everyone() {
+  const list = [[0, net.name, G.worn, heldItem()?.id || null]];
+  for (const g of net.guests.values()) if (g.state === 'in') list.push([g.id, g.name, g.worn || null, g.held || null]);
+  return list;
+}
+function netJoined(g) {
+  backupBeforeFriends();
+  netFlush();
+  net.to(g.id, { t: 'hi', you: g.id, host: net.name });
+  net.to(g.id, worldForGuest());
+  addOther(g.id, g.name);
+  net.all({ t: 'who', list: everyone() });
+  netSky();
+  toast(`${g.name} came into your world`);
+  renderFriends();
+}
+function netLeft(g, why) {
+  const i = netAsking.indexOf(g);
+  if (i >= 0) { netAsking.splice(i, 1); clearTimeout(g.askT); }
+  if (others.has(g.id)) {
+    removeOther(g.id);
+    toast(why === 'home' ? `${g.name} went home` : why === 'closed' ? `${g.name} left` : `${g.name} went home`);
+    net.all({ t: 'left', id: g.id, name: g.name });
+  }
+  renderFriends();
+}
+
+// ----- messages -----
+function netMessage(g, m) {
+  if (g) {   // the host, hearing from a guest
+    if (m.t === 'p') { const s = cleanState(m.a); if (!s) return; const o = others.get(g.id); if (o) o.s = s; net.all({ t: 'ps', a: [[g.id, ...s]] }, g.id); return; }
+    if (m.t === 'look') { g.worn = cleanWorn(m.worn); g.held = cleanHeld(m.held); const o = others.get(g.id); if (o) setOtherLook(o, g.worn, g.held); net.all({ t: 'look', id: g.id, worn: g.worn, held: g.held }, g.id); return; }
+    if (m.t === 'e') { const e = cleanEdits(m.e), q = cleanEdits(m.q); if (!e.length && !q.length) return; netFlush(); applyEdits(e, q); net.all({ t: 'e', e, q }); return; }
+    return;
+  }
+  // a guest, hearing from the host
+  if (!G.started && !['wait', 'no', 'hi', 'world'].includes(m.t)) { netQueue.push(m); return; }
+  switch (m.t) {
+    case 'wait': joinStatus(`Asking ${cleanName(m.host) || 'your friend'} to let you in…`); return;
+    case 'no': {
+      netRefused = true;
+      const who = netHostName || 'Your friend';
+      joinStatus(m.why === 'full' ? 'That world is full: four players is the most.' : m.why === 'version' ? "Your game and your friend's are different versions. Both of you reload the page (hold Shift and click Reload), then try again." : `${who === 'Your friend' ? 'Your friend' : who} said not right now.`);
+      joinIdle();
+      net.stop(true);
+      return;
+    }
+    case 'hi': netMe = m.you; netHostName = cleanName(m.host) || 'Your friend'; return;
+    case 'world':
+      if (guestWorld || G.started) return;
+      if (m.wv !== WORLD_VERSION || !Array.isArray(m.edits)) { netRefused = true; joinStatus("Your game and your friend's are different versions. Both of you reload the page (hold Shift and click Reload), then try again."); net.stop(); return; }
+      guestWorld = m;
+      joinStatus(`${netHostName} let you in!`);
+      launch();   // the world is built as soon as the land is ready (start), from the host's world instead of yours
+      return;
+    case 'who': {
+      const ids = new Set();
+      for (const row of Array.isArray(m.list) ? m.list : []) {
+        const [id, name, worn, held] = row;
+        if (!Number.isInteger(id) || id === netMe) continue;
+        ids.add(id);
+        const nm = cleanName(name) || 'A friend';
+        let o = others.get(id);
+        if (!o || o.name !== nm) { const s = o && o.s; o = addOther(id, nm); o.s = s; if (netWhoSeen) toast(`${nm} came into ${netHostName}'s world`); }
+        setOtherLook(o, cleanWorn(worn), cleanHeld(held));
+      }
+      for (const id of [...others.keys()]) if (!ids.has(id)) removeOther(id);
+      netWhoSeen = true;
+      renderFriends();
+      return;
+    }
+    case 'ps': for (const row of Array.isArray(m.a) ? m.a : []) { const o = others.get(row[0]), s = cleanState(row.slice(1)); if (o && s) o.s = s; } return;
+    case 'look': { const o = others.get(m.id); if (o) setOtherLook(o, cleanWorn(m.worn), cleanHeld(m.held)); return; }
+    case 'left': { const o = others.get(m.id); if (o) { toast(`${o.name} went home`); removeOther(m.id); renderFriends(); } return; }
+    case 'e': applyEdits(cleanEdits(m.e), cleanEdits(m.q)); return;
+    case 'sky': {
+      if (typeof m.c !== 'number' || !Number.isFinite(m.c)) return;
+      W.want = [0, 0.35, 0.7, 1].includes(m.w) ? m.w : 0;
+      if (typeof m.n === 'number' && Math.abs(W.now - m.n) > 0.12) W.now = Math.max(0, Math.min(1, m.n));
+      const d = m.c - G.clock;
+      if (Math.abs(d) > 4) G.clock = m.c; else G.clock += d * 0.5;
+      return;
+    }
+    case 'bolt': {
+      if (!Number.isFinite(m.x) || !Number.isFinite(m.z)) return;
+      // Close by, you see the very same bolt as your friend; far away, it lands somewhere in front of you instead.
+      if (Math.hypot(m.x - P.x, m.z - P.z) < 260) strike(m.x, m.z, !!m.s, m.k | 0);
+      else { const r = seededN(m.k | 0), a = Math.PI / 2 - P.yaw + (r() - 0.5) * 1.4, d = 70 + r() * 150; strike(P.x + Math.cos(a) * d, P.z + Math.sin(a) * d, !!m.s, m.k | 0); }
+      return;
+    }
+  }
+}
+function netLost(why) {
+  if (netRefused) return;
+  if (!G.started && !guestWorld) { joinIdle(); joinStatus(why === 'home' ? 'Your friend said not right now.' : "Lost touch with your friend's world. Try again?"); return; }
+  if (!G.started) return;   // (still building: guestArrived shows the card)
+  for (const id of [...others.keys()]) removeOther(id);
+  refreshNetPill();
+  netGoHome = true;
+  closePanels(true);
+  showCard(why === 'home' ? `${netHostName} sent you home` : `${netHostName}'s world has closed`, 'Playing together', 'Your own world at home is just as you left it. Press Continue to go back to the start.');
+}
+$('cardOk').addEventListener('click', () => { if (netGoHome) location.reload(); });
+
+// ----- every frame -----
+function netTick(dt) {
+  if (!net.role) return;
+  if (net.role === 'host' && !net.guests.size) { netEdits.length = 0; netQuiet.length = 0; return; }
+  netFlush();
+  // (Timed by the clock on the wall, not the game's frames: a slow computer still sends ten times a second.)
+  const now = performance.now();
+  if (now >= netSendT && (net.role === 'guest' ? G.started : true)) {
+    netSendT = now + 100;
+    const s = myState(), key = s.join(',');
+    if (key !== netLastP || now > netIdleT) {
+      netLastP = key; netIdleT = now + 1000;
+      if (net.role === 'host') net.all({ t: 'ps', a: [[0, ...s]] }); else net.send({ t: 'p', a: s });
+    }
+    const held = heldItem()?.id || null, look = JSON.stringify([G.worn, held]);
+    if (look !== netLastLook) {
+      netLastLook = look;
+      if (net.role === 'host') net.all({ t: 'look', id: 0, worn: G.worn, held }); else net.send({ t: 'look', worn: G.worn, held });
+    }
+  }
+  if (net.role === 'host' && now >= netSkyT) netSky();
+}
+/// (The host) the time and the weather, every couple of seconds and whenever they jump (a night slept through).
+function netSky() { if (net.role !== 'host') return; netSkyT = performance.now() + 2000; net.all({ t: 'sky', c: G.clock, w: W.want, n: Math.round(W.now * 1000) / 1000 }); }
+
+// ----- the other players -----
+function nameTag(text) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 96;
+  const g = c.getContext('2d');
+  g.font = '900 52px Nunito, ui-rounded, system-ui, sans-serif';
+  const w = Math.min(500, g.measureText(text).width + 48);
+  g.fillStyle = 'rgba(12, 14, 20, 0.62)';
+  g.beginPath(); if (g.roundRect) g.roundRect((512 - w) / 2, 10, w, 76, 24); else g.rect((512 - w) / 2, 10, w, 76); g.fill();
+  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 50);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, fog: false }));
+  sp.renderOrder = 997; sp.center.set(0.5, 0);
+  return sp;
+}
+/// What someone holds, as it sits in their hand (the same models as your own hand in third person).
+function handModel(id) {
+  const it = ITEM[id];
+  if (!it) return null;
+  if (ICON_CANVAS.has(id)) { const m = new THREE.Mesh(itemModel(id, 'hand'), MODEL_MAT); m.castShadow = true; return m; }
+  if (!ICONS[id]) return null;
+  const m = it.block && !IS_CROSS[it.block] ? cubeMesh(it.block, 0.28) : iconSprite(id);
+  m.position.set(0, -0.72, 0.15);
+  return m;
+}
+function addOther(id, name) {
+  removeOther(id);
+  const o = { id, name, worn: null, held: null, body: null, lookKey: null, tag: nameTag(name), mount: null, rideKind: 0, s: null, x: 0, y: 0, z: 0, ry: 0, px: 0, pz: 0, walk: 0, seen: false };
+  scene.add(o.tag);
+  others.set(id, o);
+  setOtherLook(o, null, null);
+  return o;
+}
+function dropBody(body) {
+  scene.remove(body.g);
+  body.g.traverse((m) => { if (m.isMesh && m.material === PERSON_MAT) m.geometry.dispose(); });
+}
+function setOtherLook(o, worn, held) {
+  const key = JSON.stringify([worn, held]);
+  if (o.body && key === o.lookKey) return;
+  o.lookKey = key; o.worn = worn; o.held = held;
+  const vis = !!(o.body && o.body.g.visible);
+  if (o.body) dropBody(o.body);
+  o.body = person(outfitLook(worn || {}));
+  o.body.g.visible = vis;
+  scene.add(o.body.g);
+  const h = held && handModel(held);
+  if (h) o.body.arms[1].add(h);
+}
+function removeOther(id) {
+  const o = others.get(id);
+  if (!o) return;
+  if (o.body) dropBody(o.body);
+  scene.remove(o.tag); o.tag.material.map.dispose(); o.tag.material.dispose();
+  if (o.mount) scene.remove(o.mount.g);
+  others.delete(id);
+}
+function updateOthers(dt) {
+  for (const o of others.values()) {
+    const s = o.s, b = o.body;
+    if (!s) { b.g.visible = false; o.tag.visible = false; continue; }
+    const [x, y, z, , pitch, ry, flags, ride] = s;
+    // Glide to where they are (news comes ten times a second); a long way off means they travelled: jump there.
+    if (!o.seen || Math.hypot(x - o.x, z - o.z) > 10 || Math.abs(y - o.y) > 6) { o.x = o.px = x; o.y = y; o.z = o.pz = z; o.ry = ry; o.seen = true; }
+    else { const k = Math.min(1, dt * 12); o.x += (x - o.x) * k; o.y += (y - o.y) * k; o.z += (z - o.z) * k; o.ry = angleLerp(o.ry, ry, Math.min(1, dt * 14)); }
+    const speed = Math.hypot(o.x - o.px, o.z - o.pz) / Math.max(dt, 1e-3);
+    o.px = o.x; o.pz = o.z;
+    b.g.visible = true;
+    b.g.position.set(o.x, o.y, o.z); b.g.rotation.y = o.ry;
+    b.head.rotation.x = -Math.max(-0.8, Math.min(0.8, pitch)) * 0.7;
+    // Riding: their animal under them.
+    if (ride !== o.rideKind) {
+      if (o.mount) { scene.remove(o.mount.g); o.mount = null; }
+      o.rideKind = ride;
+      if (ride) { try { o.mount = makeAnimal(ride); o.mount.phase = 0; scene.add(o.mount.g); } catch (_) { o.mount = null; } }
+    }
+    if (o.mount) {
+      const m = o.mount;
+      m.g.position.set(o.x, o.y - seatY({ kind: ride }), o.z); m.g.rotation.y = o.ry;
+      m.phase = speed > 0.5 ? m.phase + dt * 14 : 0;
+      const sw = speed > 0.5 ? Math.sin(m.phase) * 0.75 : 0;
+      m.legs.forEach((l, i) => { l.rotation.x = sw * (i === 0 || i === 3 ? 1 : -1); });
+      b.legs[0].rotation.x = -1.35; b.legs[1].rotation.x = -1.35; b.arms[0].rotation.x = -0.75; b.arms[1].rotation.x = -0.75;
+    } else {
+      o.walk = speed > 0.4 ? o.walk + dt * 9 * Math.min(1, speed / 4.3) : 0;
+      const sw = o.walk ? Math.sin(o.walk) * 0.75 : 0;
+      b.legs[0].rotation.x = sw; b.legs[1].rotation.x = -sw; b.arms[0].rotation.x = -sw;
+      b.arms[1].rotation.x = flags & 1 ? -1.3 + Math.sin(performance.now() / 60) * 0.6 : sw;
+    }
+    // Their name over their head, big enough to read from far away (and seen through walls, so you can find them).
+    o.tag.position.set(o.x, o.y + 2.08, o.z);
+    const d = camera.position.distanceTo(o.tag.position), k = Math.max(1, d / 12);
+    o.tag.scale.set(2.4 * 0.62 * k, 0.45 * 0.62 * k, 1);
+    o.tag.visible = d < 700 && d > 0.8;
+  }
+}
+
+// ----- the Friends window (P) and the bit of the screen that says who's here -----
+function refreshNetPill() {
+  const el = $('netPill');
+  if (!el) return;
+  const names = [...others.values()].map((o) => o.name);
+  if (guestWorld) { el.hidden = !names.length; el.textContent = `Playing with ${names.join(', ')}`; return; }
+  if (net.role === 'host') {
+    el.hidden = false;
+    el.textContent = netAsking.length ? `${netAsking[0].name} is at the door: ${input.mode === 'touch' ? 'tap Friends' : 'press P'}` : names.length ? `With ${names.join(', ')} · code ${net.code}` : `Code ${net.code}: waiting for friends`;
+    el.classList.toggle('knock', netAsking.length > 0);
+    return;
+  }
+  el.hidden = true;
+}
+function renderFriends() {
+  refreshNetPill();
+  if (openPanel !== 'friends') return;
+  $('friends').hidden = false;
+  const hosting = net.role === 'host', guest = !!guestWorld;
+  $('fStart').hidden = hosting || guest;
+  $('fHosting').hidden = !hosting;
+  $('fGuest').hidden = !guest;
+  $('fAsk').hidden = !(hosting && netAsking.length);
+  $('fStop').hidden = !hosting; $('fLeave').hidden = !guest;
+  if (hosting && netAsking.length) $('fAskName').textContent = `${netAsking[0].name} wants to come into your world`;
+  if (hosting) { $('fCode').textContent = net.code; $('fRoom').hidden = !netNoRoom; }
+  if (!hosting && !guest && !$('fName').value) $('fName').value = storedName();
+  if (guest) $('fGuestText').textContent = `You're in ${netHostName}'s world. Everything you build stays here, and your own world at home hasn't changed.`;
+  const list = $('fList'); list.innerHTML = '';
+  const row = (name, note, id) => {
+    const r = document.createElement('div'); r.className = 'frow';
+    r.innerHTML = `<b></b><span></span>`; r.querySelector('b').textContent = name; r.querySelector('span').textContent = note;
+    if (id !== undefined) { const k = document.createElement('button'); k.textContent = 'Send home'; k.addEventListener('click', () => { net.kick(id); }); r.appendChild(k); }
+    list.appendChild(r);
+  };
+  if (hosting) { row(net.name, 'you'); for (const g of net.guests.values()) if (g.state === 'in') row(g.name, '', g.id); }
+  else if (guest) { for (const o of others.values()) row(o.name, o.id === 0 ? "it's their world" : ''); row(storedName() || 'You', 'you'); }
+  list.hidden = !hosting && !guest;
+}
+$('fOpen').addEventListener('click', async () => {
+  const name = cleanName($('fName').value);
+  if (!name) { $('fStatus').textContent = 'Type your name first: it goes over your head, so your friends know who you are.'; $('fName').focus(); return; }
+  keepName(name);
+  $('fOpen').disabled = true; $('fStatus').textContent = 'Opening your world…';
+  try { await net.host(name); $('fStatus').textContent = ''; }
+  catch (e) { $('fStatus').textContent = NET_TROUBLE[e.code] || NET_TROUBLE.noserver; }
+  $('fOpen').disabled = false;
+  renderFriends();
+});
+$('fName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('fOpen').click(); e.stopPropagation(); });
+$('fStop').addEventListener('click', () => {
+  for (const g of [...netAsking]) clearTimeout(g.askT);
+  netAsking = [];
+  net.stop();
+  for (const id of [...others.keys()]) removeOther(id);
+  netBackedUp = false;
+  toast('Your world is just yours again');
+  renderFriends();
+});
+$('fLeave').addEventListener('click', () => { net.stop(); location.reload(); });
+$('fAskYes').addEventListener('click', () => { if (netAsking.length) answerFriend(netAsking[0].id, true); });
+$('fAskNo').addEventListener('click', () => { if (netAsking.length) answerFriend(netAsking[0].id, false); });
+$('friendsDone').addEventListener('click', () => closePanels());
+$('btnFriends').addEventListener('click', () => togglePanel('friends'));
+$('btnFriends2').addEventListener('click', () => togglePanel('friends'));
+
+// ----- joining from the launch page -----
+function joinStatus(text) { const el = $('jStatus'); el.textContent = text; el.hidden = !text; }
+$('btnJoin').addEventListener('click', () => {
+  $('joinBox').hidden = false; $('btnJoin').hidden = true;
+  $('jName').value = $('jName').value || storedName();
+  ($('jName').value ? $('jCode') : $('jName')).focus();
+});
+$('jCancel').addEventListener('click', () => {
+  if (net.role === 'guest' && !guestWorld) net.stop();
+  $('joinBox').hidden = true; $('btnJoin').hidden = false; joinIdle(); joinStatus('');
+});
+async function joinFriend() {
+  if (guestWorld || net.role) return;
+  const name = cleanName($('jName').value), code = readCode($('jCode').value);
+  if (!name) { joinStatus('Type your name first: it goes over your head, so your friend knows who you are.'); $('jName').focus(); return; }
+  if (!code) { joinStatus('The code is a word and two numbers, like FOX-27.'); $('jCode').focus(); return; }
+  keepName(name);
+  netRefused = false;
+  $('jGo').disabled = true; $('btnPlay').disabled = true; $('btnNew').disabled = true;
+  joinStatus("Looking for your friend's world…");
+  try { await net.join(code, name, { build: BUILD, wv: WORLD_VERSION }); }
+  catch (e) { joinIdle(); joinStatus(NET_TROUBLE[e.code] || NET_TROUBLE.failed); }
+}
+/// Not joining after all: the launch page's own buttons work again.
+function joinIdle() { $('jGo').disabled = false; $('btnPlay').disabled = false; $('btnNew').disabled = false; }
+$('jGo').addEventListener('click', joinFriend);
+for (const id of ['jName', 'jCode']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') joinFriend(); e.stopPropagation(); });
 
 // ---------- the launch page ----------
 // Continue your world, or start a new one. Starting over never throws a world away: the old one is kept as a backup
@@ -3997,7 +4508,7 @@ $('btnRestore').addEventListener('click', () => {
   } catch (_) { setUpLaunch('Couldn\'t swap worlds: storage is full.'); }
 });
 setUpLaunch();
-if (new URLSearchParams(location.search).has('debug')) launch();   // (testing: straight into the game)
+if (new URLSearchParams(location.search).has('debug') && !new URLSearchParams(location.search).has('stay')) launch();   // (testing: straight into the game; &stay stays on the launch page)
 
 // ---------- if the device takes the 3D picture away ----------
 // A phone or tablet sometimes drops a page's 3D drawing when you switch to another app or it needs memory back, and
@@ -4015,7 +4526,7 @@ canvas.addEventListener('webglcontextlost', (e) => {
 }, false);
 canvas.addEventListener('webglcontextrestored', () => { $('glLostText').textContent = 'The picture is ready again. Your world is saved.'; }, false);
 $('glLostGo').addEventListener('click', () => {
-  try { if (world && G.started) { save(); sessionStorage.setItem(RESUME_KEY, '1'); } } catch (_) { /* storage off: the launch page will ask */ }
+  try { if (world && G.started && !guestWorld) { save(); sessionStorage.setItem(RESUME_KEY, '1'); } } catch (_) { /* storage off: the launch page will ask */ }
   location.reload();
 });
 try { if (sessionStorage.getItem(RESUME_KEY) === '1') { sessionStorage.removeItem(RESUME_KEY); if (readSave(SAVE_KEY)) launch(); } } catch (_) { /* no storage */ }
@@ -4110,7 +4621,9 @@ async function boot() {
 }
 
 function start() {
-  const s = load();
+  // A guest builds the host's world instead of their own (whose save is only read, for their things and stars).
+  if (guestWorld && guestWorld.n !== world.n) { netRefused = true; net.stop(); guestWorld = null; setLoading("Your game and your friend's are different versions. Both of you reload the page (hold Shift and click Reload), then try again.", 0); return; }
+  const s = guestWorld ? guestSave() : load();
   // A world made at a different size (before the October 23 bigger map): your things, stars, discoveries, villagers and
   // animals all come with you, but buildings can't, because the land under them has moved. You start at your new camp.
   const resized = !!s && (s.n || 560) !== world.n;
@@ -4173,7 +4686,8 @@ function start() {
   G.started = true;
   $('loading').hidden = true;
   refreshPaused();
-  if (resized) showCard('The world got bigger!', 'Polis World · October 2026', 'The map is now twice as big, and the great cities are further apart. Your things, stars, discoveries, villagers and animals all came with you to your new camp. Anything you built was on land that has moved, so it stayed behind in the old world.');
+  if (guestWorld) guestArrived();
+  else if (resized) showCard('The world got bigger!', 'Polis World · October 2026', 'The map is now twice as big, and the great cities are further apart. Your things, stars, discoveries, villagers and animals all came with you to your new camp. Anything you built was on land that has moved, so it stayed behind in the old world.');
   else if (!s) showCard('Welcome to Polis World!', 'The computer version', 'Explore the ancient world: find the wonders, from the Pyramids of Giza to Angkor Wat, and talk to their guides. Chop trees, dig into caves, smelt bronze in a furnace and build anything you like.\n\nYour camp is right here, with your house and your sheep. Darius the trader and Tarkan the hunter are camped nearby, and before long someone will come asking for a new home. Press H any time to see the controls.');
   last = performance.now();
   requestAnimationFrame(loop);
@@ -4270,6 +4784,7 @@ function loop(now) {
     if (openPanel === 'inventory') dressPreview.render(dt);
     if (events) events.update(dt, P);
     updateCamera(dt);
+    updateOthers(dt); netTick(dt);
     updateCompass();
     // What you're pointing at.
     if (input.mode === 'desk' && !openPanel) { const a = aimFrom(); outline.visible = !!a.block; if (a.block) outline.position.set(a.block.x + 0.5, a.block.y + 0.5, a.block.z + 0.5); }
@@ -4283,5 +4798,5 @@ function loop(now) {
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, storm, strike, get jungle() { return jungle; }, JUNGLE, chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, storm, strike, get jungle() { return jungle; }, JUNGLE, net, others, addOther, updateOthers, get guestWorld() { return guestWorld; }, get netAsking() { return netAsking; }, answerFriend, applyEdits, worldForGuest, netFlush, get netEdits() { return netEdits; }, cleanEdits, toggleFriends: () => togglePanel('friends'), chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();
