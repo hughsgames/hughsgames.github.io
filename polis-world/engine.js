@@ -1,6 +1,7 @@
 // Polis World (computer version): blocks, the world in memory, chunk meshes with light and shade, materials and sky.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { SKY_GLSL, CLOUD_GLSL, PANO_GLSL, HASH_GLSL, makeNoiseTexture } from './shaders.js';
+import { buildAtlasData } from './textures.js';
 
 export const H = 96, WL = 32, CS = 16;
 
@@ -324,6 +325,33 @@ export function buildAtlas(img, extra, scale = 1) {
   c.userData = { scale };
   return c;
 }
+/// The finely painted atlas (textures.js), painted in a worker of its own so the page stays smooth, or right here if this
+/// browser can't run one. `scale` 8: 80-pixel pictures; 4: 40-pixel ones (for machines with no graphics chip).
+export function paintAtlas(img, extra, scale = 8) {
+  const sheet = tileSheet(img, extra), sheetPx = sheet.getContext('2d').getImageData(0, 0, sheet.width, sheet.height).data;
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const here = () => { if (done) return; done = true; try { resolve(buildAtlasData(sheetPx, T, scale)); } catch (err) { reject(err); } };
+    try {
+      const w = new Worker(new URL('./texworker.js', import.meta.url), { type: 'module' });
+      w.onmessage = (e) => { w.terminate(); if (!done) { done = true; resolve(e.data); } };
+      w.onerror = (e) => { e.preventDefault?.(); w.terminate(); here(); };
+      w.postMessage({ sheet: sheetPx, T, scale });
+    } catch (_) { here(); }
+  });
+}
+/// The picture and bump textures from paintAtlas's result. Raw pixels rather than a canvas, so the colours kept under
+/// see-through pixels survive (a canvas would turn them black, and smooth filtering would draw dark rims).
+export function atlasTextures(d) {
+  const make = (data, srgb) => {
+    const t = new THREE.DataTexture(data, d.w, d.h, THREE.RGBAFormat);
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.generateMipmaps = true; t.flipY = false; t.needsUpdate = true;
+    return t;
+  };
+  return { map: make(d.rgba, true), normal: make(d.normal, false) };
+}
 let srcData = null;
 function srcPixel(img, x, y) {
   if (!srcData) { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0); srcData = g.getImageData(0, 0, img.width, img.height); }
@@ -339,7 +367,7 @@ let sheetCache = null;
 export function tileSheet(img, extra) {
   if (sheetCache) return sheetCache;
   const c = document.createElement('canvas'); c.width = 80; c.height = 10 * TILE_ROWS;
-  const g = c.getContext('2d'); g.drawImage(img, 0, 0); if (extra) g.drawImage(extra, 0, 80);
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0); if (extra) g.drawImage(extra, 0, 80);
   paintTiles(g);
   sheetCache = c;
   return c;
@@ -705,8 +733,8 @@ float D_GGX(float NoH, float a) { float a2 = a * a; float d = NoH * NoH * (a2 - 
 float V_Smith(float NoV, float NoL, float a) { float k = a * 0.5; return 0.25 / ((NoV * (1.0 - k) + k) * (NoL * (1.0 - k) + k)); }
 void main() {
   // A slightly sharper choice of detail level than the graphics card's own, so ground seen at a low angle keeps its
-  // crisp pixels instead of going soft.
-  vec4 tex = texture2D(map, vUv, -0.6);
+  // detail instead of going soft (not so sharp that fine grain shimmers).
+  vec4 tex = texture2D(map, vUv, -0.35);
   #ifdef CUT
     if (tex.a < 0.5) discard;
   #endif
@@ -741,7 +769,7 @@ void main() {
   #endif
   #ifdef NORMALMAP
   if (mA.a > 0.01) {
-    vec3 tn = texture2D(tNrm, vUv, -0.6).xyz * 2.0 - 1.0;
+    vec3 tn = texture2D(tNrm, vUv, -0.35).xyz * 2.0 - 1.0;
     tn.xy *= mA.a * uNrmK * (1.0 - edgeK);
     vec3 dp1 = dFdx(vWp), dp2 = dFdy(vWp); vec2 du1 = dFdx(vUv), du2 = dFdy(vUv);
     vec3 dp2perp = cross(dp2, Ng), dp1perp = cross(Ng, dp1);

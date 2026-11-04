@@ -32,6 +32,8 @@ polis-world/        the game (everything below is in here)
 | `engine.js` | blocks, the world in memory, chunk meshes with light and shade, materials, sky |
 | `graphics.js` | the picture: the three quality settings, the drawing passes (clouds, world, water, sunbeams, glow, the finished image), automatic resolution, rounded boxes for people and animals |
 | `shaders.js` | shader code shared by the sky, the clouds, the haze and the blocks |
+| `textures.js` | the blocks' pictures painted afresh at 80 × 80 (stone, grass, bark, bricks…), each from the colours of its 10 × 10 original, and the atlas and bump map built from them |
+| `texworker.js` | runs `textures.js` in the background while the world is built |
 | `farland.js` | the land beyond the loaded chunks, drawn as coarse columns out to the horizon, and the sea under everything |
 | `worldgen.js` | builds the whole world in a background worker, from the same map as the iPhone game |
 | `cityplans.js` | the great cities, built as whole cities rather than a monument with huts |
@@ -106,6 +108,20 @@ polis-world/        the game (everything below is in here)
   screen colours after the tone curve.
 - Screen-space slopes (`dFdx`, `fwidth`) only inside `#if __VERSION__ >= 300` or with
   `extensions: { derivatives: true }`, so Fast still runs on a WebGL1-only browser.
+- **Block pictures.** The 10 × 10 art (`data.js` sheets plus `paintTiles`) is still the source of every block's
+  colours, the icons and the far land. `textures.js` repaints each picture at 80 × 80 from it: a painter per kind of
+  material (rock, soil, grass, bark, rings, boards, bricks, cobbles, leaves, ores, marble, metal, cloth, roof tiles),
+  and for anything else (flowers, doors, lamps, plants) the original enlarged with Scale2x and softened. A painter takes
+  its colours from the original's own pixels (`palette`, `splitPalette` for two-material pictures like ore in rock),
+  bakes light from the top left, and the average brightness is pulled back to the original's so the world looks the
+  same from a distance. Everything wraps, so walls show no seams. To change a picture: edit its painter, then run the
+  painter in Node on a dump of the sheet and look at the PNG — no browser needed.
+- The atlas is 1024 × 4096 (80-pixel pictures in 128-pixel cells; Fast gets 512 × 2048, 40-pixel). It is a
+  `DataTexture` with rows stored bottom-up, so `tileUV` is unchanged; raw pixels rather than a canvas so the colours
+  kept under see-through pixels survive (a canvas would make them black, and smooth filtering would draw dark rims
+  round leaves). Filtering is smooth (linear), not nearest. The bump map comes from heights the painters give, not
+  from brightness. If the painting fails the game falls back to the old enlarged atlas (`buildAtlas`, `normalAtlas`).
+- Painting takes 2–3 s, in a module worker, alongside the world worker; `start` waits for both (`pictures`).
 - Weather: showers, steady rain and downpours (`W.want` 0.35 / 0.7 / 1). Only a downpour turns
   into a thunderstorm: the sky darkens (`storm.dark`) and lightning strikes every 6–16 s.
 

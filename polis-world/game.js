@@ -1,6 +1,6 @@
 // Polis World (computer version): the game itself.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import { H, WL, CS, T, BLOCKS, IS_CUBE, IS_SOLID, IS_CROSS, IS_CUT, GLOW, WATER, FALLING, IS_WATER, IS_WATERY, WATER_AMT, World, buildAtlas, tileUV, tileSheet, shared, blockMaterial, setBlockQuality, waterMaterial, meshChunk, makeSky, setSkyQuality, waterHeight, surfaceTable, normalAtlas } from './engine.js';
+import { H, WL, CS, T, BLOCKS, IS_CUBE, IS_SOLID, IS_CROSS, IS_CUT, GLOW, WATER, FALLING, IS_WATER, IS_WATERY, WATER_AMT, World, buildAtlas, paintAtlas, atlasTextures, tileUV, tileSheet, shared, blockMaterial, setBlockQuality, waterMaterial, meshChunk, makeSky, setSkyQuality, waterHeight, surfaceTable, normalAtlas } from './engine.js';
 import { createGraphics, QUALITY, installRoundBoxes, boxUvs } from './graphics.js';
 import { createFarLand } from './farland.js';
 import { ITEM, SPEED, toolDamage, LOGS, RECIPES, Inventory } from './items.js';
@@ -21,7 +21,7 @@ import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '4 Nov 2026, 03:44 UTC';
+const BUILD = '4 Nov 2026, 04:36 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -4552,11 +4552,7 @@ async function makeIcons() {
       const k = SHEET_ICONS[id];
       g.drawImage(extraIcons, (k % 8) * 16, Math.floor(k / 8) * 16, 16, 16, 0, 0, 32, 32);
     } else if (it.block && BLOCKS[it.block].shape === 'cube') {
-      const info = BLOCKS[it.block];
-      const face = (t, m, dark) => { g.setTransform(...m); g.drawImage(tileCanvas(t), 0, 0, 16, 16); if (dark) { g.fillStyle = `rgba(0,0,0,${dark})`; g.fillRect(0, 0, 16, 16); } };
-      face(info.top, [14 / 16, 7 / 16, -14 / 16, 7 / 16, 16, 2], 0);
-      face(info.side, [14 / 16, 7 / 16, 0, 1, 2, 9], 0.22);
-      face(info.side, [14 / 16, -7 / 16, 0, 1, 16, 16], 0.4);
+      drawCube(g, BLOCKS[it.block], tileCanvas);
     } else if (it.block) {
       // Anything that isn't a cube — grass, vines, bamboo, papyrus, a ladder — can't be drawn as a
       // little box, so its picture is shown flat instead. Without this it had no picture at all.
@@ -4575,6 +4571,46 @@ async function makeIcons() {
   }));
   ICONS._plan = (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(extraIcons, 6 * 16, 16, 16, 16, 0, 0, 32, 32); return c.toDataURL(); })();
 }
+/// A block's little cube: its top and two sides, each face 16 × 16 in a 32-pixel picture (`face(t)` gives a face's picture).
+function drawCube(g, info, face) {
+  const side = (t, m, dark) => { g.setTransform(...m); g.drawImage(face(t), 0, 0, 16, 16); if (dark) { g.fillStyle = `rgba(0,0,0,${dark})`; g.fillRect(0, 0, 16, 16); } };
+  side(info.top, [14 / 16, 7 / 16, -14 / 16, 7 / 16, 16, 2], 0);
+  side(info.side, [14 / 16, 7 / 16, 0, 1, 2, 9], 0.22);
+  side(info.side, [14 / 16, -7 / 16, 0, 1, 16, 16], 0.4);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+}
+/// Once the finely painted blocks are ready, the little cubes in the hotbar and the bag are drawn again from them. Each
+/// face of a 32-pixel cube is about 16 pixels across, so each face is the new picture shrunk to exactly 16 × 16 (every
+/// pixel the average of the 5 × 5 it covers): as sharp as before, with the new detail.
+function sharperCubeIcons(d) {
+  const Tl = 10 * d.scale, C = 16 * d.scale, Pd = 3 * d.scale, faces = new Map();
+  const face = (t) => {
+    if (faces.has(t)) return faces.get(t);
+    const c = document.createElement('canvas'); c.width = c.height = 16;
+    const g = c.getContext('2d'), img = g.createImageData(16, 16), ox = (t % 8) * C + Pd, oy = Math.floor(t / 8) * C + Pd;
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const x0 = Math.floor(x * Tl / 16), x1 = Math.max(x0 + 1, Math.floor((x + 1) * Tl / 16)), y0 = Math.floor(y * Tl / 16), y1 = Math.max(y0 + 1, Math.floor((y + 1) * Tl / 16));
+      let r = 0, gg = 0, b = 0, a = 0, n = 0;
+      for (let sy = y0; sy < y1; sy++) for (let sx = x0; sx < x1; sx++) {
+        const o = ((d.h - 1 - (oy + sy)) * d.w + ox + sx) * 4, al = d.rgba[o + 3];   // (the atlas rows run bottom-up)
+        r += d.rgba[o] * al; gg += d.rgba[o + 1] * al; b += d.rgba[o + 2] * al; a += al; n++;
+      }
+      const o = (y * 16 + x) * 4;
+      if (a) { img.data[o] = r / a; img.data[o + 1] = gg / a; img.data[o + 2] = b / a; }
+      img.data[o + 3] = a / n < 100 ? 0 : 255;   // see-through or not, as the blocks themselves are drawn
+    }
+    g.putImageData(img, 0, 0);
+    faces.set(t, c);
+    return c;
+  };
+  for (const [id, it] of Object.entries(ITEM)) {
+    if (!it.block || BLOCKS[it.block].shape !== 'cube' || SHEET_ICONS[id] !== undefined || ICON_CANVAS.has(id)) continue;
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    drawCube(g, BLOCKS[it.block], face);
+    ICONS[id] = c.toDataURL();
+  }
+}
 function setLoading(text, p) { $('loadText').textContent = text; $('loadBar').style.width = `${Math.round(p * 100)}%`; }
 
 async function boot() {
@@ -4582,14 +4618,41 @@ async function boot() {
   setLoading('Loading pictures…', 0.02);
   await loadAtlas();
   await makeIcons();
-  const atlasCanvas = buildAtlas(atlasImg, extraImg, 4);   // four times sharper than the original art (see buildAtlas)
-  atlasTex = new THREE.CanvasTexture(atlasCanvas);
-  atlasTex.colorSpace = THREE.SRGBColorSpace;
-  atlasTex.magFilter = THREE.NearestFilter;
-  atlasTex.minFilter = THREE.NearestMipmapLinearFilter;
+  // The blocks' pictures are painted afresh at eight times the detail of the original art (textures.js), in the
+  // background while the world is built; a machine with no graphics chip gets them at four times. If that fails for any
+  // reason, the original art is used, enlarged.
+  const painted = paintAtlas(atlasImg, extraImg, gfx.settings === QUALITY.fast || renderer.capabilities.maxTextureSize < 4096 ? 4 : 8);
+  let picturesDone = null;
+  const pictures = new Promise((res) => { picturesDone = res; });   // the textures and materials are all made
+  const cityInfo = Object.fromEntries(Object.entries(CITY_INFO).map(([k, v]) => [k, { population: v.population, style: v.style }]));
+  const worker = new Worker(new URL('./worldgen.js', import.meta.url));
+  setLoading('Building the world…', 0.05);
+  worker.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'progress') { setLoading(m.msg, 0.05 + m.p * 0.85); return; }
+    worker.terminate();
+    world = new World(m.n, m.cells, m.bio);
+    scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
+      groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
+    for (let i = 0; i < m.prot.length; i += 2) world.protected.set(m.prot[i], m.prot[i + 1]);
+    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo; G.mj = m.megajungle;
+    Promise.all([launched, pictures]).then(start);   // wait for Continue / New world on the launch page (and the pictures)
+  };
+  worker.onerror = () => setLoading('Something went wrong building the world. Reload the page to try again.', 0);
+  worker.postMessage({ map: { rows: MAP_ROWS.map((r) => [...r].map((c) => MAP_KEY[c])), settle: MAP_SETTLE }, seed: WORLD_SEED, cityInfo });
+  const atlasReady = painted.then((d) => ({ ...atlasTextures(d), data: d })).catch((err) => {
+    console.warn('painting the blocks', err);
+    const atlasCanvas = buildAtlas(atlasImg, extraImg, 4);
+    const map = new THREE.CanvasTexture(atlasCanvas);
+    map.colorSpace = THREE.SRGBColorSpace; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapLinearFilter;
+    return { map, normal: normalAtlas(atlasCanvas) };
+  });
+  const tex = await atlasReady;
+  if (tex.data) { try { sharperCubeIcons(tex.data); } catch (err) { console.warn('block icons', err); } }   // (before start, which draws the hotbar)
+  atlasTex = tex.map;
   atlasTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   shared.tMat.value = surfaceTable();
-  shared.tNrm.value = normalAtlas(atlasCanvas);
+  shared.tNrm.value = tex.normal;
   shared.tNrm.value.anisotropy = atlasTex.anisotropy;
   mats = { solid: blockMaterial(atlasTex, 'solid', gfx.settings), cut: blockMaterial(atlasTex, 'cut', gfx.settings), water: waterMaterial(atlasTex, gfx.settings) };
   // Changing the graphics setting swaps the water and redraws the blocks with the extras that setting has.
@@ -4602,22 +4665,7 @@ async function boot() {
   });
   cubeMat = new THREE.MeshLambertMaterial({ map: atlasTex });
   makeDesigner();
-  setLoading('Building the world…', 0.05);
-  const cityInfo = Object.fromEntries(Object.entries(CITY_INFO).map(([k, v]) => [k, { population: v.population, style: v.style }]));
-  const worker = new Worker(new URL('./worldgen.js', import.meta.url));
-  worker.onmessage = (e) => {
-    const m = e.data;
-    if (m.type === 'progress') { setLoading(m.msg, 0.05 + m.p * 0.85); return; }
-    worker.terminate();
-    world = new World(m.n, m.cells, m.bio);
-    scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
-      groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
-    for (let i = 0; i < m.prot.length; i += 2) world.protected.set(m.prot[i], m.prot[i + 1]);
-    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo; G.mj = m.megajungle;
-    launched.then(start);   // wait for Continue / New world on the launch page
-  };
-  worker.onerror = () => setLoading('Something went wrong building the world. Reload the page to try again.', 0);
-  worker.postMessage({ map: { rows: MAP_ROWS.map((r) => [...r].map((c) => MAP_KEY[c])), settle: MAP_SETTLE }, seed: WORLD_SEED, cityInfo });
+  picturesDone();
 }
 
 function start() {
