@@ -50,6 +50,7 @@ polis-world/        the game (everything below is in here)
 | `designer.js` | the building designer (design once, then build copies) |
 | `machines.js` | Leonardo's working machines in Florence: models, flying, driving, the crossbow, the robots |
 | `megajungle.js` | Hugh's megajungle: its creatures and traps (the plateau itself is built in `worldgen.js`) |
+| `net.js` | playing together: codes, connections, letting friends in, sending messages (what they say is in `game.js`, "playing together") |
 
 ## Saves
 
@@ -108,6 +109,28 @@ polis-world/        the game (everything below is in here)
 - Weather: showers, steady rain and downpours (`W.want` 0.35 / 0.7 / 1). Only a downpour turns
   into a thunderstorm: the sky darkens (`storm.dark`) and lightning strikes every 6–16 s.
 
+## Playing together
+
+- One player's computer is the **host**: its world, its save. Friends press *Play in a friend's world* on the launch
+  page and type the host's code (FOX-27); the host presses **P** (or Friends on a touch screen), opens the world, and
+  lets each friend in. At most 3 friends.
+- `net.js` fetches PeerJS 1.5.5 from jsdelivr only when someone presses one of those buttons. PeerJS's free public
+  server (0.peerjs.com) introduces the computers; then they talk directly (WebRTC), or through PeerJS's free relay.
+  Nothing is stored anywhere. Codes are names on that server, prefixed `hughsgames-polis-`.
+- The host is in charge. **Every block change must go through `setBlock`** (it queues the change for everyone while
+  `net.role` is set); a change made around it, like the sponge's, pushes to `netQuiet` by hand. A guest's changes go
+  to the host, which applies them, keeps them, saves them and sends them on to everyone (the sender too, so all agree).
+  The host also sends the clock, the weather and each lightning strike (with a seed, so the bolt is the same).
+- A guest **never saves**: `save()` returns while `guestWorld` is set, so the guest's own world at home is untouched.
+  A guest starts from the host's world (`worldForGuest`) with their own things and stars read from their own save
+  (or a starter kit). On a guest, water flow, the weather's turns and lightning strikes are switched off: they come
+  from the host.
+- Host and guest must be the same `BUILD` (the host turns away an older or newer copy), so bump `BUILD` on every push.
+- Before the first friend comes in each session, the host keeps a spare copy of the world as an ordinary backup
+  (`polis-world-web-1-backup-…`, listed in `polis-friend-backups`, newest 3 kept), only if there's plenty of room in
+  localStorage. "Bring back my older world" on the launch page restores it.
+- It needs the open internet, so it works on hughsgames.github.io but not inside the Claude artifact.
+
 ## Testing before pushing
 
 There's no test suite. What works: serve this folder over plain HTTP, open it with Playwright,
@@ -121,6 +144,10 @@ offers *Continue my world*, an existing save still loads, and the hotbar icons a
   and draw frames with `polisDebug.render()` (it takes an optional function to adjust things
   just before drawing). `polisDebug.strike(x, z)` calls down lightning.
 - Run once with `--disable-webgl2` too: Fast must still work on WebGL1.
+- Playing together: run a PeerServer of your own (`npm i peer`, then `peerjs --port 9000 --host 127.0.0.1`) and open
+  two browser profiles with `?debug&peer=127.0.0.1:9000` (the guest with `&stay`, so it stays on the launch page).
+  Chromium needs `--disable-features=WebRtcHideLocalIpsWithMdns --allow-loopback-in-peer-connection`. Under
+  SwiftShader a world takes minutes to build, so wait on conditions, not fixed sleeps.
 - Only measure speed on a real graphics chip, e.g. William's Mac loading a pushed branch through
   `raw.githack.com`. Warm the chip up first, then time back-to-back `gfx.render` calls each
   followed by a one-pixel `readPixels`; GPU timer queries are unreliable on Apple chips.
