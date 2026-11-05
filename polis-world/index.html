@@ -288,6 +288,10 @@ body.designing #crosshair { display: block !important; }
 .friendsbox .fp { margin: 0; font-weight: 800; }
 .flabel { display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 14px; color: var(--ink-dim); }
 .flabel input, .jin { font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(0, 0, 0, 0.35); color: var(--ink); user-select: text; -webkit-user-select: text; }
+.flink { margin: 0; font: 700 12px/1.35 ui-monospace, Menlo, Consolas, monospace; color: var(--ink-dim); word-break: break-all; user-select: text; -webkit-user-select: text; }
+.flink:empty { display: none; }
+#fKnownBox { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+#fKnownBox[hidden] { display: none; }
 .fcode { font-family: var(--display); font-weight: 800; font-size: 46px; letter-spacing: 0.08em; color: var(--gold); text-align: center; user-select: text; -webkit-user-select: text; }
 .fask { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 10px; background: rgba(76, 175, 80, 0.16); border: 1px solid rgba(120, 200, 120, 0.6); }
 .fask b { font-size: 17px; }
@@ -430,7 +434,7 @@ body.designing #crosshair { display: block !important; }
       <kbd>B</kbd><span>Your designs: design a building, then build copies (R turns it)</span>
       <kbd>X on a machine</kbd><span>Climb into one of Leonardo da Vinci's machines in Florence: fly, glide, drive, paddle or shoot</span>
       <kbd>T</kbd><span>Make a twin of one of your own tamed animals (three twins from each animal a day)</span>
-      <kbd>P</kbd><span>Play with friends: open your world to a friend on another computer, or see who's here</span>
+      <kbd>P</kbd><span>Play with friends: invite a friend into your world (they can be on another computer, anywhere), or see who's here</span>
       <kbd>V</kbd><span>First-person or third-person view</span>
       <kbd>X</kbd><span>Build (same as right-click)</span>
       <kbd>Z / C</kbd><span>Camera closer / farther</span>
@@ -460,21 +464,26 @@ body.designing #crosshair { display: block !important; }
       <div class="drow"><button class="go" id="fAskYes" type="button">Let them in</button><button id="fAskNo" type="button">Not now</button></div>
     </div>
     <div id="fStart">
-      <p class="fp">Open your world, and a friend can come in from their own computer or tablet. You choose who comes in.</p>
+      <p class="fp">Invite a friend into your world. They can come in from their own computer or tablet, wherever they are. You choose who comes in.</p>
       <label class="flabel">Your name <input id="fName" maxlength="14" autocomplete="off" placeholder="Your name"></label>
-      <div class="drow"><button class="go" id="fOpen" type="button">Open my world to friends</button></div>
+      <div class="drow"><button class="go" id="fOpen" type="button">Invite a friend</button></div>
       <p class="maphint">Your world stays saved only on this computer, and a spare copy is made before the first friend comes in (bring it back from the start page with "Bring back my older world"). Friends can build and dig too. A free public service puts the computers in touch; nothing about your world is kept there.</p>
     </div>
     <div id="fHosting" hidden>
-      <p class="fp">Your code</p>
+      <p class="fp">Send your friend an invite. When they tap it, they knock on your door.</p>
+      <div class="drow"><button class="go" id="fShare" type="button">Send an invite</button></div>
+      <p class="maphint" id="fShareNote"></p>
+      <p class="flink" id="fLink"></p>
+      <p class="maphint">Or, if they're with you, they can open <b>hughsgames.github.io</b>, pick Polis World, press <b>Play in a friend's world</b> and type your code:</p>
       <div id="fCode" class="fcode">—</div>
-      <p class="maphint">Your friend opens <b>hughsgames.github.io</b>, picks Polis World, presses <b>Play in a friend's world</b> and types this code. Up to three friends can come.</p>
+      <p class="maphint">Up to three friends can come.</p>
       <p class="maphint warnline" id="fRoom" hidden>There wasn't room in this browser for a spare copy of your world. To be safe, back it up from the start page ("Back up my world").</p>
     </div>
     <div id="fGuest" hidden>
       <p class="fp" id="fGuestText"></p>
     </div>
     <div id="fList" hidden></div>
+    <div id="fKnownBox" hidden><p class="maphint" id="fKnown"></p><button id="fForget" type="button" class="linkbtn">Ask me about everyone again</button></div>
     <div class="drow">
       <button id="fStop" type="button" class="fhost">Stop playing together</button>
       <button id="fLeave" type="button" class="fguest">Go back to my own world</button>
@@ -527,7 +536,7 @@ body.designing #crosshair { display: block !important; }
     </div>
     <button id="btnJoin" class="lbtn alt" type="button">Play in a friend's world</button>
     <div id="joinBox" class="confirm keep" hidden>
-      <p>Ask your friend to press P (or Friends) in their world: they'll see a code like FOX-27.</p>
+      <p id="jIntro">Ask your friend to send you an invite, or to press P (or Friends) in their world and read you the code, like FOX-27.</p>
       <input id="jName" class="jin" maxlength="14" autocomplete="off" placeholder="Your name" aria-label="Your name">
       <input id="jCode" class="jin" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="Their code, like FOX-27" aria-label="Your friend's code">
       <div class="row"><button id="jCancel" class="lbtn alt" type="button">Cancel</button><button id="jGo" class="lbtn" type="button">Join</button></div>

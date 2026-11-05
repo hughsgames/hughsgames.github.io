@@ -21,7 +21,7 @@ import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '4 Nov 2026, 16:02 UTC';
+const BUILD = '5 Nov 2026, 03:54 UTC';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -3937,10 +3937,39 @@ let netSendT = 0, netIdleT = 0, netSkyT = 0, netLastP = '', netLastLook = '', ne
 const together = () => !!guestWorld || (net.role === 'host' && others.size > 0);
 function storedName() { try { return cleanName(localStorage.getItem(NAME_KEY) || ''); } catch (_) { return ''; } }
 function keepName(n) { try { localStorage.setItem(NAME_KEY, n); } catch (_) { /* storage off */ } }
+// Friends you've let in before come straight in next time. Each computer or tablet has a long random number of its own
+// (made the first time it joins anyone, and only ever sent to the world it's joining); the host remembers the numbers of
+// the ones it said yes to. Nobody can guess one, so a stranger who guesses a code still has to knock.
+const DEVICE_KEY = 'polis-device', KNOWN_KEY = 'polis-known-friends';
+function myDevice() {
+  try {
+    let d = localStorage.getItem(DEVICE_KEY);
+    if (!/^[0-9a-f]{32}$/.test(d || '')) { d = [...crypto.getRandomValues(new Uint8Array(16))].map((v) => v.toString(16).padStart(2, '0')).join(''); localStorage.setItem(DEVICE_KEY, d); }
+    return d;
+  } catch (_) { return null; }
+}
+function knownFriends() { try { const k = JSON.parse(localStorage.getItem(KNOWN_KEY) || '{}'); return k && typeof k === 'object' && !Array.isArray(k) ? k : {}; } catch (_) { return {}; } }
+function rememberFriend(dev, name) {
+  if (typeof dev !== 'string' || !/^[0-9a-f]{32}$/.test(dev)) return;
+  const k = knownFriends();
+  delete k[dev]; k[dev] = name;   // (newest last)
+  const keys = Object.keys(k);
+  for (const old of keys.slice(0, Math.max(0, keys.length - 20))) delete k[old];
+  try { localStorage.setItem(KNOWN_KEY, JSON.stringify(k)); } catch (_) { /* storage off: they'll knock next time */ }
+}
+/// The link a friend taps to come to your door: this page, with your code on the end.
+function inviteLink() {
+  const u = new URL(location.href), peer = u.searchParams.get('peer');   // (peer: testing only, a PeerServer on this computer)
+  u.search = ''; u.hash = '';
+  u.searchParams.set('join', net.code);
+  if (peer) u.searchParams.set('peer', peer);
+  return u.toString();
+}
+let invited = null;   // (a friend) the code from the invite link this page was opened with
 const NET_TROUBLE = {
   nolib: "Couldn't fetch the part of the game that connects computers. Check the internet connection and try again.",
   noserver: "Couldn't reach the free service that puts computers in touch. Check the internet connection and try again in a minute. (Inside Claude this copy of the game can't go online: open hughsgames.github.io instead.)",
-  nobody: "There's no world open with that code. Check it with your friend: it's on their screen.",
+  nobody: "There's no world open with that code right now. Ask your friend to open their world and send a new invite (or check the code: it's on their screen).",
   nowebrtc: "This browser can't play with friends. An up-to-date Chrome, Safari, Edge or Firefox can.",
   failed: "Couldn't connect to your friend's computer. Some school and office networks block this; at home it normally works.",
   busy: 'Already playing together.',
@@ -4050,6 +4079,7 @@ function guestArrived() {
 function netRequest(g) {
   const h = g.hello || {};
   if (h.build !== BUILD || h.wv !== WORLD_VERSION) { net.answer(g.id, false, 'version'); return; }
+  if (typeof h.dev === 'string' && knownFriends()[h.dev] !== undefined) { rememberFriend(h.dev, g.name); net.answer(g.id, true); renderFriends(); return; }   // let in before: straight in
   netAsking.push(g);
   g.askT = setTimeout(() => answerFriend(g.id, false), 90000);   // nobody answered: not this time
   sound.play('star');
@@ -4060,6 +4090,7 @@ function answerFriend(id, yes) {
   if (i < 0) return;
   const [g] = netAsking.splice(i, 1);
   clearTimeout(g.askT);
+  if (yes) rememberFriend(g.hello && g.hello.dev, g.name);
   net.answer(id, yes);
   renderFriends();
   if (yes && !netAsking.length && openPanel === 'friends') closePanels();
@@ -4334,7 +4365,14 @@ function renderFriends() {
   $('fAsk').hidden = !(hosting && netAsking.length);
   $('fStop').hidden = !hosting; $('fLeave').hidden = !guest;
   if (hosting && netAsking.length) $('fAskName').textContent = `${netAsking[0].name} wants to come into your world`;
-  if (hosting) { $('fCode').textContent = net.code; $('fRoom').hidden = !netNoRoom; }
+  if (hosting) {
+    $('fCode').textContent = net.code; $('fRoom').hidden = !netNoRoom;
+    $('fShare').textContent = navigator.share ? 'Send an invite' : 'Copy the invite link';
+    $('fLink').textContent = inviteLink();
+  }
+  const known = Object.values(knownFriends()).map((n) => cleanName(n) || 'a friend');
+  $('fKnownBox').hidden = guest || !known.length;
+  if (known.length) $('fKnown').textContent = `${known.length > 1 ? known.slice(0, -1).join(', ') + ' and ' + known[known.length - 1] : known[0]} can come straight in, because you let them in before.`;
   if (!hosting && !guest && !$('fName').value) $('fName').value = storedName();
   if (guest) $('fGuestText').textContent = `You're in ${netHostName}'s world. Everything you build stays here, and your own world at home hasn't changed.`;
   const list = $('fList'); list.innerHTML = '';
@@ -4353,11 +4391,33 @@ $('fOpen').addEventListener('click', async () => {
   if (!name) { $('fStatus').textContent = 'Type your name first: it goes over your head, so your friends know who you are.'; $('fName').focus(); return; }
   keepName(name);
   $('fOpen').disabled = true; $('fStatus').textContent = 'Opening your world…';
-  try { await net.host(name); $('fStatus').textContent = ''; }
+  $('fShareNote').textContent = '';
+  let opened = false;
+  try { await net.host(name); $('fStatus').textContent = ''; opened = true; }
   catch (e) { $('fStatus').textContent = NET_TROUBLE[e.code] || NET_TROUBLE.noserver; }
   $('fOpen').disabled = false;
   renderFriends();
+  if (opened) sendInvite(true);   // straight on to sending it (if the browser still counts this as the same tap)
 });
+/// Send the invite: the share sheet where there is one (Messages, Mail, AirDrop…), or else the link copied, ready to
+/// paste into a message. `first`: right after opening the world, when the browser may not allow it without a new tap
+/// (then the "Send an invite" button is there to press).
+async function sendInvite(first) {
+  if (net.role !== 'host') return;
+  const url = inviteLink(), note = $('fShareNote');
+  const text = `Come and play in ${net.name}'s world in Polis World! Tap the link to knock on the door (or type the code ${net.code}).`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Polis World', text, url }); note.textContent = 'Invite sent! When your friend taps it, they knock on your door.'; return; }
+    catch (e) { if (e && e.name === 'AbortError') return; if (first) { note.textContent = ''; return; } }
+  }
+  try { await navigator.clipboard.writeText(`${text} ${url}`); note.textContent = 'Invite copied! Paste it into a message to your friend.'; }
+  catch (_) {
+    note.textContent = first ? '' : 'Copy this link and send it to your friend:';
+    const r = document.createRange(); r.selectNodeContents($('fLink')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+}
+$('fShare').addEventListener('click', () => sendInvite(false));
+$('fForget').addEventListener('click', () => { try { localStorage.removeItem(KNOWN_KEY); } catch (_) { /* storage off */ } renderFriends(); });
 $('fName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('fOpen').click(); e.stopPropagation(); });
 $('fStop').addEventListener('click', () => {
   for (const g of [...netAsking]) clearTimeout(g.askT);
@@ -4395,13 +4455,27 @@ async function joinFriend() {
   netRefused = false;
   $('jGo').disabled = true; $('btnPlay').disabled = true; $('btnNew').disabled = true;
   joinStatus("Looking for your friend's world…");
-  try { await net.join(code, name, { build: BUILD, wv: WORLD_VERSION }); }
+  try { await net.join(code, name, { build: BUILD, wv: WORLD_VERSION, dev: myDevice() }); }
   catch (e) { joinIdle(); joinStatus(NET_TROUBLE[e.code] || NET_TROUBLE.failed); }
 }
 /// Not joining after all: the launch page's own buttons work again.
 function joinIdle() { $('jGo').disabled = false; $('btnPlay').disabled = false; $('btnNew').disabled = false; }
 $('jGo').addEventListener('click', joinFriend);
 for (const id of ['jName', 'jCode']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') joinFriend(); e.stopPropagation(); });
+// Opened from an invite (…?join=FOX-27): the code is filled in and, if this computer knows your name, off you go to
+// knock on the door. (The code comes off the address, so going home or reloading brings back your own world.)
+{
+  const q = new URLSearchParams(location.search), code = readCode(q.get('join') || '');
+  if (q.has('join')) { q.delete('join'); try { history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); } catch (_) { /* fine as it is */ } }
+  if (code) {
+    invited = code;
+    $('joinBox').hidden = false; $('btnJoin').hidden = true;
+    $('jIntro').textContent = "You've been invited into a friend's world!";
+    $('jCode').value = code; $('jName').value = storedName();
+    try { $('joinBox').scrollIntoView({ block: 'center' }); } catch (_) { /* old browser */ }
+    if ($('jName').value) joinFriend(); else { joinStatus('Type your name (it goes over your head), then press Join.'); $('jName').focus(); }
+  }
+}
 
 // ---------- the launch page ----------
 // Continue your world, or start a new one. Starting over never throws a world away: the old one is kept as a backup
@@ -4508,7 +4582,7 @@ $('btnRestore').addEventListener('click', () => {
   } catch (_) { setUpLaunch('Couldn\'t swap worlds: storage is full.'); }
 });
 setUpLaunch();
-if (new URLSearchParams(location.search).has('debug') && !new URLSearchParams(location.search).has('stay')) launch();   // (testing: straight into the game; &stay stays on the launch page)
+if (new URLSearchParams(location.search).has('debug') && !new URLSearchParams(location.search).has('stay') && !invited) launch();   // (testing: straight into the game; &stay stays on the launch page)
 
 // ---------- if the device takes the 3D picture away ----------
 // A phone or tablet sometimes drops a page's 3D drawing when you switch to another app or it needs memory back, and
@@ -4529,7 +4603,7 @@ $('glLostGo').addEventListener('click', () => {
   try { if (world && G.started && !guestWorld) { save(); sessionStorage.setItem(RESUME_KEY, '1'); } } catch (_) { /* storage off: the launch page will ask */ }
   location.reload();
 });
-try { if (sessionStorage.getItem(RESUME_KEY) === '1') { sessionStorage.removeItem(RESUME_KEY); if (readSave(SAVE_KEY)) launch(); } } catch (_) { /* no storage */ }
+try { if (sessionStorage.getItem(RESUME_KEY) === '1') { sessionStorage.removeItem(RESUME_KEY); if (readSave(SAVE_KEY) && !invited) launch(); } } catch (_) { /* no storage */ }
 
 // ---------- start-up ----------
 const atlasImg = new Image(), extraImg = new Image(), extraIcons = new Image();

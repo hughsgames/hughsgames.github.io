@@ -137,9 +137,17 @@ polis-world/        the game (everything below is in here)
 
 ## Playing together
 
-- One player's computer is the **host**: its world, its save. Friends press *Play in a friend's world* on the launch
-  page and type the host's code (FOX-27); the host presses **P** (or Friends on a touch screen), opens the world, and
-  lets each friend in. At most 3 friends.
+- One player's computer is the **host**: its world, its save. The host presses **P** (or Friends on a touch screen) and
+  *Invite a friend*: the world opens with a code (FOX-27) and the invite goes straight to the share sheet (Messages,
+  Mail, AirDrop) where the browser allows it, or is copied to paste into a message; *Send an invite* sends it again.
+  The invite is this page's address with `?join=FOX-27`: opening it fills in the code on the launch page and, if that
+  device already knows the player's name, knocks at once. (`join` is taken off the address straight away, so going
+  home or reloading brings back the friend's own world.) A friend with the host in the room can still press *Play in a
+  friend's world* and type the code. At most 3 friends.
+- The host lets each newcomer in. A friend let in before comes **straight in**: each device has a random 32-hex-digit
+  number of its own (`polis-device`, sent only to the world it's joining, in `hello.dev`), and the host keeps the numbers
+  it said yes to under `polis-known-friends` (newest 20). *Ask me about everyone again* in the Friends window forgets
+  them all.
 - `net.js` fetches PeerJS 1.5.5 from jsdelivr only when someone presses one of those buttons. PeerJS's free public
   server (0.peerjs.com) introduces the computers; then they talk directly (WebRTC), or through PeerJS's free relay.
   Nothing is stored anywhere. Codes are names on that server, prefixed `hughsgames-polis-`.
