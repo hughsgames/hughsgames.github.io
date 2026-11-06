@@ -1,3 +1,4 @@
+import { huntingTarget } from './ecology.js';
 // Polis World (computer version): the game itself.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { H, WL, CS, T, BLOCKS, IS_CUBE, IS_SOLID, IS_CROSS, IS_CUT, GLOW, WATER, FALLING, IS_WATER, IS_WATERY, WATER_AMT, World, buildAtlas, paintAtlas, atlasTextures, tileUV, tileSheet, shared, blockMaterial, setBlockQuality, waterMaterial, meshChunk, makeSky, setSkyQuality, waterHeight, surfaceTable, normalAtlas } from './engine.js';
@@ -1398,6 +1399,7 @@ function spreadOut(dt) {
 }
 function updateMobs(dt) {
   spreadOut(dt);
+  const playerByFire = nearFire();
   // Hold out something an animal likes and it won't bolt. It's the only way to get near a shy one —
   // a sea turtle makes for the water as soon as you come within five blocks, and a parrot takes off.
   const held = heldItem();
@@ -1405,6 +1407,34 @@ function updateMobs(dt) {
   for (const m of mobs) {
     if (m.dead || m.ridden) continue;   // the one you're riding is moved by updateRide
     const sp0 = SPECIES[m.kind], dP = Math.hypot(m.x - P.x, m.z - P.z);
+    // A satiated predator rests before hunting again. Terrain collision and
+    // step-height checks below still apply to the chase.
+    if (m.escapeFrom?.dead || (m.escapeFrom && Math.hypot(m.x-m.escapeFrom.x,m.z-m.escapeFrom.z)>20)) m.escapeFrom=null;
+    m.sated = Math.max(0,(m.sated || 0)-dt);
+    m.huntCooldown = Math.max(0,(m.huntCooldown || 0)-dt);
+    if (!m.sated && !m.angry) {
+      const prey = huntingTarget(m,mobs,playerByFire ? null : P);
+      if (prey) {
+        m.tx=prey.x; m.tz=prey.z; m.wait=0; m.hunting=true;
+        if (prey !== P) {
+          const dx=prey.x-m.x, dz=prey.z-m.z, length=Math.hypot(dx,dz)||1;
+          prey.tx=prey.x+dx/length*8; prey.tz=prey.z+dz/length*8; prey.wait=0;
+          prey.escapeFrom=m;
+        }
+        if (Math.hypot(prey.x-m.x,prey.z-m.z)<1.5 && m.huntCooldown===0) {
+          m.huntCooldown=1.8;
+          if (prey===P) { hurt(sp0.bite||1,m); m.sated=12; }
+          else {
+            prey.hp-=sp0.bite||2;
+            if (prey.hp<=0) {
+              prey.dead=true; entityGroup.remove(prey.g);
+              m.sated=80; m.hunting=false;
+              message('A '+sp0.name+' caught a '+SPECIES[prey.kind].name+'.');
+            }
+          }
+        }
+      } else m.hunting=false;
+    } else m.hunting=false;
     // The first time you come near something you could ride, say so — otherwise you'd never know.
     if (RIDE[m.kind] && !m.tame && !P.ride && dP < 7 && !G.talked.has('_ridehint')) {
       G.talked.add('_ridehint');
@@ -1437,7 +1467,7 @@ function updateMobs(dt) {
         }
       }
     } else {
-      const fast = m.angry > 0 || m.flee > 0 || m.toSea;
+      const fast = m.angry > 0 || m.flee > 0 || m.toSea || m.hunting || m.escapeFrom;
       const sp = (fast ? (sp0.fast ?? sp0.speed * 1.9) : sp0.speed) * dt;
       const nx = m.x + dx / dist * Math.min(sp, dist), nz = m.z + dz / dist * Math.min(sp, dist);
       const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + 1.05));

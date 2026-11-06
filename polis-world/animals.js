@@ -547,7 +547,7 @@ export function buildWild(kind) {
 // Two things decide what you meet: which part of the world you're in, and what the ground is like there. A lion
 // belongs around the Mediterranean and the Middle East but not in China; a panda belongs in the bamboo hills of Shu
 // and nowhere else; an ibex is only ever up a mountain.
-export const GROUND = ['ocean', 'sea', 'lake', 'river', 'beach', 'oasis', 'desert', 'plain', 'forest', 'hill', 'mountain'];
+export const GROUND = ['ocean', 'sea', 'lake', 'river', 'beach', 'oasis', 'desert', 'plain', 'forest', 'hill', 'mountain', 'megajungle'];
 /// The part of the ancient world each great city stands in.
 export const LAND = {
   rome: 'medit', athens: 'medit', olympia: 'medit', carthage: 'africa', atlantis: 'medit',
@@ -585,6 +585,7 @@ export const HOME = {
 };
 /// Everything that could turn up on this ground, in this part of the world.
 export function wildHere(land, biome, byWater) {
+  if (biome === 'megajungle') biome = 'forest';
   const g = GROUND[biome];
   const out = [];
   for (const [kind, h] of Object.entries(HOME)) {

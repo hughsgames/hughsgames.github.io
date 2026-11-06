@@ -27,7 +27,7 @@ const B = {
   ironwoodLog: 157, ironwoodLeaves: 158, waterMoss: 159, drainerVine: 160, floodHole: 161,
 };
 const flow = (a) => 80 + a;
-const BIOMES = ['ocean', 'sea', 'lake', 'river', 'beach', 'oasis', 'desert', 'plain', 'forest', 'hill', 'mountain'];
+const BIOMES = ['ocean', 'sea', 'lake', 'river', 'beach', 'oasis', 'desert', 'plain', 'forest', 'hill', 'mountain', 'megajungle'];
 const BI = Object.fromEntries(BIOMES.map((b, i) => [b, i]));
 const isWaterBiome = (b) => b <= 3;
 
@@ -2022,6 +2022,7 @@ function buildMegajungle(w, heights, seed) {
   // 1. Raise (or cut) the land to a plateau with sheer cliffs round it.
   for (let z = cz - R1; z <= cz + R1; z++) for (let x = cx - R1; x <= cx + R1; x++) {
     if (!w.inb(x, z) || edgeAt(x, z) < 0) continue;
+    w.bio[z*n+x] = BI.megajungle;
     const gy = PY + Math.floor(vnoise(x, z, 9, seed + 910) * 2.4);
     const nat = heights[z * n + x];
     const r = hash(x, z, seed + 911);
