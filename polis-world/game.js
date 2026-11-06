@@ -1,3 +1,4 @@
+import { huntingTarget, clearHuntPath } from './ecology.js';
 // Polis World (computer version): the game itself.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { H, WL, CS, T, BLOCKS, IS_CUBE, IS_SOLID, IS_CROSS, IS_CUT, GLOW, WATER, FALLING, IS_WATER, IS_WATERY, WATER_AMT, World, buildAtlas, paintAtlas, atlasTextures, tileUV, tileSheet, shared, blockMaterial, setBlockQuality, waterMaterial, meshChunk, makeSky, setSkyQuality, waterHeight, surfaceTable, normalAtlas } from './engine.js';
@@ -21,7 +22,7 @@ import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '5 Nov 2026, 03:54 UTC';
+const BUILD = '5 Nov 2026 · Wildlife update';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -1396,8 +1397,16 @@ function spreadOut(dt) {
     }
   }
 }
+let huntScanTime = 0, playerByFire = false;
 function updateMobs(dt) {
   spreadOut(dt);
+  huntScanTime -= dt;
+  const scanHunts = huntScanTime <= 0;
+  if (scanHunts) {
+    huntScanTime = 0.25;
+    playerByFire = heldItem()?.id === 'torch' || nearFire();
+    for (const m of mobs) m.protected = isKept(m) || !!m.follow;
+  }
   // Hold out something an animal likes and it won't bolt. It's the only way to get near a shy one —
   // a sea turtle makes for the water as soon as you come within five blocks, and a parrot takes off.
   const held = heldItem();
@@ -1405,6 +1414,40 @@ function updateMobs(dt) {
   for (const m of mobs) {
     if (m.dead || m.ridden) continue;   // the one you're riding is moved by updateRide
     const sp0 = SPECIES[m.kind], dP = Math.hypot(m.x - P.x, m.z - P.z);
+    // Decide four times a second; movement and obstacle checks still run every frame.
+    m.sated = Math.max(0, (m.sated || 0) - dt);
+    m.huntCooldown = Math.max(0, (m.huntCooldown || 0) - dt);
+    if (scanHunts) m.prey = !m.sated && !m.angry
+      ? huntingTarget(m, mobs, playerByFire ? null : P, (x,y,z) => world.solid(x,y,z)) : null;
+    const prey = m.prey;
+    m.hunting = !!(prey && !prey.dead && !prey.tame && !prey.ridden && !prey.protected && !m.tame && !m.sated && !m.angry
+      && !(prey === P && playerByFire) && Math.hypot(prey.x-m.x, prey.z-m.z) < 22);
+    if (m.hunting) {
+      m.tx = prey.x; m.tz = prey.z; m.wait = 0;
+      if (prey !== P) { prey.escapeFrom = m; prey.escapeTime = 2; }
+      if (Math.hypot(prey.x-m.x, prey.z-m.z) < 1.5 && Math.abs(prey.y-m.y) < 1.8
+          && m.huntCooldown === 0 && clearHuntPath(m, prey, (x,y,z) => world.solid(x,y,z))) {
+        m.huntCooldown = 1.8;
+        if (prey === P) { hurt(sp0.bite || 1, m); m.sated = 12; }
+        else {
+          prey.hp -= sp0.bite || 2;
+          if (prey.hp <= 0) {
+            prey.dead = true;
+            entityGroup.remove(prey.g);
+            m.sated = 80; m.hunting = false; m.prey = null;
+            if (dP < 30) message(`A ${sp0.name} caught a ${SPECIES[prey.kind].name}.`);
+          }
+        }
+      }
+    }
+    m.escapeTime = Math.max(0, (m.escapeTime || 0) - dt);
+    if (!m.escapeTime || m.escapeFrom?.dead || m.escapeFrom?.sated) m.escapeFrom = null;
+    if (m.escapeFrom) {
+      const dx = m.x-m.escapeFrom.x, dz = m.z-m.escapeFrom.z, length = Math.hypot(dx,dz);
+      m.tx = m.x + (length > 0.01 ? dx/length : 1)*8;
+      m.tz = m.z + (length > 0.01 ? dz/length : 0)*8;
+      m.wait = 0;
+    }
     // The first time you come near something you could ride, say so — otherwise you'd never know.
     if (RIDE[m.kind] && !m.tame && !P.ride && dP < 7 && !G.talked.has('_ridehint')) {
       G.talked.add('_ridehint');
@@ -1419,9 +1462,9 @@ function updateMobs(dt) {
       m.angry -= dt; m.biteT = Math.max(0, (m.biteT || 0) - dt);
       m.tx = P.x; m.tz = P.z; m.wait = 0;
       const reach = sp0.size[2] * 0.5 + 0.7;
-      if (dP < reach && m.biteT <= 0 && Math.abs(P.y - m.y) < 1.8) { m.biteT = 1.4; m.bites = (m.bites || 0) + 1; hurt(sp0.bite || 1, m); }
+      if (dP < reach && m.biteT <= 0 && Math.abs(P.y - m.y) < 1.8 && clearHuntPath(m, P, (x,y,z) => world.solid(x,y,z))) { m.biteT = 1.4; m.bites = (m.bites || 0) + 1; hurt(sp0.bite || 1, m); }
       if (dP > 26 || m.bites >= 2 || G.health <= 0) { m.angry = 0; m.flee = 4; }
-    } else if (m.flee > 0) { m.flee -= dt; const ax = m.x - P.x, az = m.z - P.z, l = Math.hypot(ax, az) || 1; m.tx = m.x + ax / l * 4; m.tz = m.z + az / l * 4; m.wait = 0; }
+    } else if (m.flee > 0 && !m.escapeFrom) { m.flee -= dt; const ax = m.x - P.x, az = m.z - P.z, l = Math.hypot(ax, az) || 1; m.tx = m.x + ax / l * 4; m.tz = m.z + az / l * 4; m.wait = 0; }
     let moving = false;
     const dx = m.tx - m.x, dz = m.tz - m.z, dist = Math.hypot(dx, dz);
     if (m.wait > 0) m.wait -= dt;
@@ -1437,7 +1480,7 @@ function updateMobs(dt) {
         }
       }
     } else {
-      const fast = m.angry > 0 || m.flee > 0 || m.toSea;
+      const fast = m.angry > 0 || m.flee > 0 || m.toSea || m.hunting || m.escapeFrom;
       const sp = (fast ? (sp0.fast ?? sp0.speed * 1.9) : sp0.speed) * dt;
       const nx = m.x + dx / dist * Math.min(sp, dist), nz = m.z + dz / dist * Math.min(sp, dist);
       const g = world.groundY(Math.floor(nx), Math.floor(nz), Math.floor(m.y + 1.05));
@@ -1452,13 +1495,14 @@ function updateMobs(dt) {
     m.inSea = sp0.swims && world.hasWater(Math.floor(m.x), Math.floor(m.z)) && g < WL;
     const floor = m.inSea ? WL - 0.62 + Math.sin(performance.now() / 700 + m.x) * 0.04 : g;   // swimmers float with their backs out of the water
     m.y = m.y < floor ? Math.min(floor, m.y + dt * 6) : Math.max(floor, m.y - dt * 10);
-    m.phase = moving ? m.phase + dt * (m.angry > 0 || m.flee > 0 ? 16 : 10) : 0;
+    m.phase = moving ? m.phase + dt * (m.angry > 0 || m.flee > 0 || m.hunting || m.escapeFrom ? 16 : 10) : 0;
     m.legs.forEach((l, i) => { l.rotation.x = (moving ? Math.sin(m.phase) * 0.6 : 0) * (i === 0 || i === 3 ? 1 : -1); });
     if (m.wings) m.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * (Math.sin(performance.now() / 900 + m.x) > 0.97 ? 0.6 : 0.05); });
     m.g.position.set(m.x, m.y, m.z);
     // Young animals grow up over about five minutes.
     if (m.young) { m.age += dt; const k = Math.min(m.age / 300, 1); m.g.scale.setScalar(0.55 + 0.45 * k); if (k >= 1) m.young = false; }
   }
+  for (let i = mobs.length-1; i >= 0; i--) if (mobs[i].dead && !mobs[i].g.parent) mobs.splice(i,1);
 }
 /// A frightened sea turtle walks to the nearest water and swims out.
 function goToSea(m) {
