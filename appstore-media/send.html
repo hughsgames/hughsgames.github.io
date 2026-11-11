@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Polis World screenshots</title>
+<p>Sending the Polis World screenshots to App Store Connect…</p>
+<script>
+// Hands this folder's App Store screenshots to the App Store Connect page that opened this one (only to that site).
+const files = (new URLSearchParams(location.search).get('files') || '').split(',').filter(Boolean);
+(async () => {
+  const out = [];
+  for (const f of files) {
+    const r = await fetch(f, { cache: 'no-store' });
+    out.push({ name: f, blob: await r.blob() });
+  }
+  if (window.opener) window.opener.postMessage({ polisScreens: out }, 'https://appstoreconnect.apple.com');
+  document.querySelector('p').textContent = 'Sent ' + out.length + ' pictures. You can close this tab.';
+})();
+</script>
