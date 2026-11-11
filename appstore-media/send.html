@@ -11,7 +11,8 @@ const files = (new URLSearchParams(location.search).get('files') || '').split(',
     const r = await fetch(f, { cache: 'no-store' });
     out.push({ name: f, blob: await r.blob() });
   }
-  if (window.opener) window.opener.postMessage({ polisScreens: out }, 'https://appstoreconnect.apple.com');
+  const to = window.opener || (window.parent !== window ? window.parent : null);
+  if (to) to.postMessage({ polisScreens: out }, 'https://appstoreconnect.apple.com');
   document.querySelector('p').textContent = 'Sent ' + out.length + ' pictures. You can close this tab.';
 })();
 </script>
