@@ -23,7 +23,7 @@ import { createCommerce, MONEY, CHANGERS, BANK_ID, coinImg, fmt as fmtMoney, isF
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '10 Nov 2026 · Money and the World Bank';
+const BUILD = '11 Nov 2026 · Money and the World Bank';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();

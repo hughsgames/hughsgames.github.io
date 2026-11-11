@@ -730,8 +730,8 @@ export function createCommerce(api) {
     if (page === 'start') show(`Greetings! I'm ${who.name}, ${who.title.toLowerCase()}. ${m.free ? `There's no king here: ${m.rulerName} run${city === 'florence' ? 's' : ''} the city, and the city pays well for work done for it.` : `I pay people for work done for ${m.rulerName}.`}${done ? ' Your work for today is done. Come back tomorrow!' : ''}`, menu);
     else if (page === 'job') {
       if (done) { show('That\'s all for today. Come back tomorrow for more work!', [bye]); return; }
-      const need = want.map(([id, n]) => `${n} ${ITEM[id].name.toLowerCase()} (you have ${inv.count(id)})`).join(' and ');
-      show(`${ask} ${m.free ? 'The city' : cap(m.ruler)} will pay you ${fmt(city, pay)}. You need ${need}.`, have ? [[`Here they are! (get ${fmt(city, pay)})`, go('paid')], ['Not now', go('start')], bye] : [['I\'ll come back with them', go('start')], bye]);
+      const need = have ? 'You have everything!' : want.map(([id, n]) => `${ITEM[id].name}: you have ${inv.count(id)} of the ${n} needed.`).join(' ');
+      show(`${ask} ${m.free ? 'The city' : cap(m.ruler)} will pay you ${fmt(city, pay)}. ${need}`, have ? [[`Here they are! (get ${fmt(city, pay)})`, go('paid')], ['Not now', go('start')], bye] : [['I\'ll come back with them', go('start')], bye]);
     } else if (page === 'paid') {
       if (done || !have) { clerkTalk(who, 'job'); return; }
       for (const [id, n] of want) inv.remove(id, n);
