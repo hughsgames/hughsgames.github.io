@@ -864,6 +864,8 @@ const SITES = [
   { id: 'liangzhu', tile: [35.4, 70.2], fp: [-24, -24, 24, 24] },
   // Oct 27: Florence in Tuscany, a thousand years later than everything else here. Added last.
   { id: 'florence', tile: [7.4, 18.8], fp: [-34, -26, 34, 30], noLand: true },   // noLand: added after the trees were, so it mustn't change which plants grow where
+  // Nov 2026: the World Bank, in the middle of the map between the rivers, just south of Babylon. Added last, noLand.
+  { id: 'worldBank', tile: [42.1, 42.0], fp: [-18, -18, 18, 18], fixed: true, noLand: true },
 ];
 const overlaps = (a, b, m) => a[0] - m <= b[2] && b[0] <= a[2] + m && a[1] - m <= b[3] && b[1] <= a[3] + m;
 const rectDist = (r, px, pz) => Math.max(Math.max(r[0] - px, 0, px - (r[2] + 1)), Math.max(r[1] - pz, 0, pz - (r[3] + 1)));
@@ -1866,6 +1868,118 @@ class Stamper {
     return gy;
   }
 
+  /// The World Bank (November 2026): a made-up place, not a real one, in the middle of the map between the rivers just
+  /// south of Babylon, where the House of Egibi kept the first banking business we know of. A round hall on a marble
+  /// podium under a dome of gold, a temple porch facing each way so people from every land come in by their own door,
+  /// eight money-changers' counters round a golden globe, and the vault of gold showing through a glass floor.
+  worldBank(cx, cz, r) {
+    const gy = this.level(r, WL + 2);
+    this.flatten(r, gy, B.marble, 5);
+    const R = 9, d2 = (dx, dz) => Math.hypot(dx, dz);
+    // ---- the square: white marble, a gold border, and four blue-marble avenues edged in gold, one from each door ----
+    for (let dz = -17; dz <= 17; dz++) for (let dx = -17; dx <= 17; dx++) {
+      const x = cx + dx, z = cz + dz, ax = Math.abs(dx), az = Math.abs(dz);
+      let b = B.marble;
+      if (ax === 17 || az === 17) b = B.goldBlock;
+      else if (ax <= 2 || az <= 2) b = (ax === 2 && az > 2) || (az === 2 && ax > 2) ? B.goldBlock : B.blueMarble;
+      else if ((ax + az) % 6 === 0) b = B.greenMarble;
+      this.put(x, gy - 1, z, b);
+    }
+    // ---- the podium, two steps up, with a gold rim, and a flight of steps on every side ----
+    this.fill(cx - 12, gy, cz - 12, cx + 12, gy, cz + 12, B.carvedStone);
+    this.fill(cx - 12, gy + 1, cz - 12, cx + 12, gy + 1, cz + 12, B.marble);
+    for (let k = -12; k <= 12; k++) for (const [x, z] of [[cx + k, cz - 12], [cx + k, cz + 12], [cx - 12, cz + k], [cx + 12, cz + k]]) this.put(x, gy + 1, z, B.goldBlock);
+    for (const [ux, uz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) for (let k = -2; k <= 2; k++) {
+      const px = uz !== 0 ? k : 0, pz = ux !== 0 ? k : 0;
+      this.put(cx + ux * 13 + px, gy, cz + uz * 13 + pz, B.marble);
+      this.put(cx + ux * 12 + px, gy + 1, cz + uz * 12 + pz, B.marble);
+    }
+    // ---- the vault, inside the podium: gold bars stacked under a ring of glass in the floor ----
+    for (let dz = -8; dz <= 8; dz++) for (let dx = -8; dx <= 8; dx++) {
+      const d = d2(dx, dz), x = cx + dx, z = cz + dz, axis = Math.abs(dx) <= 1 || Math.abs(dz) <= 1;
+      if (d > 8.4) continue;
+      let floor = B.mosaic;
+      if (d >= 2.6 && d <= 5.4 && !axis) { floor = B.glass; this.put(x, gy, z, B.goldBlock); }
+      else if (axis && d > 2.6) floor = B.redCloth;   // a red carpet from each door to the globe
+      else if (d < 2.6) floor = B.marble;
+      this.put(x, gy + 1, z, floor);
+    }
+    // ---- the round hall: marble walls ten high, a band of gold, windows, lamps, and a door in each porch ----
+    for (let dz = -10; dz <= 10; dz++) for (let dx = -10; dx <= 10; dx++) {
+      const d = d2(dx, dz);
+      if (d <= 8.3 || d > 9.4) continue;
+      const a = Math.atan2(dz, dx), win = Math.abs(Math.sin(a * 4)) > 0.55 && Math.abs(Math.sin(a * 4)) < 0.95;
+      for (let y = 2; y <= 11; y++) {
+        let b = B.marble;
+        if (y === 2 || y === 11) b = B.goldBlock;
+        else if (y >= 6 && y <= 8 && win) b = B.glass;
+        else if (y === 4 && Math.abs(Math.cos(a * 4)) > 0.98) b = B.lamp;
+        else if (y === 9 && Math.abs(Math.sin(a * 4)) > 0.98) b = B.lamp;   // and a ring of lamps high up, over the counters
+        this.put(cx + dx, gy + y, cz + dz, b);
+      }
+    }
+    // ---- twelve columns round the outside, white shafts on gold bases with gold capitals ----
+    for (let k = 0; k < 12; k++) {
+      const a = (k + 0.5) * Math.PI / 6, x = cx + Math.round(Math.cos(a) * 10.6), z = cz + Math.round(Math.sin(a) * 10.6);
+      this.put(x, gy + 2, z, B.goldBlock);
+      this.fill(x, gy + 3, z, x, gy + 10, z, B.column);
+      this.put(x, gy + 11, z, B.goldBlock);
+    }
+    // the ledge that ties the columns to the wall, under the dome
+    for (let dz = -12; dz <= 12; dz++) for (let dx = -12; dx <= 12; dx++) { const d = d2(dx, dz); if (d > 8.3 && d <= 11.4) this.put(cx + dx, gy + 12, cz + dz, d > 10.6 ? B.goldBlock : B.marble); }
+    // ---- the golden dome, a marble lantern on top, and a crystal that shines over the whole country at night ----
+    this.dome(cx + 0.5, cz + 0.5, gy + 12, 10, B.goldBlock, 1.6);
+    this.fill(cx - 1, gy + 21, cz - 1, cx + 1, gy + 21, cz + 1, B.marble);
+    for (const [ox, oz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) this.fill(cx + ox, gy + 22, cz + oz, cx + ox, gy + 23, cz + oz, B.column);
+    this.fill(cx - 1, gy + 24, cz - 1, cx + 1, gy + 24, cz + 1, B.goldBlock);
+    this.put(cx, gy + 25, cz, B.crystal);
+    this.put(cx, gy + 21, cz, B.glass);   // (the light comes down through the top of the dome)
+    // ---- a temple porch on each side: six columns, a gold-trimmed gable, and the doorway into the hall ----
+    for (const [ux, uz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      const at = (along, side, y, b) => this.put(cx + ux * along + (uz !== 0 ? side : 0), gy + y, cz + uz * along + (ux !== 0 ? side : 0), b);
+      for (const side of [-5, -3, -1, 1, 3, 5]) if (Math.abs(side) !== 1) { at(12, side, 2, B.goldBlock); for (let y = 3; y <= 9; y++) at(12, side, y, B.column); at(12, side, 10, B.goldBlock); }
+      for (let along = 9; along <= 12; along++) for (let side = -5; side <= 5; side++) at(along, side, 11, B.marble);
+      for (let k = 0; k <= 4; k++) for (let side = -5 + k; side <= 5 - k; side++) for (let along = 9; along <= 12; along++) at(along, side, 12 + k, along === 12 && Math.abs(side) === 5 - k ? B.goldBlock : B.marble);
+      at(12, 0, 17, B.goldBlock);
+      for (let along = 8; along <= 10; along++) for (let side = -1; side <= 1; side++) for (let y = 2; y <= 6; y++) at(along, side, y, 0);
+      for (let side = -1; side <= 1; side++) at(9, side, 7, B.goldBlock);   // a gold lintel over the door
+    }
+    // ---- inside: the golden globe on its plinth, and eight money-changers' counters round it ----
+    this.fill(cx - 1, gy + 2, cz - 1, cx + 1, gy + 3, cz + 1, B.marble);
+    for (let y = -2; y <= 2; y++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      const d = Math.hypot(dx, y, dz);
+      if (d <= 2.3) this.put(cx + dx, gy + 6 + y, cz + dz, (dx + dz + y) % 3 === 0 && d > 1.6 ? B.greenMarble : B.goldBlock);
+    }
+    const counters = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k + 0.5) * Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a);
+      // a short curved counter: three blocks of marble, gold on top
+      for (const off of [-0.45, 0, 0.45]) {
+        const x = cx + Math.round(Math.cos(a + off) * 6.2), z = cz + Math.round(Math.sin(a + off) * 6.2);
+        this.put(x, gy + 2, z, B.marble);
+        this.put(x, gy + 3, z, B.goldBlock);
+      }
+      this.put(cx + Math.round(ca * 6.2), gy + 4, cz + Math.round(sa * 6.2), B.lamp);   // an oil lamp on every counter
+      // the money-changer stands behind it, facing the middle
+      const bx = cx + 0.5 + ca * 7.6, bz = cz + 0.5 + sa * 7.6;
+      for (let y = 2; y <= 5; y++) this.put(Math.floor(bx), gy + y, Math.floor(bz), 0);
+      counters.push([bx, bz, gy + 2, Math.atan2(-ca, -sa)]);
+    }
+    // ---- outside: a fountain in each corner of the square, golden obelisks by the steps, palms, and lamps ----
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const fx = cx + sx * 15, fz = cz + sz * 15;
+      this.basin(fx - 1, fz - 1, fx + 1, fz + 1, gy, B.marble);
+      for (const [ox, oz] of [[-sx * 3, 0], [0, -sz * 3]]) { this.put(fx + ox, gy, fz + oz, B.marble); this.put(fx + ox, gy + 1, fz + oz, B.lamp); }
+      palm(this.w, cx + sx * 15, gy, cz - sz * 7, 801 + sx * 7 + sz);
+      palm(this.w, cx + sx * 7, gy, cz + sz * 15, 811 + sx * 5 + sz);
+    }
+    for (const [ux, uz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) for (const side of [-4, 4]) {
+      const x = cx + ux * 15 + (uz !== 0 ? side : 0), z = cz + uz * 15 + (ux !== 0 ? side : 0);
+      this.obelisk(x, z, gy, 5, B.goldBlock);
+    }
+    this.bank = { x: cx + 0.5, z: cz + 0.5, y: gy + 2, counters, head: [cx + 0.5, cz - 15.5, gy], door: [cx + 0.5, cz - 17.5] };
+    return gy;
+  }
   build(id, cx, cz, r) {
     switch (id) {
       case 'rome': return this.rome(cx, cz, r); case 'athens': return this.athens(cx, cz, r); case 'giza': return this.giza(cx, cz, r);
@@ -1877,6 +1991,7 @@ class Stamper {
       case 'wei': case 'shu': case 'wu': return this.threeKingdoms(cx, cz, r, id);
       case 'liangzhu': return this.liangzhu(cx, cz, r);
       case 'florence': return this.florence(cx, cz, r);
+      case 'worldBank': return this.worldBank(cx, cz, r);
       default: return this.atlantis(cx, cz);
     }
   }
@@ -2247,7 +2362,7 @@ self.onmessage = (e) => {
   let k = 0;
   for (const [i, s] of w.protected) { prot[k++] = i; prot[k++] = s; }
   const canyon = { rect: cp.rect, exit: tunnel.exit, falls: [cp.head + 0.5, cp.top, cp.midZ(cp.head) + 1], fallsBase: cp.floorY(cp.head), tunnelLength: tunnel.length };
-  self.postMessage({ type: 'done', n: w.n, cells: w.cells, bio: w.bio, placed, cities, camp, prot, relics: [...st.atl.relics, ...(st.tomb || [])], leo: st.leo || null, megajungle, canyon, wake }, [w.cells.buffer, w.bio.buffer, prot.buffer]);
+  self.postMessage({ type: 'done', n: w.n, cells: w.cells, bio: w.bio, placed, cities, camp, prot, relics: [...st.atl.relics, ...(st.tomb || [])], leo: st.leo || null, bank: st.bank || null, megajungle, canyon, wake }, [w.cells.buffer, w.bio.buffer, prot.buffer]);
 };
 
 // The great cities (city plans) are in their own file.

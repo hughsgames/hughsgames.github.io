@@ -53,12 +53,13 @@ polis-world/        the game (everything below is in here)
 | `machines.js` | Leonardo's working machines in Florence: models, flying, driving, the crossbow, the robots |
 | `megajungle.js` | Hugh's megajungle: its creatures and traps (the plateau itself is built in `worldgen.js`) |
 | `net.js` | playing together: codes, connections, letting friends in, sending messages (what they say is in `game.js`, "playing together") |
+| `commerce.js` | money: each city's own currency, what things are worth, markets and barter, the rulers' paid work, the jury, market stalls, investing, the World Bank's exchange, and the purse window |
 
 ## Saves
 
 - Key: `polis-world-web-1`. Backups the player makes from the launch screen are kept under
   `polis-world-web-1-backup-<timestamp>`.
-- `WORLD_VERSION` in `game.js` (currently 14) says which generation of the world a save came
+- `WORLD_VERSION` in `game.js` (currently 15) says which generation of the world a save came
   from. When new cities or terrain are added, bump it and add a line to the `changed` list so
   that **only the newly changed places** are rebuilt in an existing world — never the whole
   map, which would bulldoze what the player built.
@@ -68,6 +69,20 @@ polis-world/        the game (everything below is in here)
   and animals, moves everyone to the new camp, and tells the player the world got bigger.
 - The launch screen has a copy-and-paste backup panel. Saves belong to one web address, so a
   world does not follow the player from one address to another — that panel is the way across.
+
+## Money (November 2026)
+
+- Every city's money is its real one (`MONEY` in `commerce.js`): `v` is what one unit is worth in a hidden unit of
+  about an obol, and every price and exchange rate comes from it. An item's worth is `valueOf` (hand-set for raw things,
+  recipes add a quarter). Made-here goods are cheap, wanted-from-afar goods dear, so carrying goods between cities pays.
+- Under a ruler, prices are fixed and a tax is shown on every sale. Athens, Carthage and Florence (`free: true`) have
+  prices that wander every game hour (and move when you buy or sell), market stalls, investing, and giving coins to
+  friends (also allowed at the World Bank).
+- The purse and everything else lives in the save as `money` (`money.state()` / `money.load()`); a save without it
+  just starts with an empty purse. A guest brings their own purse (read only, like their things).
+- The World Bank is a site (`worldBank`, `noLand`, built by `Stamper.worldBank`); its counters and the head banker's spot
+  come back from the worker as `bank`. Saves from before 15 drop edits within 6 blocks of its square.
+- Each city has a market trader (gold coin) and the ruler's clerk (purple crown), spawned in `spawnTraders`.
 
 ## Gotchas
 

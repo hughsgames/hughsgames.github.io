@@ -812,7 +812,11 @@ void main() {
   #endif
   float NoV = clamp(dot(N, V), 1e-3, 1.0);
   vec3 F0 = mix(vec3(0.08 * spec), albedo, metal);
+  #ifdef SPECULAR
   vec3 diffCol = albedo * (1.0 - metal);
+  #else
+  vec3 diffCol = albedo * (1.0 + 0.15 * metal);   // (Fast draws no reflections, so a metal shows its own colour instead of going black)
+  #endif
   // The sun (or the moon), and the sky's light from all round.
   vec3 L = vec3(0.0, 1.0, 0.0), sunC = vec3(0.0), hemi = vec3(0.0);
   #if NUM_DIR_LIGHTS > 0

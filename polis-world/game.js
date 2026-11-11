@@ -19,10 +19,11 @@ import { Sound, CITY_LAND } from './audio.js';
 import { createMachines, MACHINES } from './machines.js';
 import { createMegajungle, JUNGLE } from './megajungle.js';
 import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
+import { createCommerce, MONEY, CHANGERS, BANK_ID, coinImg, fmt as fmtMoney, isFree } from './commerce.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '5 Nov 2026 · Wildlife update';
+const BUILD = '10 Nov 2026 · Money and the World Bank';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
@@ -30,7 +31,7 @@ const sound = new Sound();
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'polis-world-web-1';
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
-const WORLD_VERSION = 14;   // 14: Hugh's megajungle on the north-east plateau (nothing rebuilt: what you built there stays) · 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
+const WORLD_VERSION = 15;   // 15: the World Bank, in the middle of the map south of Babylon · 14: Hugh's megajungle on the north-east plateau (nothing rebuilt: what you built there stays) · 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25, 124: 125, 126: 127, 128: 129, 130: 131, 132: 133, 157: 158 };   // every kind of trunk, and its own leaves
 /// Anything leafy that a tree carries. Trees don't always wear their own leaves: an olive is oak wood under silvery
 /// spruce-like leaves, and an apple tree mixes apple boughs with plain oak leaves. Any of these counts.
@@ -100,6 +101,18 @@ const G = {
 };
 const inv = new Inventory();
 let selected = 0;
+// Money: every city's own, a purse to keep it in, markets, the rulers' work and the World Bank (commerce.js).
+const money = createCommerce({
+  inv, talked: { has: (k) => G.talked.has(k), add: (k) => G.talked.add(k) },
+  clock: () => G.clock, icon: (id, size) => iconImg(id, size), cityName: (id) => ({ giza: 'Giza', forbiddenCity: 'Beijing' }[id] ?? SITE_TEXT[id]?.name ?? id),
+  receive: (id, n) => { const left = inv.add(id, n); if (left) dropItem(id, left, P.x, P.y + 1, P.z); toast(`+${n} ${ITEM[id]?.name ?? id}`, id); refreshHotbar(); },
+  stars: (n, why) => addStars(n, why), save: () => scheduleSave(), hud: () => refreshMoney(true), hotbar: () => refreshHotbar(),
+  toast: (t, id) => toast(t, id), card: (t, sub, body) => showCard(t, sub, body), sound: (k) => sound.play(k),
+  dialogue: (name, title, text, choices) => showDialogue(name, title, text, choices), closeDialogue: (who) => closeDialogue(who),
+  open: () => { if (openPanel !== 'shop') { closePanels(true); openPanel = 'shop'; if (document.pointerLockElement) document.exitPointerLock(); } renderPanel(); },
+  refresh: () => { if (openPanel === 'shop') renderPanel(); }, close: () => closePanels(),
+  here: () => moneyHere, lastCity: () => moneyLast, stallChanged: (city) => { if (G.started || world) showStall(city); },
+});
 const P = { x: 0, y: 0, z: 0, vx: 0, vz: 0, vy: 0, yaw: 0, pitch: -0.25, ground: false, water: false, step: 0, walk: 0, swing: 0 };
 
 // ---------- chunks ----------
@@ -345,6 +358,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyF') eat();
   if (e.code === 'KeyH') togglePanel('help');
   if (e.code === 'KeyP') togglePanel('friends');
+  if (e.code === 'KeyG') { if (openPanel === 'shop') closePanels(); else money.open('purse'); }
   if (e.code === 'KeyB') { if (D.mode) endDesign(); togglePanel('designs'); }
   if (e.code === 'KeyR' && D.mode === 'place') { D.rot = (D.rot + 1) % 4; buildGhost(); }
   // T makes a twin of the animal you're looking at, if it's one of yours.
@@ -468,6 +482,8 @@ $('btnJump').addEventListener('touchend', () => input.keys.delete('Space'));
 $('btnMode').addEventListener('click', () => { input.buildMode = !input.buildMode; $('btnMode').textContent = input.buildMode ? 'Building' : 'Digging'; $('btnMode').classList.toggle('on', input.buildMode); });
 $('btnInv').addEventListener('click', () => togglePanel('inventory'));
 $('btnMap').addEventListener('click', () => togglePanel('map'));
+$('btnMoney').addEventListener('click', () => { if (openPanel === 'shop') closePanels(); else money.open('purse'); });
+$('moneyPill').addEventListener('click', () => { if (G.started) money.open('purse'); });
 $('btnDesign').addEventListener('click', () => { if (D.mode) endDesign(); togglePanel('designs'); });
 $('btnView').addEventListener('click', () => { G.firstPerson = !G.firstPerson; });
 $('btnEat').addEventListener('click', () => eat());
@@ -667,8 +683,17 @@ function useOrPlace(sx, sy) {
     return;
   }
   const a = aimFrom(sx, sy);
+  // A sea turtle swimming out in the sea: hold out seagrass or kelp, and it comes to you like a turtle from the beach.
+  if (a.who && FISH[a.who.kind] && swimmers.includes(a.who)) {
+    if (a.who.kind !== 'turtle') { interact(a.who); return; }
+    if (Math.hypot(a.who.x - P.x, a.who.z - P.z) >= 6.5) { message('Swim right up to the sea turtle first, then press X.'); return; }
+    const s = heldItem();
+    if (!s || !TREATS.includes(s.id)) { message("The sea turtle won't let you near. Hold out some seagrass or kelp and try again."); return; }
+    mount(turtleFromSwimmer(a.who));
+    return;
+  }
   // Swing up onto a horse or a camel you're looking at — or one you're standing right beside.
-  if (a.who && (RIDE[a.who.kind] || NO_RIDE[a.who.kind]) && !a.who.dead && !a.who.mount) {
+  if (a.who && (RIDE[a.who.kind] || NO_RIDE[a.who.kind]) && !a.who.dead && !a.who.mount && mobs.includes(a.who)) {
     const far = Math.hypot(a.who.x - P.x, a.who.z - P.z);
     if (far < 6.5) { mount(a.who); return; }
     message(`Walk right up to the ${SPECIES[a.who.kind].name} first, then press X.`);
@@ -1192,7 +1217,7 @@ const TREATS = ['apple', 'wheat', 'bread', 'figs', 'dates', 'olives', 'honeyCake
 function offerTreat(m) {
   const s = heldItem();
   if (!s || !TREATS.includes(s.id)) {
-    message(`The ${SPECIES[m.kind].name} won't let you near. Hold out an apple or some wheat and try again.`);
+    message(`The ${SPECIES[m.kind].name} won't let you near. Hold out ${m.kind === 'turtle' ? 'some seagrass or kelp' : m.kind === 'ostrich' ? 'some seed corn or a handful of grass' : 'an apple or some wheat'} and try again.`);
     return;
   }
   inv.remove(s.id, 1); refreshHotbar(); scheduleSave();
@@ -1214,7 +1239,19 @@ function saddle(m, on) {
   g.add(boxMesh(bw + 0.03, 0.06, bl * 0.16, 0xe8c44a, 0, y, -0.05 + bl * 0.42));
   m.g.add(g); m.rug = g;
 }
+/// A sea turtle swimming out in the sea is one of the sea's creatures, drawn and moved with the fish (it has flippers,
+/// not legs to ride on). To ride one, it becomes an ordinary turtle right where it is, swimming, and is coaxed and
+/// ridden just like one from the beach.
+function turtleFromSwimmer(f) {
+  entityGroup.remove(f.g);
+  const i = swimmers.indexOf(f); if (i >= 0) swimmers.splice(i, 1);
+  const m = addMob('turtle', f.x, f.z);
+  m.y = Math.min(f.y, WL - 0.62); m.inSea = true; m.home = [f.x, f.z]; m.tx = f.x; m.tz = f.z;
+  m.g.position.set(m.x, m.y, m.z); m.g.rotation.y = f.g.rotation.y;
+  return m;
+}
 function mount(m) {
+  if (!mobs.includes(m) || !m.legs) return;   // (only the animals that walk the world can be ridden)
   if (NO_RIDE[m.kind]) { message(NO_RIDE[m.kind]); return; }
   // A frightened animal won't be caught — unless you're holding out something it wants to eat.
   const food = heldItem();
@@ -1281,7 +1318,7 @@ function updateRide(dt, fwd, side) {
   m.phase = moved ? m.phase + dt * (swimming ? 7 : 14) : 0;
   // Flippers sweep in slow strokes; legs trot.
   const sw = moved ? Math.sin(m.phase) * (swimming ? 0.55 : 0.75) : 0;
-  m.legs.forEach((l, i) => { l.rotation.x = sw * (i === 0 || i === 3 ? 1 : -1); });
+  (m.legs || []).forEach((l, i) => { l.rotation.x = sw * (i === 0 || i === 3 ? 1 : -1); });
   m.g.position.set(m.x, m.y, m.z);
   // You sit astride, legs forward, reins in both hands, rising a little to the trot.
   P.x = m.x; P.z = m.z; P.y = m.y + seatY(m) + (moved ? Math.abs(Math.sin(m.phase)) * 0.06 : 0);
@@ -1914,13 +1951,22 @@ const LOOKS = {
 function addNpc(kind, name, title, x, z, look, extra = {}) {
   const lk = { skin: look[0], shirt: look[1], sleeves: look[1], pants: look[2], hair: extra.hair ?? 0x8a8a86, robe: true, beard: extra.beard ?? kind === 'guide', longHair: true, necklace: true, hat: extra.hat };
   const body = person(lk);
-  const y = world.groundY(Math.floor(x), Math.floor(z));
+  const y = extra.y ?? world.groundY(Math.floor(x), Math.floor(z));
   const n = { kind, name, title, x, z, y, home: [x, z], tx: x, tz: z, wait: Math.random() * 3, roam: extra.roam ?? 8, body, phase: 0, ...extra };
   body.g.userData.entity = n;
   body.g.position.set(x, y, z);
   if (kind === 'guide') {
     const mark = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshBasicMaterial({ color: 0xffcc33 }));
     mark.position.y = 2.55; body.g.add(mark); n.mark = mark;
+  } else if (kind === 'merchant' || kind === 'clerk') {
+    // The market trader has a gold coin over their head; the ruler's clerk, a little purple-and-gold crown.
+    const g = new THREE.Group();
+    if (kind === 'merchant') { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16), new THREE.MeshBasicMaterial({ color: 0xffcc33 })); c.rotation.x = Math.PI / 2; g.add(c); }
+    else {
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.34), new THREE.MeshBasicMaterial({ color: 0x8a3ad0 })));
+      for (const [ox, oz] of [[-0.13, -0.13], [0.13, -0.13], [-0.13, 0.13], [0.13, 0.13]]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.07), new THREE.MeshBasicMaterial({ color: 0xffcc33 })); t.position.set(ox, 0.1, oz); g.add(t); }
+    }
+    g.position.y = 2.5; body.g.add(g); n.mark = g;
   }
   entityGroup.add(body.g);
   npcs.push(n);
@@ -1935,8 +1981,63 @@ function spawnGuides() {
       addNpc('guide', t.guide, t.title, G.leo.x, G.leo.z, [0xe2b896, 0xc4626e, 0x5a3a4a], { site: id, roam: 1.5, hair: 0xcfccc4, beard: true, hat: [['hat1', [0.56, 0.14, 0.56], [0, 0.47, 0], 0x2e2438], ['hat2', [0.36, 0.1, 0.36], [0, 0.57, -0.03], 0x2e2438]] });
       continue;
     }
+    if (id === BANK_ID && G.bank) {
+      // Nabu of the House of Egibi, in a deep blue Babylonian robe with a gold fringe, at the bank's north steps.
+      const [hx, hz, hy] = G.bank.head;
+      addNpc('guide', t.guide, t.title, hx, hz, [0xbd8a61, 0x2a3f8a, 0xd9b34a], { site: id, roam: 1.2, y: hy, beard: true, hair: 0x2a1a10 });
+      continue;
+    }
     const [gx, gz] = world.nearestLand(p.x + (id === 'greatWall' ? 3 : -14), p.z + 3);
     addNpc('guide', t.guide, t.title, gx + 0.5, gz + 0.5, [0xd2a07a, 0xd9b34a, 0x6b4e2e], { site: id, roam: 2.5 });
+  }
+}
+/// Your market stall, in Athens, Carthage or Florence: a table under a striped awning beside the market trader, with
+/// the things you've put out for sale on it.
+const stallMeshes = new Map();
+function showStall(city) {
+  const old = stallMeshes.get(city);
+  if (old) { scene.remove(old); old.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); stallMeshes.delete(city); }
+  const st = money.S.stall[city], m = npcs.find((n) => n.kind === 'merchant' && n.city === city);
+  if (!st || !st.owned || !m) return;
+  const g = new THREE.Group(), stripe = { athens: 0x2f5fa8, carthage: 0x6a2a6a, florence: 0xb8322a }[city] || 0xb8322a;
+  g.add(boxMesh(1.8, 0.1, 0.8, 0x8a5a2e, 0, 0.85, 0));
+  for (const [ox, oz] of [[-0.8, -0.32], [0.8, -0.32], [-0.8, 0.32], [0.8, 0.32]]) g.add(boxMesh(0.09, 0.85, 0.09, 0x6e4422, ox, 0.42, oz));
+  for (const ox of [-0.85, 0.85]) g.add(boxMesh(0.08, 1.5, 0.08, 0x6e4422, ox, 1.6, -0.42));
+  for (let k = 0; k < 6; k++) { const a = boxMesh(0.31, 0.05, 1.15, k % 2 ? 0xf2efe6 : stripe, -0.78 + k * 0.312, 2.3, 0.1); a.rotation.x = 0.22; g.add(a); }
+  st.items.slice(0, 4).forEach((r, i) => { const sp = iconSprite(r.id); sp.position.set(-0.6 + i * 0.4, 1.12, 0.05); sp.scale.set(0.36, 0.36, 0.36); g.add(sp); });
+  const x = m.home[0] + 2.4, z = m.home[1] + 0.5;
+  g.position.set(x, world.groundY(Math.floor(x), Math.floor(z), Math.floor(m.y + 1)), z);
+  g.rotation.y = Math.atan2(m.home[0] - x, m.home[1] - z) + Math.PI / 2;
+  scene.add(g); stallMeshes.set(city, g);
+}
+/// The money-changers at their counters in the World Bank, and in every city a market trader and the ruler's clerk.
+function spawnTraders() {
+  if (G.bank) G.bank.counters.forEach(([x, z, y, yaw], k) => {
+    const [name, title, style, fact] = CHANGERS[k % CHANGERS.length], lk = (LOOKS[style] || LOOKS.roman)[k % 2];
+    const n = addNpc('changer', name, title, x, z, lk, { y, roam: 0, wait: Infinity, fact, beard: k % 3 === 0 });
+    n.body.g.rotation.y = yaw;
+  });
+  for (const [id, city] of Object.entries(G.cities)) {
+    const m = MONEY[id], p = G.placed[id];
+    if (!m || !city || !city.streets || !p) continue;
+    let ok = [...city.streets, ...city.doors].map((q) => [q, walkable(q[0], q[2], q[1])]).filter(([q, g]) => g !== null && Math.abs(g - q[2]) < 1.1);
+    if (!ok.length) {   // (Giza's workers' village has no streets: stand them on open ground round the middle of town)
+      for (let k = 0; k < 16; k++) {
+        const a = k / 16 * Math.PI * 2, [lx, lz] = world.nearestLand(Math.floor(city.center[0] + Math.cos(a) * 6), Math.floor(city.center[1] + Math.sin(a) * 6));
+        const gy = world.groundY(lx, lz), g = walkable(lx + 0.5, gy, lz + 0.5);
+        if (g !== null) ok.push([[lx + 0.5, lz + 0.5, g], g]);
+      }
+    }
+    if (!ok.length) continue;
+    const near = (tx, tz, not) => ok.filter(([q]) => !not || Math.hypot(q[0] - not[0], q[1] - not[1]) > 6).sort(([a], [b]) => Math.hypot(a[0] - tx, a[1] - tz) - Math.hypot(b[0] - tx, b[1] - tz))[0];
+    // The trader stands by the market (the square nearest the middle of town); the clerk near the great building.
+    const sq = [...(city.plazas || [])].sort((a, b) => Math.hypot(a[0] - city.center[0], a[1] - city.center[1]) - Math.hypot(b[0] - city.center[0], b[1] - city.center[1]))[0] || city.center;
+    const ms = near(sq[0], sq[1]);
+    const cs = near(p.x, p.z, ms && ms[0]) || ms;
+    const looks = LOOKS[CITY_INFO[id].style] || LOOKS.roman;
+    if (ms) addNpc('merchant', m.merchant[0], m.merchant[1], ms[0][0], ms[0][1], looks[0], { city: id, roam: 2, y: ms[1] });
+    if (cs) addNpc('clerk', m.clerk[0], m.clerk[1], cs[0][0], cs[0][1], [looks[1][0], 0x6a2a8a, 0x3a2a4a], { city: id, roam: 2, y: cs[1], beard: true });
+    if (isFree(id)) showStall(id);
   }
 }
 // ---------- townspeople: crowds in the city streets ----------
@@ -2359,6 +2460,10 @@ function leoTalk(who, page) {
 }
 function talkPage(who, page) {
   if (who.kind === 'refugee' || who.kind === 'villager') { villageTalk(who, page); return; }
+  if (who.kind === 'merchant') { money.merchantTalk(who, page); return; }
+  if (who.kind === 'clerk') { money.clerkTalk(who, page); return; }
+  if (who.kind === 'changer') { money.changerTalk(who, page); return; }
+  if (who.kind === 'guide' && who.site === BANK_ID) { money.nabuTalk(who, page); return; }
   if (who.kind === 'trader' || who.kind === 'hunter') { travellerTalk(who, page); return; }
   let text = '', choices = [];
   if (who.kind === 'guide' && who.site === 'florence') { leoTalk(who, page); return; }
@@ -2397,14 +2502,16 @@ function talkPage(who, page) {
   }
   const jobFacts = talk.jobs[job[0]] || [job[1]];
   const order = ORDERS[job[0]], askOrder = order ? [['Could you make something for me?', go('order')]] : [];
+  // Anyone in a city will trade: buy and sell for the city's own money, or swap goods for goods.
+  const askTrade = MONEY[who.city] ? [['Will you trade with me?', () => { closeDialogue(who); who.trade = job[0]; money.open('trade', who); }]] : [];
   if (page === 'start') {
     const hello = talk.hello[(who.job + who.name.length) % talk.hello.length];
     const me = info.style === 'indus'
       ? `We don't know what people here called themselves, because nobody can read our writing yet. Just call me ${who.name}.`
       : `I'm ${who.name}, ${/^[aeiou]/i.test(job[0]) ? 'an' : 'a'} ${job[0]} here in ${city}.`;
-    show(`${hello} ${me} ${pick('job', jobFacts)}`, [['Tell me more about your work', go('job')], ...askOrder, ['Ask about life here', go('life')], ['Tell me about the famous buildings', go('wonder')], ['Teach me a word', go('word')], bye]);
+    show(`${hello} ${me} ${pick('job', jobFacts)}`, [['Tell me more about your work', go('job')], ...askTrade, ...askOrder, ['Ask about life here', go('life')], ['Tell me about the famous buildings', go('wonder')], ['Teach me a word', go('word')], bye]);
   } else if (page === 'ask') {
-    show('What would you like to know?', [['Tell me more about your work', go('job')], ...askOrder, ['Ask about life here', go('life')], ['Tell me about the famous buildings', go('wonder')], ['Teach me a word', go('word')], bye]);
+    show('What would you like to know?', [['Tell me more about your work', go('job')], ...askTrade, ...askOrder, ['Ask about life here', go('life')], ['Tell me about the famous buildings', go('wonder')], ['Teach me a word', go('word')], bye]);
   } else if (page === 'order' && order) {
     // Ask a craftsperson to make you something, in return for goods (people often bartered, goods for goods).
     const [item, n] = order.make, wants = order.want.map(([w, c]) => `${c} ${ITEM[w].name.toLowerCase()}`).join(' and ');
@@ -2682,6 +2789,66 @@ SITE_TEXT.liangzhu = {
   title: 'Ruins',
 };
 
+// The World Bank is made up for this game (there was never one bank for the whole world), but the bankers in it are
+// real: the House of Egibi in Babylon, Pasion of Athens, Caecilius Iucundus of Pompeii, Giovanni de' Medici…
+SITE_TEXT.worldBank = {
+  name: 'The World Bank',
+  place: 'Between the rivers, south of Babylon',
+  date: 'Made up for this game',
+  fact: "There was never one bank for the whole ancient world. But there were money-changers in every market, and the first banking family we know of lived right here, beside Babylon, about 2,600 years ago: the House of Egibi. They lent silver, kept other people's money safe, and wrote it all down on clay tablets. Here, any money in the world can be changed for any other.",
+  more: "The word 'bank' comes from the Italian 'banca', the bench that money-changers sat at in the markets of Florence. In Greek a bank is still called a 'trapeza', a table.",
+  hello: 'Welcome, traveller, to the World Bank!',
+  guide: 'Nabu',
+  title: 'Banker of the House of Egibi',
+};
+
+// ---------- money: which city you're in, and your purse on the screen ----------
+let moneyHere = null, moneyLast = null, moneyT = 0, moneyShown = '';
+function placeAt(x, z) {
+  const b = G.placed[BANK_ID];
+  if (b && x >= b.rect[0] - 8 && x <= b.rect[2] + 8 && z >= b.rect[1] - 8 && z <= b.rect[3] + 8) return BANK_ID;
+  let best = null, bd = Infinity;
+  for (const [id, c] of Object.entries(G.cities)) {
+    if (!c || !MONEY[id]) continue;
+    // The town itself, or close to its great building (not the whole of a big site: your camp is just inside Giza's).
+    const p = G.placed[id], d = Math.max(Math.abs(x - c.center[0]), Math.abs(z - c.center[1])) - (c.R + 8);
+    const dp = p ? Math.max(Math.abs(x - p.x), Math.abs(z - p.z)) - 24 : Infinity;
+    const dd = Math.min(d, dp);
+    if (dd <= 0 && dd < bd) { bd = dd; best = id; }
+  }
+  return best;
+}
+/// The purse on the screen: the money of the city you're in, or (out in the country) whatever you have most of.
+function refreshMoney(force) {
+  const here = moneyHere, el = $('moneyPill');
+  let cur = MONEY[here] ? here : null;
+  if (!cur) { let most = 0; for (const c of Object.keys(MONEY)) { const v = money.has(c) * MONEY[c].v; if (v > most) { most = v; cur = c; } } }
+  const key = `${here}|${cur}|${cur ? money.has(cur) : 0}`;
+  if (!force && key === moneyShown) return;
+  moneyShown = key;
+  if (!cur) { el.hidden = here !== BANK_ID; el.innerHTML = '<span class="label">World Bank</span>'; return; }
+  el.hidden = false;
+  el.innerHTML = `${coinImg(cur, 20)}<b>${money.has(cur).toLocaleString('en')}</b><span class="label">${money.has(cur) === 1 ? MONEY[cur].unit : MONEY[cur].units}${here === BANK_ID ? ' · World Bank' : ''}</span>`;
+}
+function updateMoney(dt) {
+  money.tick(dt);
+  moneyT -= dt;
+  if (moneyT > 0) return;
+  moneyT = 0.5;
+  const here = placeAt(P.x, P.z);
+  if (here !== moneyHere) { moneyHere = here; if (MONEY[here]) moneyLast = here; }
+  {
+    // The first time you're in a city (one you've found) after money arrived in the game, a card about it.
+    if (here && !G.talked.has('money:intro') && (MONEY[here] ? G.found.has(here) : G.found.has(BANK_ID))) {
+      G.talked.add('money:intro');
+      const m = MONEY[here];
+      showCard('Money has come to Polis World!', m ? `${SITE_TEXT[here].name} · ${m.units}` : 'The World Bank',
+        `Every city now has its own money, the money its people really used${m ? `: here it's ${m.units}` : ''}. Get some by selling things to the townspeople (talk to anyone and ask to trade), or by working for the city's ruler: look for the clerk with the purple crown over their head. The market trader, with the gold coin, buys and sells all sorts of things.\n\nIn the middle of the map, south of Babylon, the golden-domed World Bank changes any money for any other. In Athens, Carthage and Florence, where there was no king, you can own a market stall and put money into ships and companies.\n\nPress G (or tap Money) to see your purse.`);
+    }
+  }
+  refreshMoney();
+}
+
 function updateDiscovery(dt) {
   discoverT -= dt;
   if (discoverT > 0) return;
@@ -2693,7 +2860,9 @@ function updateDiscovery(dt) {
     addStars(1);
     showCard(`You found ${['giza', 'greatWall'].includes(id) ? 'the ' : ''}${t.name}!`, `${t.place} · ${t.date}`, `${t.fact}` + (t.guide === 'nobody' ? '' : `\n\nLook for ${t.guide} (the gold diamond) to learn more and earn another star.`) + (id === 'atlantis' ? '\n\nIn this game, a narrow shaft in the floor of Poseidon\'s temple leads down to a hidden cave with three relics. Climb down the ladder!' : '')
       + (id === 'liangzhu' ? '\n\nNobody lives here any more. The great mound in the middle held the palace, and there is an altar on top of it. A smaller mound away to the north-west is the kings\' burial ground, with a stair cut down into it. Three great jades are still here somewhere.' : '')
-      + (id === 'giza' ? '\n\nThere is a doorway on the north face of the Great Pyramid, nine courses up, with steps leading to it. Inside are the passages to the burial chamber — and the pharaoh\'s treasure. Take a torch.' : ''));
+      + (id === 'giza' ? '\n\nThere is a doorway on the north face of the Great Pyramid, nine courses up, with steps leading to it. Inside are the passages to the burial chamber — and the pharaoh\'s treasure. Take a torch.' : '')
+      + (id === BANK_ID ? '\n\nInside, eight money-changers at their counters will change any money in the world for any other, and buy gold and treasure from you.' : '')
+      + (MONEY[id] ? `\n\nMoney here: ${MONEY[id].units}. ${MONEY[id].merchant[0]}, the market trader (the gold coin), buys and sells, and ${MONEY[id].clerk[0]}, the ${MONEY[id].clerk[1].replace(/^The /, '').replace(/^./, (c) => c.toLowerCase())} (the purple crown), has paid work.` : ''));
     return;
   }
   // The famous buildings inside each city: a note the first time you walk up to one.
@@ -3477,7 +3646,7 @@ function closeDialogue(who) {
 function refreshPaused() { $('paused').hidden = document.pointerLockElement === canvas || input.freeLook || !G.started || input.mode !== 'desk' || !!openPanel || dialogueOpen; }
 function togglePanel(name) { if (openPanel === name) closePanels(); else { closePanels(true); openPanel = name; renderPanel(); if (document.pointerLockElement) document.exitPointerLock(); } }
 function closePanels(keepUnlocked) {
-  for (const id of ['inventory', 'map', 'help', 'card', 'designs', 'friends']) $(id).hidden = true;
+  for (const id of ['inventory', 'map', 'help', 'card', 'designs', 'friends', 'shop']) $(id).hidden = true;
   if (designer && designer.isOpen()) designer.close();
   const was = openPanel || dialogueOpen;
   // Shutting the windows shuts a conversation too. Before this, Escape left the talk box up with the
@@ -3623,6 +3792,9 @@ function renderPanel() {
     renderDesigns();
   } else if (openPanel === 'friends') {
     renderFriends();
+  } else if (openPanel === 'shop') {
+    $('shop').hidden = false;
+    money.render($('shopBox'));
   }
 }
 // The map: the whole world from above, the wonders, and you.
@@ -3656,7 +3828,7 @@ function drawMap() {
     b.style.left = `${(p.x / n) * 100}%`; b.style.top = `${(p.z / n) * 100}%`;
     b.textContent = secret ? '?' : SITE_TEXT[id].name;
     b.title = found ? `Travel to ${SITE_TEXT[id].name}` : secret ? 'A legend… somewhere under the sea?' : `${SITE_TEXT[id].name}: not visited yet. Click to put it on your compass, then walk there.`;
-    b.addEventListener('click', () => { if (!G.found.has(id)) { if (secret) message('Nobody knows where Atlantis is. Keep exploring!'); else aimFor(SITE_TEXT[id].name, p.x, p.z); return; } travel(p.x - 14, p.z + 3); });
+    b.addEventListener('click', () => { if (!G.found.has(id)) { if (secret) message('Nobody knows where Atlantis is. Keep exploring!'); else aimFor(SITE_TEXT[id].name, p.x, p.z); return; } if (id === BANK_ID && G.bank) travel(G.bank.door[0], G.bank.door[1]); else travel(p.x - 14, p.z + 3); });
     pins.appendChild(b);
   }
   if (G.mj) {
@@ -3952,7 +4124,7 @@ function save() {
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
     localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
-      animals: keptAnimals() }));
+      animals: keptAnimals(), money: money.state() }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
 /// Your own animals (in the pens, and any you've tamed), as they're saved.
@@ -4098,7 +4270,7 @@ function guestSave() {
   return { v: 1, wv: w.wv, n: w.n, edits: cleanEdits(w.edits), inv: own && Array.isArray(own.inv) ? own.inv.map((x) => (x ? { ...x } : null)) : kit.slots,
     p: [at[0], at[1], at[2], 0, -0.15], clock: Number(w.clock) || 0, stars: own ? own.stars || 0 : 0, found: own ? own.found || [] : [], talked: own ? own.talked || [] : [],
     hunger: 10, health: 10, sel: own ? own.sel ?? 0 : 0, fp2: own ? own.fp2 ?? true : true, relics: Array.isArray(w.relics) ? w.relics : [], villagers: Array.isArray(w.villagers) ? w.villagers : [],
-    giftDay: Math.floor((Number(w.clock) || 0) / 1440), worn: own ? own.worn : undefined, machines: w.machines, animals: Array.isArray(w.animals) ? w.animals.filter((a) => a && SPECIES[a.kind]) : [] };
+    giftDay: Math.floor((Number(w.clock) || 0) / 1440), worn: own ? own.worn : undefined, money: own ? own.money : undefined, machines: w.machines, animals: Array.isArray(w.animals) ? w.animals.filter((a) => a && SPECIES[a.kind]) : [] };
 }
 /// (A guest) just arrived: stand beside the host, say where you are, and catch up on anything that happened meanwhile.
 function guestArrived() {
@@ -4192,6 +4364,13 @@ function netMessage(g, m) {
     if (m.t === 'p') { const s = cleanState(m.a); if (!s) return; const o = others.get(g.id); if (o) o.s = s; net.all({ t: 'ps', a: [[g.id, ...s]] }, g.id); return; }
     if (m.t === 'look') { g.worn = cleanWorn(m.worn); g.held = cleanHeld(m.held); const o = others.get(g.id); if (o) setOtherLook(o, g.worn, g.held); net.all({ t: 'look', id: g.id, worn: g.worn, held: g.held }, g.id); return; }
     if (m.t === 'e') { const e = cleanEdits(m.e), q = cleanEdits(m.q); if (!e.length && !q.length) return; netFlush(); applyEdits(e, q); net.all({ t: 'e', e, q }); return; }
+    if (m.t === 'coins') {   // a guest giving money: to the host, or passed on to another guest
+      const n = Math.floor(Number(m.n));
+      if (!MONEY[m.cur] || !(n > 0 && n <= 1e6)) return;
+      if (m.to === 0) money.gift(m.cur, n, g.name);
+      else if (Number.isInteger(m.to) && net.guests.has(m.to)) net.to(m.to, { t: 'coins', cur: m.cur, n, from: g.name });
+      return;
+    }
     return;
   }
   // a guest, hearing from the host
@@ -4234,6 +4413,7 @@ function netMessage(g, m) {
     case 'look': { const o = others.get(m.id); if (o) setOtherLook(o, cleanWorn(m.worn), cleanHeld(m.held)); return; }
     case 'left': { const o = others.get(m.id); if (o) { toast(`${o.name} went home`); removeOther(m.id); renderFriends(); } return; }
     case 'e': applyEdits(cleanEdits(m.e), cleanEdits(m.q)); return;
+    case 'coins': { const n = Math.floor(Number(m.n)); if (MONEY[m.cur] && n > 0 && n <= 1e6) money.gift(m.cur, n, cleanName(m.from) || netHostName); return; }
     case 'sky': {
       if (typeof m.c !== 'number' || !Number.isFinite(m.c)) return;
       W.want = [0, 0.35, 0.7, 1].includes(m.w) ? m.w : 0;
@@ -4420,15 +4600,45 @@ function renderFriends() {
   if (!hosting && !guest && !$('fName').value) $('fName').value = storedName();
   if (guest) $('fGuestText').textContent = `You're in ${netHostName}'s world. Everything you build stays here, and your own world at home hasn't changed.`;
   const list = $('fList'); list.innerHTML = '';
-  const row = (name, note, id) => {
+  const row = (name, note, id, kick) => {
     const r = document.createElement('div'); r.className = 'frow';
     r.innerHTML = `<b></b><span></span>`; r.querySelector('b').textContent = name; r.querySelector('span').textContent = note;
-    if (id !== undefined) { const k = document.createElement('button'); k.textContent = 'Send home'; k.addEventListener('click', () => { net.kick(id); }); r.appendChild(k); }
+    if (id !== undefined) { const c = document.createElement('button'); c.textContent = 'Give coins'; c.addEventListener('click', () => giveCoins(id, name)); r.appendChild(c); }
+    if (kick !== undefined) { const k = document.createElement('button'); k.textContent = 'Send home'; k.addEventListener('click', () => { net.kick(kick); }); r.appendChild(k); }
     list.appendChild(r);
   };
-  if (hosting) { row(net.name, 'you'); for (const g of net.guests.values()) if (g.state === 'in') row(g.name, '', g.id); }
-  else if (guest) { for (const o of others.values()) row(o.name, o.id === 0 ? "it's their world" : ''); row(storedName() || 'You', 'you'); }
+  if (hosting) { row(net.name, 'you'); for (const g of net.guests.values()) if (g.state === 'in') row(g.name, '', g.id, g.id); }
+  else if (guest) { for (const o of others.values()) row(o.name, o.id === 0 ? "it's their world" : '', o.id); row(storedName() || 'You', 'you'); }
   list.hidden = !hosting && !guest;
+  $('fCoins').hidden = !fCoinsTo;
+  if (fCoinsTo) renderCoinGift();
+}
+/// Giving coins to a friend. Money moves freely where people are free to trade: in Athens, Carthage and Florence, and
+/// at the World Bank. (Under a king, money changed hands at his prices, and his tax collectors watched.)
+let fCoinsTo = null, fCoinsCur = null, fCoinsN = 1;
+function giveCoins(id, name) {
+  if (!(isFree(moneyHere) || moneyHere === BANK_ID)) { $('fStatus').textContent = 'You can give coins to a friend in Athens, Carthage or Florence, where trade is free, or at the World Bank.'; return; }
+  fCoinsTo = [id, name]; fCoinsCur = null; fCoinsN = 1; $('fStatus').textContent = ''; renderFriends();
+}
+function renderCoinGift() {
+  const [id, name] = fCoinsTo, box = $('fCoins'), held = Object.keys(MONEY).filter((c) => money.has(c) > 0);
+  if (!held.includes(fCoinsCur)) fCoinsCur = held.includes(moneyHere) ? moneyHere : held[0] || null;
+  fCoinsN = Math.max(1, Math.min(fCoinsN, fCoinsCur ? money.has(fCoinsCur) : 1));
+  box.innerHTML = `<b>Give coins to ${name.replace(/[<>&]/g, '')}</b>` + (held.length
+    ? `<div class="curgrid">${held.map((c) => `<button class="cur small${c === fCoinsCur ? ' on' : ''}" data-c="${c}">${coinImg(c, 20)}<span>${fmtMoney(c, money.has(c))}</span></button>`).join('')}</div>`
+      + `<div class="drow"><span class="stepper"><button data-n="-10">−10</button><button data-n="-1">−1</button><b>${fmtMoney(fCoinsCur, fCoinsN)}</b><button data-n="1">+1</button><button data-n="10">+10</button></span><button class="go" data-give="1">Give</button><button data-cancel="1">Cancel</button></div>`
+    : '<p class="fp">Your purse is empty.</p><div class="drow"><button data-cancel="1">OK</button></div>');
+  box.querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => { fCoinsCur = b.dataset.c; renderCoinGift(); }));
+  box.querySelectorAll('[data-n]').forEach((b) => b.addEventListener('click', () => { fCoinsN += Number(b.dataset.n); renderCoinGift(); }));
+  box.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => { fCoinsTo = null; renderFriends(); }));
+  box.querySelectorAll('[data-give]').forEach((b) => b.addEventListener('click', () => {
+    const n = fCoinsN, cur = fCoinsCur;
+    if (!cur || !money.take(cur, n)) return;
+    if (net.role === 'host') net.to(id, { t: 'coins', cur, n, from: net.name });
+    else net.send({ t: 'coins', cur, n, to: id });
+    sound.play('coin'); toast(`You gave ${name} ${fmtMoney(cur, n)}`);
+    fCoinsTo = null; renderFriends();
+  }));
 }
 $('fOpen').addEventListener('click', async () => {
   const name = cleanName($('fName').value);
@@ -4753,7 +4963,7 @@ async function boot() {
     scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
       groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
     for (let i = 0; i < m.prot.length; i += 2) world.protected.set(m.prot[i], m.prot[i + 1]);
-    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo; G.mj = m.megajungle;
+    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo; G.mj = m.megajungle; G.bank = m.bank;
     Promise.all([launched, pictures]).then(start);   // wait for Continue / New world on the launch page (and the pictures)
   };
   worker.onerror = () => setLoading('Something went wrong building the world. Reload the page to try again.', 0);
@@ -4796,12 +5006,14 @@ function start() {
   if (s && resized) { s.edits = []; s.p = null; for (const v of s.villagers || []) { v.home = [G.camp.spawn[0] + (Math.random() - 0.5) * 6, G.camp.spawn[1] + 2]; v.spot = null; } }
   if (s) {
     // Cities that are new or rebuilt since this world was saved replace anything built where they now stand.
-    const changed = s.wv >= WORLD_VERSION || s.wv === 13 ? [] : s.wv === 12 || s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence');
-    const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id]; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - 2 && x <= p.rect[2] + 2 && z >= p.rect[1] - 2 && z <= p.rect[3] + 2); });
+    const changed = (s.wv >= WORLD_VERSION ? [] : s.wv === 14 || s.wv === 13 ? [] : s.wv === 12 || s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence'))
+      .concat(s.wv >= 15 ? [] : ['worldBank']);   // the World Bank is new in 15: only its own square is rebuilt (with the slope round it)
+    const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id], k = id === 'worldBank' ? 6 : 2; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - k && x <= p.rect[2] + k && z >= p.rect[1] - k && z <= p.rect[3] + k); });
     for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
     if (s.p) [P.x, P.y, P.z, P.yaw, P.pitch] = s.p;
     else { [P.x, P.z] = G.camp.spawn; P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.yaw = 0; P.pitch = -0.2; }
+    money.load(s.money);
     G.clock = s.clock; G.stars = s.stars; G.found = new Set(s.found); G.talked = new Set(s.talked); G.hunger = s.hunger; G.health = s.health ?? 10; selected = s.sel ?? 0; G.firstPerson = s.fp2 ?? true; G.relics = new Set(s.relics || []); G.villagers = s.villagers || []; G.worn = { body: null, head: null, neck: null, ...(s.worn || {}) }; G.aim = s.aim || null; G.giftDay = s.giftDay ?? Math.floor(G.clock / 1440);
     for (const [i, b] of G.edits) if (b === 60) { const n = world.n; world.set(i % n, Math.floor(i / (n * n)), Math.floor(i / n) % n, 59); }
   } else {
@@ -4822,6 +5034,7 @@ function start() {
   else for (let k = 0; k < 3; k++) { const m = addMob('sheep', (pen[0] + pen[2]) / 2 + k - 1 + 0.5, (pen[1] + pen[3]) / 2 + 0.5); m.home = [(pen[0] + pen[2]) / 2 + 0.5, (pen[1] + pen[3]) / 2 + 0.5]; }
   redressPlayer();          // put back on whatever you were wearing when you saved
   spawnGuides();
+  spawnTraders();
   spawnVillagers();
   spawnTravellers();
   spawnRelics();
@@ -4912,8 +5125,23 @@ function updateSound(dt) {
 }
 
 let last = 0, hudT = 0;
+/// Each frame. The next frame is asked for first, so that a mistake anywhere in the game can never stop it: before, one
+/// error (riding a sea turtle that had no legs) stopped every frame after it and the screen froze. A mistake is told
+/// to the console once, and the game carries on.
+const loopTrouble = new Set();
 function loop(now) {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  requestAnimationFrame(loop);
+  try { frame(now); }
+  catch (err) {
+    const key = String(err && err.message);
+    if (!loopTrouble.has(key)) { loopTrouble.add(key); console.error('Polis World kept going after a mistake:', err); }
+    if (P.ride && (!mobs.includes(P.ride) || !P.ride.legs)) { const m = P.ride; P.ride = null; if (m) m.ridden = false; }
+  }
+}
+function frame(now) {
+  // (Never below nought: the first frame's time can be a moment before the world finished starting, and a step
+  // backwards in time threw everyone indoors up through the ceiling.)
+  const dt = Math.max(0, Math.min((now - last) / 1000, 0.05));
   last = now;
   // A safety net: if the game still thinks you're in a conversation but no talk box is showing,
   // let go of it. X does nothing at all while that flag is stuck, which looks like the key is broken.
@@ -4942,7 +5170,7 @@ function loop(now) {
     }
     updateBreaking(dt);
     updateFx(dt); updateDrops(dt); updateParticles(dt); updateFurnaces(dt);
-    updateMobs(dt); guardNests(dt); updateTravellers(dt); updateNpcs(dt); updateHerds(dt); updateCities(dt); updateDiscovery(dt); updateVillage(dt);
+    updateMobs(dt); guardNests(dt); updateTravellers(dt); updateNpcs(dt); updateHerds(dt); updateCities(dt); updateDiscovery(dt); updateVillage(dt); updateMoney(dt);
     updateFlow(dt); updateSwimmers(dt); updateRelics(dt); updateDesign(dt); updateSpray(dt);
     updateSurvival(dt); updateDaylight(dt);
     updateSound(dt); sound.tick();
@@ -4960,9 +5188,8 @@ function loop(now) {
     saveTimer -= dt; if (saveTimer <= 0 || (saveSoon && saveTimer < 12)) { saveTimer = 15; saveSoon = false; save(); }
   }
   if (openPanel !== 'designer') gfx.render(scene, camera, dt);
-  requestAnimationFrame(loop);
 }
 
 // For testing: open the page with ?debug to reach the game from the browser console.
-if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, storm, strike, get jungle() { return jungle; }, JUNGLE, net, others, addOther, updateOthers, get guestWorld() { return guestWorld; }, get netAsking() { return netAsking; }, answerFriend, applyEdits, worldForGuest, netFlush, get netEdits() { return netEdits; }, cleanEdits, toggleFriends: () => togglePanel('friends'), chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
+if (new URLSearchParams(location.search).has('debug')) window.polisDebug = { P, G, inv, money, MONEY, placeAt, get moneyHere() { return moneyHere; }, interact, crowds_: () => crowds, input, wildHere, LAND, get world() { return world; }, travel, setBlock, give, camera, shared, scene, swimmers, D, designs, spawnSwimmers, waterDepthAt, simWater: (k) => { for (let i = 0; i < k; i++) { flowT = 0; updateFlow(1); } return flowQ.length; }, closePanels, wakeWater, flowQ, chunks, renderer, openDesigner, crowds, JOBS, talk: (who, p) => talkPage(who, p), findPath, get scenery() { return scenery; }, get ships() { return ships; }, get events() { return events; }, npcs, updateNpcs, mobs, addMob, hitMob, hurt, mount, dismount, RIDE, NO_RIDE, updateRide, heldItem, offerTreat, sound, updateSound, guardNests, SPECIES, FISH, makeSwimmer, cloneAnimal, W, look, stepWeather: (dt) => updateWeather(dt), dressPreview, wearFrom, takeOffWorn, outfitLook, mobStep: (dt, n) => { for (let i = 0; i < n; i++) updateMobs(dt); }, breed: () => { breedT = 0; herdT = 0; breed(); return mobs.length; }, save, toggleDoor, villageTalk, get refugeeT() { return refugeeT; }, set refugeeT(v) { refugeeT = v; }, stepCities: (dt, n) => { for (let i = 0; i < n; i++) updateCities(dt); }, get designer() { return designer; }, get machines() { return machines; }, get farland() { return farland; }, get mats() { return mats; }, storm, strike, get jungle() { return jungle; }, JUNGLE, net, others, addOther, updateOthers, get guestWorld() { return guestWorld; }, get netAsking() { return netAsking; }, answerFriend, applyEdits, worldForGuest, netFlush, get netEdits() { return netEdits; }, cleanEdits, toggleFriends: () => togglePanel('friends'), chop: (x, y, z) => finishBreak({ x, y, z, b: world.get(x, y, z) }), get fx() { return fx; }, get fellWhy() { return fellWhy; }, compass: () => { compassLast = ""; updateCompass(); }, stepPlayer: (dt, n) => { for (let i = 0; i < n; i++) { updatePlayer(dt); if (machines) machines.update(dt, P); if (jungle) { jungle.update(dt, P); jungleVisit(); } updateCamera(dt); } }, render: (tweak) => { updateCamera(0.016); streamChunks(400); updateDaylight(0.001); if (scenery) scenery.update(0.016, { P, ...look }); if (tweak) tweak(); gfx.render(scene, camera, 1 / 60); }, gfx, useOrPlace: () => useOrPlace(), canopy, leoTalk: (who, p) => leoTalk(who, p), MACHINES };
 boot();

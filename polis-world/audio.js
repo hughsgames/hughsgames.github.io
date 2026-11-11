@@ -310,6 +310,9 @@ export class Sound {
         break;
       case 'smelt': this.noise(400, { dur: 0.6, gain: 0.6, q: 0.5, type: 'lowpass', sweepTo: 1200 }); break;
       case 'pickup': this.tone(880, { type: 'triangle', dur: 0.08, gain: 0.14, slideTo: 1320 }); break;
+      case 'coin':   // coins chinking into a purse
+        for (let k = 0; k < 3; k++) { const t = this.ctx.currentTime + k * 0.07; this.tone(r(2300, 2700), { type: 'triangle', dur: 0.09, gain: 0.07, when: t }); this.tone(r(3300, 3800), { type: 'sine', dur: 0.06, gain: 0.04, when: t }); }
+        break;
       case 'click': this.tone(1200, { type: 'square', dur: 0.03, gain: 0.07 }); break;
       case 'door': this.noise(300, { dur: 0.34, gain: 0.7, q: 1.6, sweepTo: 520 }); this.tone(130, { type: 'triangle', dur: 0.2, gain: 0.07, slideTo: 95 }); break;
       case 'hit':   // you hit an animal
