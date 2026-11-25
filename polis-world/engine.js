@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { SKY_GLSL, CLOUD_GLSL, PANO_GLSL, HASH_GLSL, makeNoiseTexture } from './shaders.js';
 import { buildAtlasData } from './textures.js';
 
-export const H = 96, WL = 32, CS = 16;
+export const H = 384, WL = 96, CS = 16;   // Polis World 2: half-metre blocks, 192 m of height, the sea at 48 m
 
 // Tiles in the block atlas (same order as the iPhone game).
 export const T = {
@@ -327,16 +327,16 @@ export function buildAtlas(img, extra, scale = 1) {
 }
 /// The finely painted atlas (textures.js), painted in a worker of its own so the page stays smooth, or right here if this
 /// browser can't run one. `scale` 8: 80-pixel pictures; 4: 40-pixel ones (for machines with no graphics chip).
-export function paintAtlas(img, extra, scale = 8) {
+export function paintAtlas(img, extra, scale = 8, style = 'painted') {
   const sheet = tileSheet(img, extra), sheetPx = sheet.getContext('2d').getImageData(0, 0, sheet.width, sheet.height).data;
   return new Promise((resolve, reject) => {
     let done = false;
-    const here = () => { if (done) return; done = true; try { resolve(buildAtlasData(sheetPx, T, scale)); } catch (err) { reject(err); } };
+    const here = () => { if (done) return; done = true; try { resolve(buildAtlasData(sheetPx, T, scale, 32, style)); } catch (err) { reject(err); } };
     try {
       const w = new Worker(new URL('./texworker.js', import.meta.url), { type: 'module' });
       w.onmessage = (e) => { w.terminate(); if (!done) { done = true; resolve(e.data); } };
       w.onerror = (e) => { e.preventDefault?.(); w.terminate(); here(); };
-      w.postMessage({ sheet: sheetPx, T, scale });
+      w.postMessage({ sheet: sheetPx, T, scale, style });
     } catch (_) { here(); }
   });
 }
@@ -1291,7 +1291,7 @@ export function meshChunk(w, cx, cz, only = null) {
   if (!only) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
     const set = w.lights.get((cx + dx) + ',' + (cz + dz));
     if (!set) continue;
-    for (const i of set) { const n = w.n, x = i % n, z = Math.floor(i / n) % n, y = Math.floor(i / (n * n)); emit.push([x + 0.5, y + 0.5, z + 0.5, GLOW[w.cells[i]]]); }
+    for (const i of set) { const n = w.n, x = i % n, z = Math.floor(i / n) % n, y = Math.floor(i / (n * n)); emit.push([x + 0.5, y + 0.5, z + 0.5, GLOW[w.peek ? w.peek(x, y, z) : w.cells[i]] * (w.lightScale || 1)]); }
   }
   const fire = (px, py, pz, nx, ny, nz) => {
     let best = 0;
@@ -1315,9 +1315,10 @@ export function meshChunk(w, cx, cz, only = null) {
     if (v === undefined) { let yy = y; while (yy < H - 1 && IS_WATERY[get(x, yy + 1, z)]) yy++; v = yy + waterHeight(get(x, yy, z), 0); surfCache.set(k, v); }
     return v;
   };
-  let maxY = 0;
-  for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) { for (let y = H - 1; y > maxY; y--) if (get(x, y, z)) { maxY = y; break; } }
-  for (let y = 0; y <= maxY; y++) for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) {
+  let maxY = 0, minY = 0;
+  if (!only && w.meshRange) [minY, maxY] = w.meshRange(cx, cz);   // (a chunked world knows where its blocks are)
+  else for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) { for (let y = H - 1; y > maxY; y--) if (get(x, y, z)) { maxY = y; break; } }
+  for (let y = minY; y <= maxY; y++) for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) {
     const b = get(x, y, z);
     if (!b) continue;
     const info = BLOCKS[b];

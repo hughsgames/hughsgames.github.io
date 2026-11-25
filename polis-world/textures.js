@@ -8,16 +8,16 @@
 // Pictures without a painter of their own are enlarged with the Scale2x rule (edges stay crisp, steps get smoothed),
 // then given a fine grain.
 
-export function paintHD(src, rows, R, T) {
+export function paintHD(src, rows, R, T, style = 'painted') {
   const W = 8 * R, out = new Uint8ClampedArray(W * rows * R * 4), bump = new Uint8ClampedArray(W * rows * R);
   const P = painters(T);
   for (let t = 0; t < 8 * rows; t++) {
     const pal = palette(src, t);
     if (!pal.n) continue;   // an empty slot
     const tile = new Float32Array(R * R * 4);
-    const fn = P[t] || generic, c = new Ctx(tile, R, t, pal, src);
+    const fn = style === 'pixel' ? pixelSoft : P[t] || generic, c = new Ctx(tile, R, t, pal, src);
     fn(c);
-    if (c.keepColours !== true) matchMean(tile, R, pal, c.keepColours === 'tint');
+    if (c.keepColours !== true && style !== 'pixel') matchMean(tile, R, pal, c.keepColours === 'tint');
     // The bumps: what the painter said stands up and sinks in, or else how light each pixel is.
     const h = c.h || new Float32Array(R * R).map((_, i) => (0.2126 * tile[i * 4] + 0.7152 * tile[i * 4 + 1] + 0.0722 * tile[i * 4 + 2]) / 255);
     let lo = 1e9, hi = -1e9;
@@ -39,8 +39,8 @@ export function paintHD(src, rows, R, T) {
 /// same places it always did. `scale` 8 gives 80-pixel pictures (1024 × 4096), 4 gives 40-pixel ones (512 × 2048).
 /// See-through pixels keep the colour of the pixels next to them, so smooth filtering doesn't draw dark rims round
 /// leaves and grass.
-export function buildAtlasData(sheet, T, scale = 8, rows = 32) {
-  const R = 80, hd = paintHD(sheet, rows, R, T), SW = 8 * R;
+export function buildAtlasData(sheet, T, scale = 8, rows = 32, style = 'painted') {
+  const R = 80, hd = paintHD(sheet, rows, R, T, style), SW = 8 * R;
   bleed(hd.rgba, SW, rows * R, R);
   const C = 16 * scale, Pd = 3 * scale, Tl = 10 * scale, k = Math.max(1, Math.round(R / Tl)), w = C * 8, h = C * rows;
   const rgba = new Uint8ClampedArray(w * h * 4), ht = new Float32Array(w * h);
@@ -764,6 +764,32 @@ function painters(T) {
     c.emboss(h, 1.3, 0.2);
   });
   return P;
+}
+
+// ---------- Polis World 2: the original pixel art, with softened edges ----------
+/// Every pixel of the 10 × 10 original stays a square of its own colour (the 8-bit look), but where two pixels meet
+/// the colours blend over about a fifth of a pixel, so up close there are no hard jagged steps.
+function pixelSoft(c) {
+  const R = c.R, k = R / 10, band = 0.2;
+  const src = []; for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) src.push(c.orig(x * k, y * k));
+  const at = (x, y) => src[mod(y, 10) * 10 + mod(x, 10)];
+  const w = (f) => smooth(Math.max(0, Math.min(1, (f - 0.5 + band) / (2 * band))));   // 0 → this pixel, 1 → the next
+  for (let y = 0; y < R; y++) for (let x = 0; x < R; x++) {
+    const u = (x + 0.5) / k, v = (y + 0.5) / k, ix = Math.floor(u - 0.5), iy = Math.floor(v - 0.5);
+    const fx = w(u - 0.5 - ix), fy = w(v - 0.5 - iy);
+    const p00 = at(ix, iy), p10 = at(ix + 1, iy), p01 = at(ix, iy + 1), p11 = at(ix + 1, iy + 1);
+    const out = [0, 0, 0, 0];
+    // Weighted by how solid each pixel is, so see-through pixels don't darken their neighbours.
+    let wsum = 0;
+    for (const [p, ww] of [[p00, (1 - fx) * (1 - fy)], [p10, fx * (1 - fy)], [p01, (1 - fx) * fy], [p11, fx * fy]]) {
+      const a = p[3] / 255;
+      out[0] += p[0] * ww * a; out[1] += p[1] * ww * a; out[2] += p[2] * ww * a; out[3] += p[3] * ww; wsum += ww * a;
+    }
+    const near = at(Math.floor(u), Math.floor(v));
+    if (wsum > 1e-4) c.set(x, y, [out[0] / wsum, out[1] / wsum, out[2] / wsum], out[3]);
+    else c.set(x, y, [near[0], near[1], near[2]], 0);
+  }
+  c.keepColours = true;
 }
 
 // ---------- anything else: enlarged smoothly, then given a fine grain ----------

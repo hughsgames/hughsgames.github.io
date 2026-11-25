@@ -19,17 +19,24 @@ import { Sound, CITY_LAND } from './audio.js';
 import { createMachines, MACHINES } from './machines.js';
 import { createMegajungle, JUNGLE } from './megajungle.js';
 import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
+import { ChunkWorld } from './world2.js';
+import { pickHome, citiesOf, mapPicture, CITY_NAME } from './v2.js';
+import { MAPS, KM, SIZE as MAP_SIZE } from './geo.js';
 import { createCommerce, MONEY, CHANGERS, BANK_ID, coinImg, fmt as fmtMoney, isFree } from './commerce.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '11 Nov 2026 · Money and the World Bank';
+const BUILD = '24 Nov 2026 · Polis World 2 (test)';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
 
 const $ = (id) => document.getElementById(id);
-const SAVE_KEY = 'polis-world-web-1';
+const SAVE_KEY = 'polis-world-2';            // Polis World 2: the four big maps
+const OLD_SAVE_KEY = 'polis-world-web-1';    // the first world: never touched, and can be downloaded from the launch page
+// Polis World 2: a block is half a metre, so people are 3.6 blocks tall, and everything about how they move is measured
+// in blocks (U per metre). Bodies are built at the old size and drawn U times bigger.
+const U = 2;
 // Bumped when the world itself changes (2: whole cities). Old saves keep everything, except changes inside the new cities.
 const WORLD_VERSION = 15;   // 15: the World Bank, in the middle of the map south of Babylon · 14: Hugh's megajungle on the north-east plateau (nothing rebuilt: what you built there stays) · 13: Florence rebuilt bigger, with Leonardo's working machines · 12: Florence, Leonardo's city, north of Rome · 11: the ruins of Liangzhu, the jade city, added south of the Yangtze   // 5: Olympia · 6: the Great Wall reaches round China · 7: Rome rebuilt around a full-size Colosseum · 8: Giza rebuilt at full size, with the tomb inside the Great Pyramid · 9: the tomb's passages made walkable and moved inside the stone · 10: a stair you can climb to the pyramid's door, and the Sphinx moved east with a chamber under it
 const LOG_LEAVES = { 7: 8, 9: 10, 11: 12, 24: 25, 124: 125, 126: 127, 128: 129, 130: 131, 132: 133, 157: 158 };   // every kind of trunk, and its own leaves
@@ -118,7 +125,7 @@ const P = { x: 0, y: 0, z: 0, vx: 0, vz: 0, vy: 0, yaw: 0, pitch: -0.25, ground:
 // ---------- chunks ----------
 const chunks = new Map();          // "cx,cz" → THREE.Group
 const dirty = new Set();
-let viewChunks = 8;
+let viewChunks = 10;   // (half-metre blocks: 10 chunks is 80 m)
 function chunkKey(cx, cz) { return cx + ',' + cz; }
 function buildChunk(cx, cz) {
   const k = chunkKey(cx, cz);
@@ -142,24 +149,36 @@ function markDirty(x, z, reach = 5) {
 }
 function streamChunks(budgetMs) {
   const t0 = performance.now();
+  world.clock++;
   // Changed chunks first (nearest first), then new ones around you.
   if (dirty.size) {
     const list = [...dirty].map((k) => k.split(',').map(Number)).sort((a, b) => dist2(a) - dist2(b));
     for (const [cx, cz] of list) { dirty.delete(chunkKey(cx, cz)); buildChunk(cx, cz); if (performance.now() - t0 > budgetMs) return; }
   }
+  // Polis World 2: the land is made in the background. A chunk is drawn once it and the four round it have arrived.
   const pcx = Math.floor(P.x / CS), pcz = Math.floor(P.z / CS), n = Math.ceil(world.n / CS);
-  const want = [];
-  for (let cz = pcz - viewChunks; cz <= pcz + viewChunks; cz++) for (let cx = pcx - viewChunks; cx <= pcx + viewChunks; cx++) {
+  const want = [], ask = [];
+  for (let cz = pcz - viewChunks - 1; cz <= pcz + viewChunks + 1; cz++) for (let cx = pcx - viewChunks - 1; cx <= pcx + viewChunks + 1; cx++) {
     if (cx < 0 || cz < 0 || cx >= n || cz >= n) continue;
     const d = Math.hypot(cx - pcx, cz - pcz);
+    if (d > viewChunks + 1.5) continue;
+    if (!world.has(cx, cz)) ask.push([cx, cz, d]);
     if (d <= viewChunks && !chunks.has(chunkKey(cx, cz))) want.push([cx, cz, d]);
   }
+  ask.sort((a, b) => a[2] - b[2]);
+  world.request(ask);
   want.sort((a, b) => a[2] - b[2]);
-  for (const [cx, cz] of want) { buildChunk(cx, cz); if (performance.now() - t0 > budgetMs) break; }
+  for (const [cx, cz] of want) {
+    if (!(world.has(cx, cz) && world.has(cx + 1, cz) && world.has(cx - 1, cz) && world.has(cx, cz + 1) && world.has(cx, cz - 1))) continue;
+    buildChunk(cx, cz);
+    if (performance.now() - t0 > budgetMs) break;
+  }
   for (const [k, group] of chunks) {
     const [cx, cz] = k.split(',').map(Number);
     if (Math.hypot(cx - pcx, cz - pcz) > viewChunks + 2) { for (const m of group.children) m.geometry.dispose(); scene.remove(group); chunks.delete(k); if (farland) farland.setLoaded(cx, cz, false); }
   }
+  // Keep the land near you (and a ring round it) in memory; the rest is made again if you come back.
+  if (world.clock % 60 === 0) world.forget(Math.pow(2 * viewChunks + 8, 2));
 }
 const dist2 = ([cx, cz]) => (cx * CS + 8 - P.x) ** 2 + (cz * CS + 8 - P.z) ** 2;
 
@@ -291,6 +310,7 @@ function person(look) {
     mesh.castShadow = mesh.receiveShadow = true;
     joints[j].add(mesh);
   }
+  g.scale.setScalar(U);   // (Polis World 2: drawn at life size in half-metre blocks)
   return { g, legs: [joints.legL, joints.legR], arms: [joints.armL, joints.armR], head: joints.head, pupils };
 }
 // How you look with nothing on but your own clothes. Anything you wear is laid over the top of this.
@@ -496,8 +516,8 @@ function aimFrom(sx, sy) {
   if (sx === undefined) ray.setFromCamera(new THREE.Vector2(0, 0), camera);
   else ray.setFromCamera(new THREE.Vector2((sx / innerWidth) * 2 - 1, -(sy / innerHeight) * 2 + 1), camera);
   const o = ray.ray.origin, d = ray.ray.direction;
-  const eye = new THREE.Vector3(P.x, P.y + 1.6, P.z);
-  const reach = 5.6;
+  const eye = new THREE.Vector3(P.x, P.y + 1.6 * U, P.z);
+  const reach = 5.6 * U;   // (as far as before in metres: 11 half-metre blocks)
   // Step through the grid (a voxel ray march).
   let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
   const sx2 = Math.sign(d.x), sy2 = Math.sign(d.y), sz2 = Math.sign(d.z);
@@ -518,7 +538,7 @@ function aimFrom(sx, sy) {
   }
   // Creatures and people.
   let who = null;
-  const near = entityGroup.children.filter((g) => g.visible && Math.abs(g.position.x - P.x) < 9 && Math.abs(g.position.z - P.z) < 9);
+  const near = entityGroup.children.filter((g) => g.visible && Math.abs(g.position.x - P.x) < 9 * U && Math.abs(g.position.z - P.z) < 9 * U);
   const hits = near.length ? ray.intersectObjects(near, true) : [];
   for (const h of hits) {
     if (block && h.distance > block.t) break;
@@ -1125,12 +1145,12 @@ Object.assign(SPECIES, WILD);   // tigers, elephants, parrots, turtles… (anima
 // Every animal, wild or kept, is built the same way now: out of boxes in animals.js, with its own
 // horns, ears, fleece or feathers. (Sheep, cows, pigs, chickens, goats and camels used to be plain
 // blocks with two dots for eyes.)
-function makeAnimal(kind) { return buildWild(kind); }
+function makeAnimal(kind) { const a = buildWild(kind); a.g.scale.setScalar(U); return a; }
 function addMob(kind, x, z, young = false) {
   const { g, legs, wings } = makeAnimal(kind);
   const y = world.groundY(Math.floor(x), Math.floor(z));
   const m = { kind, x, z, y, home: [x, z], tx: x, tz: z, wait: Math.random() * 3, hp: SPECIES[kind].hp, g, legs, wings, phase: 0, flee: 0, dead: false, young, age: 0, bred: -999 };
-  if (young) g.scale.setScalar(0.55);
+  if (young) g.scale.setScalar(0.55 * U);
   g.userData.entity = m;
   g.position.set(x, y, z);
   entityGroup.add(g);
@@ -1537,7 +1557,7 @@ function updateMobs(dt) {
     if (m.wings) m.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * (Math.sin(performance.now() / 900 + m.x) > 0.97 ? 0.6 : 0.05); });
     m.g.position.set(m.x, m.y, m.z);
     // Young animals grow up over about five minutes.
-    if (m.young) { m.age += dt; const k = Math.min(m.age / 300, 1); m.g.scale.setScalar(0.55 + 0.45 * k); if (k >= 1) m.young = false; }
+    if (m.young) { m.age += dt; const k = Math.min(m.age / 300, 1); m.g.scale.setScalar((0.55 + 0.45 * k) * U); if (k >= 1) m.young = false; }
   }
   for (let i = mobs.length-1; i >= 0; i--) if (mobs[i].dead && !mobs[i].g.parent) mobs.splice(i,1);
 }
@@ -2914,11 +2934,11 @@ function addStars(n, why) { sound.play('star'); G.stars += n; if (why) toast(why
 // ---------- the player ----------
 function blockTop(b) { return b === 34 || BLOCKS[b].gate ? 1.5 : BLOCKS[b].shape === 'bed' ? 0.56 : 1; }
 function collides(x, y, z) {
-  for (let by = Math.floor(y); by <= Math.floor(y + 1.79); by++)
-    for (let bz = Math.floor(z - 0.3); bz <= Math.floor(z + 0.3); bz++)
-      for (let bx = Math.floor(x - 0.3); bx <= Math.floor(x + 0.3); bx++) {
+  for (let by = Math.floor(y); by <= Math.floor(y + 1.79 * U); by++)
+    for (let bz = Math.floor(z - 0.3 * U); bz <= Math.floor(z + 0.3 * U); bz++)
+      for (let bx = Math.floor(x - 0.3 * U); bx <= Math.floor(x + 0.3 * U); bx++) {
         const b = world.get(bx, by, bz);
-        if (IS_SOLID[b] && y < by + blockTop(b) && y + 1.8 > by) return true;
+        if (IS_SOLID[b] && y < by + blockTop(b) && y + 1.8 * U > by) return true;
       }
   return !!ships && ships.solid(x, y, z);   // a warship's hull, and its deck to stand on
 }
@@ -2934,20 +2954,20 @@ function updatePlayer(dt) {
   if (machines && machines.riding) { driveMachine(dt, fwd, side); return; }   // in one of Leonardo's machines
   const amt = Math.min(Math.hypot(fwd, side), 1);
   const fx0 = Math.floor(P.x), fz0 = Math.floor(P.z);
-  const feet = world.get(fx0, Math.floor(P.y + 0.4), fz0);
-  P.water = IS_WATERY[feet] === 1 || IS_WATERY[world.get(fx0, Math.floor(P.y + 1.2), fz0)] === 1;
-  const lo = world.get(fx0, Math.floor(P.y + 0.2), fz0), hi = world.get(fx0, Math.floor(P.y + 1.2), fz0);
+  const feet = world.get(fx0, Math.floor(P.y + 0.4 * U), fz0);
+  P.water = IS_WATERY[feet] === 1 || IS_WATERY[world.get(fx0, Math.floor(P.y + 1.2 * U), fz0)] === 1;
+  const lo = world.get(fx0, Math.floor(P.y + 0.2 * U), fz0), hi = world.get(fx0, Math.floor(P.y + 1.2 * U), fz0);
   P.ladder = !!(BLOCKS[lo].climb || BLOCKS[hi].climb);
   // A drainer vine holds you up like a ladder, but it drinks your health while you hang on.
   if (lo === 160 || hi === 160) {
     P.vineT = (P.vineT ?? 1.2) - dt;
     if (P.vineT <= 0) { P.vineT = 3; hurt(1, null); if (!G.talked.has('_vine')) { G.talked.add('_vine'); message('Drainer vines are good for climbing, but they drain your health while you hold on. Climb fast!'); } }
   } else P.vineT = 1.2;
-  const flowV = P.water ? currentAt(fx0, Math.floor(P.y + 0.4), fz0) : [0, 0, 0];
+  const flowV = P.water ? currentAt(fx0, Math.floor(P.y + 0.4 * U), fz0) : [0, 0, 0];
   const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
   const suit = G.worn && G.worn.head === 'divingSuit';   // Leonardo's diving hood: walk the sea bed, and quicker under water
   const slow = jungle ? jungle.state.slow : 1;   // sponge leeches make you slow and heavy
-  const speed = (P.water ? (suit ? 3.8 : 2.6) : sprint ? 6.4 : 4.3) * (G.hunger <= 0 ? 0.7 : 1) * slow;
+  const speed = (P.water ? (suit ? 3.8 : 2.6) : sprint ? 6.4 : 4.3) * (G.hunger <= 0 ? 0.7 : 1) * slow * U;
   let vx = 0, vz = 0;
   if (amt > 0.08) {
     const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
@@ -2960,7 +2980,7 @@ function updatePlayer(dt) {
     breaking = null;
   } else P.walk = 0;
   // Running water carries you along.
-  vx += flowV[0] * 2.2; vz += flowV[2] * 2.2;
+  vx += flowV[0] * 2.2 * U; vz += flowV[2] * 2.2 * U;
   // A flash flood (or anything else) shoving you along.
   if (P.pushT > 0) { P.pushT -= dt; vx += P.pushX; vz += P.pushZ; P.vx = vx; P.vz = vz; }
   P.vx += (vx - P.vx) * Math.min(dt * (P.water ? 6 : 14), 1);
@@ -2968,26 +2988,26 @@ function updatePlayer(dt) {
   // Gravity, jumping, swimming and climbing.
   if (P.ladder) {
     const up = k.has('Space') || (input.mode === 'touch' ? false : fwd > 0.5 && blockedAhead()), down = k.has('ShiftLeft') || k.has('ShiftRight') || fwd < -0.5;
-    P.vy = up ? 3.2 : down ? -3.2 : -0.6;
+    P.vy = (up ? 3.2 : down ? -3.2 : -0.6) * U;
     P.ground = false;
   } else if (P.water) {
     // Water holds you up: you sink slowly, and Space swims you up. Falling water pushes you down.
-    P.vy += (k.has('Space') ? 5 : -1.6) * dt * 4 + flowV[1] * dt * 14;
+    P.vy += ((k.has('Space') ? 5 : -1.6) * dt * 4 + flowV[1] * dt * 14) * U;
     P.vy *= Math.max(0, 1 - dt * 1.5);
-    P.vy = Math.max(-3, Math.min(P.vy, 4));
+    P.vy = Math.max(-3 * U, Math.min(P.vy, 4 * U));
     // Look down and swim forward (or hold Shift) to dive; look up to come back up.
     const diving = k.has('ShiftLeft') || k.has('ShiftRight');
-    if (amt > 0.08) P.vy += Math.sin(P.pitch) * fwd * dt * 12;
-    if (diving) P.vy -= dt * 10;
-    if (suit && !k.has('Space')) P.vy -= dt * 9;   // the hood's weights keep you down on the bottom
-    P.vy = Math.max(-3.5, Math.min(P.vy, 4));
-    if (!k.has('Space') && !diving && !suit && !(amt > 0.08 && P.pitch < -0.3) && world.get(Math.floor(P.x), Math.floor(P.y + 1.5), Math.floor(P.z)) === 0) P.vy = Math.max(P.vy, 0) * 0.5;
+    if (amt > 0.08) P.vy += Math.sin(P.pitch) * fwd * dt * 12 * U;
+    if (diving) P.vy -= dt * 10 * U;
+    if (suit && !k.has('Space')) P.vy -= dt * 9 * U;   // the hood's weights keep you down on the bottom
+    P.vy = Math.max(-3.5 * U, Math.min(P.vy, 4 * U));
+    if (!k.has('Space') && !diving && !suit && !(amt > 0.08 && P.pitch < -0.3) && world.get(Math.floor(P.x), Math.floor(P.y + 1.5 * U), Math.floor(P.z)) === 0) P.vy = Math.max(P.vy, 0) * 0.5;
   } else {
-    P.vy -= 28 * dt;
-    if (P.ground && k.has('Space')) { P.vy = 8.6 * Math.max(0.7, slow); P.ground = false; sound.play('jump'); }
+    P.vy -= 28 * U * dt;
+    if (P.ground && k.has('Space')) { P.vy = 8.6 * U * Math.max(0.7, slow); P.ground = false; sound.play('jump'); }
     // Holding Leonardo's parachute, you float down instead of falling.
-    if (!P.ground && P.vy < -2.4 && heldItem()?.id === 'parachute') {
-      P.vy = -2.4; P.chute = true;
+    if (!P.ground && P.vy < -2.4 * U && heldItem()?.id === 'parachute') {
+      P.vy = -2.4 * U; P.chute = true;
       if (!G.talked.has('_chute')) { G.talked.add('_chute'); addStars(1, 'You floated down under Leonardo\'s parachute!'); }
     }
   }
@@ -3002,7 +3022,7 @@ function updatePlayer(dt) {
       let top = P.y + 1.05;
       while (top > P.y && !collides(nx, top - 0.05, nz)) top -= 0.05;
       // Your eyes rise smoothly onto the step instead of jumping up a whole block in one frame.
-      P.eyeLag = Math.max(-1.2, (P.eyeLag || 0) - (top - P.y));
+      P.eyeLag = Math.max(-1.2 * U, (P.eyeLag || 0) - (top - P.y));
       P.y = top; P.x = nx; P.z = nz;
     }
   }
@@ -3029,23 +3049,23 @@ function updatePlayer(dt) {
   if (breaking || P.swing > 0) { P.swing = Math.max(0, P.swing - dt); b.arms[1].rotation.x = breaking ? -1.3 + Math.sin(performance.now() / 60) * 0.6 : -1.6 * Math.sin(P.swing / 0.25 * Math.PI); }
   else b.arms[1].rotation.x = sw;
 }
-function blockedAhead() { const x = P.x + Math.sin(P.yaw) * 0.45, z = P.z + Math.cos(P.yaw) * 0.45; return collides(x, P.y + 0.05, z) || world.get(Math.floor(x), Math.floor(P.y + 0.5), Math.floor(z)) === 73; }
+function blockedAhead() { const x = P.x + Math.sin(P.yaw) * 0.45 * U, z = P.z + Math.cos(P.yaw) * 0.45 * U; return collides(x, P.y + 0.05, z) || world.get(Math.floor(x), Math.floor(P.y + 0.5 * U), Math.floor(z)) === 73; }
 const angleLerp = (a, b, t) => { let d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return a + d * t; };
 
 let shake = 0;
 function updateCamera(dt) {
   if (P.eyeLag) { P.eyeLag *= Math.exp(-dt * 14); if (P.eyeLag > -0.002) P.eyeLag = 0; }
-  const head = new THREE.Vector3(P.x, P.y + 1.62 + (P.eyeLag || 0), P.z);
+  const head = new THREE.Vector3(P.x, P.y + 1.62 * U + (P.eyeLag || 0), P.z);
   const dir = new THREE.Vector3(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
   let fp = G.firstPerson;
   if (!fp) {
     // Back off behind your head until something solid is in the way.
     const back = dir.clone().negate();
-    let d = 0.4, allowed = G.camDist;
-    while (d < G.camDist) { const q = head.clone().addScaledVector(back, d); const bb = world.get(Math.floor(q.x), Math.floor(q.y), Math.floor(q.z)); if (IS_CUBE[bb] && !IS_CUT[bb]) { allowed = Math.max(d - 0.35, 0.3); break; } d += 0.2; }
+    let d = 0.4 * U, allowed = G.camDist * U;
+    while (d < G.camDist * U) { const q = head.clone().addScaledVector(back, d); const bb = world.get(Math.floor(q.x), Math.floor(q.y), Math.floor(q.z)); if (IS_CUBE[bb] && !IS_CUT[bb]) { allowed = Math.max(d - 0.35, 0.3); break; } d += 0.25; }
     camCur = allowed < camCur ? allowed : camCur + (allowed - camCur) * Math.min(dt * 3, 1);
-    if (camCur < 1.1) fp = true;
-    else camera.position.copy(head).addScaledVector(back, camCur).add(new THREE.Vector3(0, 0.25, 0));
+    if (camCur < 1.1 * U) fp = true;
+    else camera.position.copy(head).addScaledVector(back, camCur).add(new THREE.Vector3(0, 0.25 * U, 0));
   }
   if (fp) camera.position.copy(head);
   playerBody.g.visible = !fp;
@@ -3060,7 +3080,7 @@ function updateCamera(dt) {
   if (shake > 0) { shake = Math.max(0, shake - dt); const s = shake * 0.3; camera.position.x += (Math.random() - 0.5) * s; camera.position.y += (Math.random() - 0.5) * s; }
   sky.position.copy(camera.position);
 }
-let camCur = 5.5;
+let camCur = 5.5 * 2;
 
 // ---------- day and night ----------
 let localLight = 1, localT = 0;
@@ -4120,10 +4140,10 @@ function save() {
   if (guestWorld) return;   // a guest saves nothing: their own world at home stays exactly as it was
   try {
     const edits = [];
-    for (const [i, b] of G.edits) edits.push(i, b);
+    for (const [i, b] of world.allEdits()) edits.push(i, b);
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, map: world.mapId, home: G.camp.spawn, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
       animals: keptAnimals(), money: money.state() }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
@@ -4753,12 +4773,22 @@ function setUpLaunch(note) {
   $('btnRestore').hidden = !bak;
   if (bak) $('btnRestore').textContent = `Bring back my older world (${bak.stars || 0} stars)`;
 }
+let launchChoice = null;
 function launch() { $('launch').hidden = true; launchGo(); }
+/// Polis World 2: a new world starts by choosing a land and where your home goes.
+async function chooseAndLaunch() {
+  if (readSave(SAVE_KEY)) { launch(); return; }
+  $('launch').hidden = true;
+  const pick = await pickHome();
+  if (!pick) { $('launch').hidden = false; return; }
+  launchChoice = pick;
+  launch();
+}
 // The browser only lets a page make a sound after a click, so the first touch of mouse or keyboard
 // anywhere starts the music, whichever way the game was opened.
 for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(ev, () => sound.start(), { capture: true });
 $('btnPlay').addEventListener('click', () => sound.start());
-$('btnPlay').addEventListener('click', launch);
+$('btnPlay').addEventListener('click', chooseAndLaunch);
 function refreshSoundBtns() {
   for (const id of ['btnSound', 'btnSound2']) { const b = $(id); if (b) b.textContent = 'Sound: ' + (sound.on ? 'on' : 'off'); }
   for (const id of ['btnMusic', 'btnMusic2']) { const b = $(id); if (b) b.textContent = 'Music: ' + (sound.musicOn ? 'on' : 'off'); }
@@ -4793,7 +4823,7 @@ $('btnNewYes').addEventListener('click', () => {
     if (cur) localStorage.setItem(BACKUP_PREFIX + Date.now(), cur);   // if this fails (storage full), the old world stays put
     localStorage.removeItem(SAVE_KEY);
   } catch (_) { setUpLaunch('There isn\'t room to keep a backup of your world, so it hasn\'t been reset.'); return; }
-  launch();
+  chooseAndLaunch();
 });
 // Backing up a world as text: it can be kept anywhere, pasted back after a browser clears its storage, and carried
 // to another computer (or to a new web address, where the browser's own storage starts empty again).
@@ -4836,7 +4866,11 @@ $('btnRestore').addEventListener('click', () => {
   } catch (_) { setUpLaunch('Couldn\'t swap worlds: storage is full.'); }
 });
 setUpLaunch();
-if (new URLSearchParams(location.search).has('debug') && !new URLSearchParams(location.search).has('stay') && !invited) launch();   // (testing: straight into the game; &stay stays on the launch page)
+{ // (testing: ?debug&map=egypt&home=37000,30000 goes straight into the game)
+  const q = new URLSearchParams(location.search);
+  if (q.get('map') && MAPS[q.get('map')]) launchChoice = { map: q.get('map'), home: (q.get('home') || '40000,40000').split(',').map(Number) };
+  if (q.has('debug') && !q.has('stay') && !invited) (launchChoice ? launch() : chooseAndLaunch());
+}   // (testing: straight into the game; &stay stays on the launch page)
 
 // ---------- if the device takes the 3D picture away ----------
 // A phone or tablet sometimes drops a page's 3D drawing when you switch to another app or it needs memory back, and
@@ -4949,25 +4983,13 @@ async function boot() {
   // The blocks' pictures are painted afresh at eight times the detail of the original art (textures.js), in the
   // background while the world is built; a machine with no graphics chip gets them at four times. If that fails for any
   // reason, the original art is used, enlarged.
-  const painted = paintAtlas(atlasImg, extraImg, gfx.settings === QUALITY.fast || renderer.capabilities.maxTextureSize < 4096 ? 4 : 8);
+  const painted = paintAtlas(atlasImg, extraImg, gfx.settings === QUALITY.fast || renderer.capabilities.maxTextureSize < 4096 ? 4 : 8, 'pixel');   // (Polis World 2: the 8-bit look, softened)
   let picturesDone = null;
   const pictures = new Promise((res) => { picturesDone = res; });   // the textures and materials are all made
-  const cityInfo = Object.fromEntries(Object.entries(CITY_INFO).map(([k, v]) => [k, { population: v.population, style: v.style }]));
-  const worker = new Worker(new URL('./worldgen.js', import.meta.url));
-  setLoading('Building the world…', 0.05);
-  worker.onmessage = (e) => {
-    const m = e.data;
-    if (m.type === 'progress') { setLoading(m.msg, 0.05 + m.p * 0.85); return; }
-    worker.terminate();
-    world = new World(m.n, m.cells, m.bio);
-    scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
-      groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
-    for (let i = 0; i < m.prot.length; i += 2) world.protected.set(m.prot[i], m.prot[i + 1]);
-    G.placed = m.placed; G.cities = m.cities; G.camp = m.camp; G.relicSpots = m.relics; G.canyon = m.canyon; G.wake = m.wake; G.leo = m.leo; G.mj = m.megajungle; G.bank = m.bank;
-    Promise.all([launched, pictures]).then(start);   // wait for Continue / New world on the launch page (and the pictures)
-  };
-  worker.onerror = () => setLoading('Something went wrong building the world. Reload the page to try again.', 0);
-  worker.postMessage({ map: { rows: MAP_ROWS.map((r) => [...r].map((c) => MAP_KEY[c])), settle: MAP_SETTLE }, seed: WORLD_SEED, cityInfo });
+  // Polis World 2: there's no world to build up front. The land is made a chunk at a time around you once you've
+  // chosen your land and your home (start).
+  setLoading('Getting ready…', 0.3);
+  Promise.all([launched, pictures]).then(start);
   const atlasReady = painted.then((d) => ({ ...atlasTextures(d), data: d })).catch((err) => {
     console.warn('painting the blocks', err);
     const atlasCanvas = buildAtlas(atlasImg, extraImg, 4);
@@ -4996,9 +5018,24 @@ async function boot() {
   picturesDone();
 }
 
+/// Where your home is: you start here, your animals live here, and Home on the compass points here.
+function makeCamp(home) {
+  const [x, z] = home.map(Math.round);
+  return { spawn: [x, z], door: [x, z + 8], pen: [x + 10, z - 6, x + 22, z + 6] };
+}
 function start() {
-  // A guest builds the host's world instead of their own (whose save is only read, for their things and stars).
-  if (guestWorld && guestWorld.n !== world.n) { netRefused = true; net.stop(); guestWorld = null; setLoading("Your game and your friend's are different versions. Both of you reload the page (hold Shift and click Reload), then try again.", 0); return; }
+  // Polis World 2: the world comes from your save (or a friend's), or from the land and home you just picked.
+  const s0 = guestWorld ? null : load();
+  const choice = guestWorld ? { map: guestWorld.map, home: guestWorld.home } : s0 && MAPS[s0.map] ? { map: s0.map, home: s0.home } : launchChoice;
+  if (!choice || !MAPS[choice.map]) { setLoading('Choose a land to play in first. Reload the page to try again.', 0); return; }
+  const startEdits = new Map(), src = guestWorld ? guestWorld.edits : s0 ? s0.edits : [];
+  for (let i = 0; src && i + 1 < src.length; i += 2) startEdits.set(src[i], src[i + 1]);
+  world = new ChunkWorld(choice.map, startEdits);
+  world.startWorkers(Math.min(3, Math.max(2, (navigator.hardwareConcurrency || 4) >> 1)));
+  G.placed = {}; G.cities = citiesOf(choice.map); G.camp = makeCamp(choice.home);
+  G.relicSpots = []; G.canyon = null; G.wake = []; G.leo = null; G.mj = null; G.bank = null;
+  scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
+    groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
   const s = guestWorld ? guestSave() : load();
   // A world made at a different size (before the October 23 bigger map): your things, stars, discoveries, villagers and
   // animals all come with you, but buildings can't, because the land under them has moved. You start at your new camp.
@@ -5009,7 +5046,7 @@ function start() {
     const changed = (s.wv >= WORLD_VERSION ? [] : s.wv === 14 || s.wv === 13 ? [] : s.wv === 12 || s.wv === 11 ? ['florence'] : s.wv === 10 ? ['liangzhu', 'florence'] : s.wv === 9 || s.wv === 8 || s.wv === 7 ? ['giza', 'liangzhu', 'florence'] : s.wv === 6 || s.wv === 5 ? ['rome', 'giza', 'liangzhu', 'florence'] : s.wv === 4 ? ['olympia', 'rome', 'giza', 'liangzhu', 'florence'] : Object.keys(G.cities).concat('liangzhu', 'florence'))
       .concat(s.wv >= 15 ? [] : ['worldBank']);   // the World Bank is new in 15: only its own square is rebuilt (with the slope round it)
     const inCity = (x, z) => changed.some((id) => { const c = G.cities[id], p = G.placed[id], k = id === 'worldBank' ? 6 : 2; return (c && Math.abs(x - c.center[0]) <= c.R + 8 && Math.abs(z - c.center[1]) <= c.R + 8) || (p && x >= p.rect[0] - k && x <= p.rect[2] + k && z >= p.rect[1] - k && z <= p.rect[3] + k); });
-    for (let i = 0; i + 1 < s.edits.length; i += 2) { const idx = s.edits[i], b = s.edits[i + 1]; const n = world.n, x = idx % n, z = Math.floor(idx / n) % n, y = Math.floor(idx / (n * n)); if (inCity(x, z)) continue; world.set(x, y, z, b); G.edits.set(idx, b); }
+    for (let i = 0; i + 1 < s.edits.length; i += 2) G.edits.set(s.edits[i], s.edits[i + 1]);   // (already in the world: it puts them back as each chunk is made)
     inv.slots = s.inv.map((x) => x && ITEM[x.id] ? x : null);
     if (s.p) [P.x, P.y, P.z, P.yaw, P.pitch] = s.p;
     else { [P.x, P.z] = G.camp.spawn; P.y = world.groundY(Math.floor(P.x), Math.floor(P.z)); P.yaw = 0; P.pitch = -0.2; }
@@ -5033,34 +5070,18 @@ function start() {
   }
   else for (let k = 0; k < 3; k++) { const m = addMob('sheep', (pen[0] + pen[2]) / 2 + k - 1 + 0.5, (pen[1] + pen[3]) / 2 + 0.5); m.home = [(pen[0] + pen[2]) / 2 + 0.5, (pen[1] + pen[3]) / 2 + 0.5]; }
   redressPlayer();          // put back on whatever you were wearing when you saved
-  spawnGuides();
-  spawnTraders();
-  spawnVillagers();
-  spawnTravellers();
-  spawnRelics();
-  try { ships = createShips({ scene, world, WL, IS_WATERY, cities: G.cities }); } catch (err) { console.warn('ships', err); ships = null; }
-  try {
-    if (G.leo) machines = createMachines({ scene, group: entityGroup, world, WL, H, IS_WATER, IS_SOLID, spots: G.leo.machines, targets: G.leo.targets, saved: s && !resized ? s.machines : null, sound, say: message, onFirst: machineFirst, onBullseye });
-  } catch (err) { console.warn('machines', err); machines = null; }
-  try {
-    if (G.mj) jungle = createMegajungle({ scene, group: entityGroup, world, H, IS_WATER, IS_SOLID, mj: G.mj, sound, say: message, spotted: jungleSpotted, hurt, drop: (id, n, x, y, z) => dropItem(id, n, x, y, z, 1.4), held: () => heldItem()?.id, nearFire });
-  } catch (err) { console.warn('megajungle', err); jungle = null; }
-  try {
-    const avoid = [...Object.values(G.placed).map((p) => p.rect), ...Object.values(G.cities).filter(Boolean).map((c) => [c.center[0] - c.R - 4, c.center[1] - c.R - 4, c.center[0] + c.R + 4, c.center[1] + c.R + 4]),
-      [G.camp.spawn[0] - 40, G.camp.spawn[1] - 40, G.camp.spawn[0] + 40, G.camp.spawn[1] + 40]];
-    const lanes = ships ? ships.ships.filter((q) => q.course).map((q) => [...q.course.a, ...q.course.b, q.t.L / 2 + 3]) : [];   // (a boat tied up in port has no course)   // and out of the warships' way
-    events = createEvents({ scene, world, WL, cities: G.cities, placed: G.placed, avoid, lanes });
-  } catch (err) { console.warn('events', err); events = null; }
+  // Polis World 2: the guides, traders, travellers, relics, ships, battles and far land come back as the cities are
+  // rebuilt at life size; for now only your own villagers do.
+  for (const f of [spawnVillagers]) { try { f(); } catch (err) { console.warn(f.name, err); } }
+  ships = null;
+  machines = null; jungle = null; events = null;
   for (const [x, y, z] of G.wake || []) wakeWater(x, y, z);
   refreshHotbar(); refreshHud();
-  // The far-off land, out to the horizon.
-  try {
-    farland = createFarLand({ world, shared, colorOf: (b) => tileColor(BLOCKS[b].top), sideOf: (b) => tileColor(BLOCKS[b].side), WL, H, IS_CROSS, IS_WATERY, q: gfx.settings });
-    scene.add(farland.group);
-    gfx.onChange((q) => farland.setQuality(q));
-  } catch (err) { console.warn('farland', err); farland = null; }
+  farland = null;   // (Polis World 2: a far land for the big maps is on its way)
   // Build the chunks right around you before showing the world.
   setLoading('Drawing the land…', 0.92);
+  // Make the land right round you now (it's only a few chunks), so you never start standing on nothing.
+  { const pcx = Math.floor(P.x / CS), pcz = Math.floor(P.z / CS); for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) world.chunk(pcx + dx, pcz + dz); }
   streamChunks(500);
   G.started = true;
   $('loading').hidden = true;
