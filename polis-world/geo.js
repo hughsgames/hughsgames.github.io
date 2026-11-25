@@ -7,9 +7,11 @@
 //
 // This file has no DOM and no imports, so it runs in a worker or in Node as well as on the page.
 
+import { cityPlan, cityColumn } from './cities.js';
+
 export const KM = 2000;              // blocks per kilometre (a block is half a metre)
 export const SIZE = 40 * KM;         // blocks across one map
-export const H = 384;                // world height in blocks (192 m)
+export const H = 448;                // world height in blocks (224 m: the Great Pyramid fits, at life size)
 export const SL = 96;                // sea level (the first y that is air above calm water)
 export const CS = 16;                // chunk width
 
@@ -97,7 +99,7 @@ export const MAPS = {
     ruggedness: 10, plateau: 45,
     cities: [
       { id: 'alexandria', x: 10.5, z: 3.2, r: 1.5, e: 3 },
-      { id: 'giza', x: 18.4, z: 14.6, r: 1.3, e: 30 },
+      { id: 'giza', x: 18.4, z: 14.6, r: 1.3, e: 10 },
       { id: 'memphis', x: 21.4, z: 16.4, r: 1.0, e: 5 },
       { id: 'thebes', x: 22.0, z: 33.0, r: 1.8, e: 6 },
     ],
@@ -399,10 +401,18 @@ export function genChunk(map, cx, cz) {
     // The snow line.
     if (biome === BIOME.snow && top > SL) put(x, top - 1, z, T.snow);
   }
+  // Which cities reach this chunk (with the padding, so no tree from outside grows into a street).
+  const near = [];
+  for (const C of map.cities) {
+    const P = cityPlan(C, KM, SL), dx = Math.max(0, Math.abs(x0 + CS / 2 - P.cx) - CS / 2 - PADW), dz = Math.max(0, Math.abs(z0 + CS / 2 - P.cz) - CS / 2 - PADW);
+    if (Math.hypot(dx, dz) <= P.R + 8) near.push(P);
+  }
+  const inCity = (bx, bz) => near.some((P) => Math.hypot(bx - P.cx, bz - P.cz) <= P.R + 8);
   // Plants and trees: anchored by hash at each column, including the padding, so neighbours agree.
   for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
     const top = colY[j * W + i], biome = colB[j * W + i];
     if (top <= SL + 1) continue;
+    if (near.length && inCity(x0 - PADW + i, z0 - PADW + j)) continue;
     const gr = GROWS[biome];
     if (!gr) continue;
     const bx = x0 - PADW + i, bz = z0 - PADW + j, lx = bx - x0, lz = bz - z0;
@@ -418,7 +428,26 @@ export function genChunk(map, cx, cz) {
       } else putSoft(lx, top, lz, p);
     }
   }
-  return { cx, cz, cells, tops, bio };
+  // The cities: each column inside one is cleared and built afresh (rivers running through are left alone).
+  if (near.length) for (let z = 0; z < CS; z++) for (let x = 0; x < CS; x++) {
+    const bx = x0 + x, bz = z0 + z;
+    for (const P of near) {
+      if (Math.hypot(bx - P.cx, bz - P.cz) > P.R + 6) continue;
+      if (tops[z * CS + x] <= SL && Math.hypot(bx - P.cx, bz - P.cz) < P.R) break;   // the river
+      for (let y = P.gy - 6; y < H; y++) cells[(y * CS + z) * CS + x] = 0;
+      for (let y = Math.max(1, tops[z * CS + x] - 2); y < P.gy - 4; y++) cells[(y * CS + z) * CS + x] = 3;
+      const put = (y, b) => { if (y > 0 && y < H) cells[(y * CS + z) * CS + x] = b; };
+      const g = cityColumn(P, bx, bz, put);
+      if (g == null) { for (let y = P.gy - 6; y < P.gy; y++) cells[(y * CS + z) * CS + x] = y === P.gy - 1 ? 1 : 2; tops[z * CS + x] = P.gy; }
+      else tops[z * CS + x] = g;
+      bio[z * CS + x] = BIOME.fields;
+      break;
+    }
+  }
+  // Only as high as anything reaches (most chunks are a third of the height): the rest reads as air.
+  let maxY = 0;
+  for (let i = cells.length - 1; i >= 0; i--) if (cells[i]) { maxY = Math.floor(i / (CS * CS)); break; }
+  return { cx, cz, cells: cells.slice(0, (maxY + 2) * CS * CS), tops, bio };
 }
 
 /// A tree at life size: trunks 8–30 blocks (4–15 m) high, crowns to match.
@@ -485,10 +514,44 @@ export function mapPixels(map, n) {
 
 /// Heights and colours for the far-off land: a grid of (n + 1) × (n + 1) points `step` blocks apart, starting at block
 /// (x0, z0). Heights are in blocks (never below the sea); colours are RGB bytes.
+// The colour of a block seen from far away (for the far land over the cities).
+const FAR_RGB = { 1: [110, 150, 70], 2: [120, 90, 60], 3: [128, 128, 128], 4: [220, 200, 150], 5: [140, 130, 120], 21: [214, 190, 130], 22: [120, 120, 120], 23: [170, 130, 80],
+  25: [60, 130, 50], 34: [150, 110, 70], 40: [50, 90, 160], 41: [170, 80, 60], 42: [236, 236, 230], 43: [40, 80, 190], 45: [240, 200, 40], 50: [210, 180, 90], 51: [110, 80, 50],
+  52: [225, 215, 180], 53: [170, 130, 90], 54: [200, 180, 140], 55: [140, 140, 140], 61: [150, 120, 110], 73: [150, 110, 70], 90: [240, 200, 50], 92: [180, 40, 30], 93: [200, 230, 240],
+  94: [190, 100, 64], 96: [232, 226, 212], 97: [180, 120, 60], 100: [228, 212, 176], 103: [88, 92, 98], 104: [170, 140, 100], 8: [50, 110, 40], 7: [100, 70, 40], 24: [130, 100, 60] };
 export function farGrid(map, x0, z0, step, n) {
   const h = new Float32Array((n + 1) * (n + 1)), col = new Uint8Array((n + 1) * (n + 1) * 3);
+  const plans = map.cities.map((C) => cityPlan(C, KM, SL));
+  let top = 0, tb = 0;
+  const put = (y, b) => { if (b && y >= top) { top = y; tb = b; } else if (!b && y === top) { top = y - 1; } };
   for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
     const bx = x0 + i * step, bz = z0 + j * step, k = j * (n + 1) + i;
+    // In a city, what the city has built there (the pyramids and towers stand up out of the far land).
+    const P = plans.find((q) => Math.abs(bx - q.cx) < q.R + 6 && Math.abs(bz - q.cz) < q.R + 6 && Math.hypot(bx - q.cx, bz - q.cz) <= q.R + 6);
+    if (P) {
+      const u = bx - P.cx, v = bz - P.cz, d = Math.hypot(u, v);
+      // A monument big enough to show at this distance: what's really there, at its full height.
+      const m = P.monuments.find((q) => u >= q.x0 && u <= q.x1 && v >= q.z0 && v <= q.z1 && Math.min(q.x1 - q.x0, q.z1 - q.z0) > step * 3);
+      if (m) {
+        let peak = P.gy - 1, rgb = [200, 190, 160];
+        const o = Math.max(1, step / 3);
+        for (const [ox, oz] of step < 32 ? [[0, 0]] : [[0, 0], [-o, -o], [o, -o], [-o, o], [o, o]]) {
+          top = P.gy - 1; tb = 0;
+          if (cityColumn(P, Math.round(bx + ox), Math.round(bz + oz), put) == null) continue;
+          if (top > peak) { peak = top; rgb = FAR_RGB[tb] || rgb; }
+        }
+        h[k] = peak + 0.5; col[k * 3] = rgb[0] * 0.85; col[k * 3 + 1] = rgb[1] * 0.85; col[k * 3 + 2] = rgb[2] * 0.85;
+        continue;
+      }
+      // Otherwise the town seen from afar: a sea of rooftops in the middle, fields towards the walls.
+      if (d <= P.R) {
+        const outer = Math.max(0, Math.min(1, (d / P.R - 0.5) / 0.38)), roof = P.style.roof === 'flat' ? FAR_RGB[P.style.house[0]] || [200, 180, 150] : P.style.roof === 'grey' ? [88, 92, 98] : P.style.roof === 'thatch' ? [120, 110, 60] : [190, 100, 64];
+        const field = [120, 150, 70], t = outer * outer;
+        h[k] = P.gy + 9 * (1 - t) + 0.5;
+        for (let c = 0; c < 3; c++) col[k * 3 + c] = (roof[c] * (1 - t) + field[c] * t) * 0.85;
+        continue;
+      }
+    }
     if (bx < -4000 || bz < -4000 || bx > SIZE + 4000 || bz > SIZE + 4000) { h[k] = SL - 0.3; col[k * 3] = 44; col[k * 3 + 1] = 92; col[k * 3 + 2] = 158; continue; }
     const c = sample(map, bx / KM, bz / KM), y = SL + c.e * 2;
     let rgb = MAP_COL[c.biome] || [120, 160, 80];

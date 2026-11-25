@@ -3,7 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { SKY_GLSL, CLOUD_GLSL, PANO_GLSL, HASH_GLSL, makeNoiseTexture } from './shaders.js';
 import { buildAtlasData } from './textures.js';
 
-export const H = 384, WL = 96, CS = 16;   // Polis World 2: half-metre blocks, 192 m of height, the sea at 48 m
+export const H = 448, WL = 96, CS = 16;   // Polis World 2: half-metre blocks, 224 m of height, the sea at 48 m
 
 // Tiles in the block atlas (same order as the iPhone game).
 export const T = {

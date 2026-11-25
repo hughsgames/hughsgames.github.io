@@ -406,7 +406,7 @@ export function createScenery({ scene, world, H, WL, isSolid, isAir, groundY, li
         const set = lights.get(cx + ',' + cz); if (!set) continue;
         for (const i of set) {
           if (k >= 400) break;
-          const x = i % n, z = Math.floor(i / n) % n, y = Math.floor(i / (n * n)), b = world.cells[i];
+          const x = i % n, z = Math.floor(i / n) % n, y = Math.floor(i / (n * n)), b = world.peek ? world.peek(x, y, z) : world.cells[i];
           const g = glow(b); if (!g) continue;
           hp.setXYZ(k, x + 0.5, y + (b === 56 ? 0.75 : 0.5), z + 0.5); hph.setX(k, (x * 13 + z * 7) % 10); hs.setX(k, b === 58 ? 2.8 : b === 56 ? 1.6 : 2.2); k++;
           if (b === 56 || b === 58 || b === 46) fires.push([x + 0.5, y + (b === 56 ? 0.72 : b === 58 ? 0.32 : 0.62), z + 0.5, b === 58 ? 1 : b === 46 ? 2 : 0]);

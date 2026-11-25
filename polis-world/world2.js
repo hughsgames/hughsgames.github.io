@@ -67,6 +67,7 @@ export class ChunkWorld {
     this.pending.delete(k);
     const x0 = c.cx * CS, z0 = c.cz * CS, n = this.n;
     const ed = this.edits.get(k);
+    if (ed) { let top = 0; for (const i of ed.keys()) top = Math.max(top, this.unidx(i)[1]); this.grow(c, top); }
     if (ed) for (const [i, b] of ed) {
       const [x, y, z] = this.unidx(i), lx = x - x0, lz = z - z0;
       c.cells[(y * CS + lz) * CS + lx] = b;
@@ -87,18 +88,15 @@ export class ChunkWorld {
     c.maxY = maxY;
     c.lowEdit = H;
     if (ed) for (const i of ed.keys()) c.lowEdit = Math.min(c.lowEdit, this.unidx(i)[1]);
-    if (ed) for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) c.tops[lz * CS + lx] = this.scanTopIn(c, lx, lz);
-    else for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
-      // genChunk's tops are the ground; trees and plants may stand above it.
-      let y = c.tops[lz * CS + lx];
-      while (y < H && !BLOCKS_SKY[c.cells[(y * CS + lz) * CS + lx]] && c.cells[(y * CS + lz) * CS + lx] !== 0) y++;
-      let top = c.tops[lz * CS + lx];
-      for (let yy = Math.min(H - 1, y + 40); yy >= top; yy--) if (BLOCKS_SKY[c.cells[(yy * CS + lz) * CS + lx]]) { top = yy + 1; break; }
-      c.tops[lz * CS + lx] = top;
-    }
+    for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) c.tops[lz * CS + lx] = this.scanTopIn(c, lx, lz);
     return c;
   }
-  scanTopIn(c, lx, lz) { for (let y = H - 1; y >= 0; y--) if (BLOCKS_SKY[c.cells[(y * CS + lz) * CS + lx]]) return y + 1; return 0; }
+  /// Makes room in a chunk for blocks up to height y (chunks only keep the layers they use).
+  grow(c, y) {
+    if ((y + 1) * CS * CS <= c.cells.length) return;
+    const n = new Uint8Array(H * CS * CS); n.set(c.cells); c.cells = n;
+  }
+  scanTopIn(c, lx, lz) { for (let y = Math.min(H, c.cells.length / (CS * CS)) - 1; y >= 0; y--) if (BLOCKS_SKY[c.cells[(y * CS + lz) * CS + lx]]) return y + 1; return 0; }
   /// Ask the workers for the chunks around (x, z) that aren't made yet, nearest first.
   request(list) {
     if (!this.workers.length) return false;
@@ -144,24 +142,25 @@ export class ChunkWorld {
     if (y < 0) return 20;
     if (y >= H || x < 0 || z < 0 || x >= this.n || z >= this.n) return 0;
     const c = this.chunk(Math.floor(x / CS), Math.floor(z / CS));
-    return c.cells[(y * CS + (z & 15)) * CS + (x & 15)];
+    return c.cells[(y * CS + (z & 15)) * CS + (x & 15)] | 0;
   }
   /// Like get, but never makes a chunk: unknown places read as `fallback`.
   peek(x, y, z, fallback = 0) {
     if (y < 0) return 20;
     if (y >= H || x < 0 || z < 0 || x >= this.n || z >= this.n) return 0;
     const c = this.chunks.get(this.key(Math.floor(x / CS), Math.floor(z / CS)));
-    return c ? c.cells[(y * CS + (z & 15)) * CS + (x & 15)] : fallback;
+    return c ? c.cells[(y * CS + (z & 15)) * CS + (x & 15)] | 0 : fallback;
   }
   solid(x, y, z) { return IS_SOLID[this.get(x, y, z)] === 1; }
   set(x, y, z, b) {
     if (!this.inb(x, z) || y < 0 || y >= H) return;
     const cx = Math.floor(x / CS), cz = Math.floor(z / CS), c = this.chunk(cx, cz), lx = x & 15, lz = z & 15;
-    const ci = (y * CS + lz) * CS + lx, old = c.cells[ci];
+    if (b) this.grow(c, y);
+    const ci = (y * CS + lz) * CS + lx, old = c.cells[ci] | 0;
     if (old === b) return;
     const i = this.idx(x, y, z), k = this.key(cx, cz);
     if (GLOW[old] > 0) this.lights.get(k)?.delete(i);
-    c.cells[ci] = b;
+    if (ci < c.cells.length) c.cells[ci] = b;
     if (GLOW[b] > 0) { if (!this.lights.has(k)) this.lights.set(k, new Set()); this.lights.get(k).add(i); }
     const ti = lz * CS + lx;
     if (BLOCKS_SKY[b] && y + 1 > c.tops[ti]) c.tops[ti] = y + 1;

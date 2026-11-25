@@ -27,7 +27,7 @@ import { createCommerce, MONEY, CHANGERS, BANK_ID, coinImg, fmt as fmtMoney, isF
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
 // reload the page while holding Shift (or Cmd+Shift+R on a Mac).
-const BUILD = '24 Nov 2026 · Polis World 2 (test)';
+const BUILD = '24 Nov 2026 · Polis World 2 (test 1)';
 
 // Every sound in the game is made here in the browser; there are no sound files to download.
 const sound = new Sound();
