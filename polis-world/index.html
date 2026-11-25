@@ -455,7 +455,8 @@ img.coin { image-rendering: pixelated; vertical-align: middle; flex-shrink: 0; }
 
 <div id="map" class="overlay" hidden>
   <div class="panel">
-    <div class="phead"><h2>The World</h2><button class="done" id="mapDone">Done</button></div>
+    <div class="phead"><h2 id="mapTitle">The World</h2><button class="done" id="mapDone">Done</button></div>
+    <div class="drow" style="justify-content:center;margin:0 0 6px"><button id="mapMoveHome" type="button">Move my home</button><button id="mapLands" type="button">Go to another land</button></div>
     <div class="mapwrap"><canvas id="mapCanvas" width="560" height="560"></canvas><div id="mapPins"></div><div class="mapnorth">▲ N</div></div>
     <p class="maphint">Gold labels are places you've visited: click one to travel there. Grey ones you haven't reached yet: click one and a gold marker on your compass shows you the way. North is the top of the map. Blue is your camp. The red arrow is you, pointing the way you're facing, green dots are animals you've tamed, and light blue names are friends playing with you.</p>
   </div>
@@ -591,8 +592,8 @@ img.coin { image-rendering: pixelated; vertical-align: middle; flex-shrink: 0; }
     <h1>Polis World</h1>
     <p class="tag">Explore the ancient world in blocks. Find the wonders, meet the people who lived there, and build your own village.</p>
     <div class="places">
-      <span>Rome</span><span>Athens</span><span>Giza</span><span>Alexandria</span><span>Babylon</span><span>Persepolis</span><span>Mohenjo-daro</span><span>Teotihuacan</span><span>Angkor</span><span>Great Wall</span><span>Atlantis (a legend)</span>
-      <span class="new">Play with friends</span><span class="new">All-new graphics</span><span class="new">Thunderstorms</span><span class="new">Jerusalem</span><span class="new">Carthage</span><span class="new">Forbidden City</span><span class="new">Wei · Shu · Wu</span><span class="new">Warships</span><span class="new">Battles &amp; great events</span><span class="new">Tigers, elephants &amp; more</span><span class="new">Florence &amp; Leonardo's machines</span><span class="new">Hugh's Megajungle</span><span class="new">Money &amp; the World Bank</span>
+      <span>Egypt</span><span>Asia</span><span>The Mediterranean</span><span>Yucatán</span>
+      <span class="new">Polis World 2 (test)</span><span class="new">Four lands, 40 km each</span><span class="new">Half-size blocks</span><span class="new">Life-size trees</span><span class="new">Choose where you live</span><span class="new">The 8-bit look is back</span>
     </div>
     <div id="saveInfo" class="saveinfo" hidden></div>
     <button id="btnPlay" class="lbtn" type="button">Start a new world</button>
@@ -610,6 +611,7 @@ img.coin { image-rendering: pixelated; vertical-align: middle; flex-shrink: 0; }
       <p id="jStatus" hidden></p>
     </div>
     <button id="btnRestore" class="linkbtn" type="button" hidden></button>
+    <button id="btnOldWorld" class="linkbtn" type="button" hidden>Download my first world (from before Polis World 2)</button>
     <div class="drow" style="justify-content:center">
       <button id="btnSound" type="button">Sound: on</button>
       <button id="btnMusic" type="button">Music: on</button>

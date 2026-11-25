@@ -482,3 +482,24 @@ export function mapPixels(map, n) {
   }
   return px;
 }
+
+/// Heights and colours for the far-off land: a grid of (n + 1) × (n + 1) points `step` blocks apart, starting at block
+/// (x0, z0). Heights are in blocks (never below the sea); colours are RGB bytes.
+export function farGrid(map, x0, z0, step, n) {
+  const h = new Float32Array((n + 1) * (n + 1)), col = new Uint8Array((n + 1) * (n + 1) * 3);
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    const bx = x0 + i * step, bz = z0 + j * step, k = j * (n + 1) + i;
+    if (bx < -4000 || bz < -4000 || bx > SIZE + 4000 || bz > SIZE + 4000) { h[k] = SL - 0.3; col[k * 3] = 44; col[k * 3 + 1] = 92; col[k * 3 + 2] = 158; continue; }
+    const c = sample(map, bx / KM, bz / KM), y = SL + c.e * 2;
+    let rgb = MAP_COL[c.biome] || [120, 160, 80];
+    const wet = c.sea || (c.river < 0.12 && c.e < 1) || c.cenote;
+    if (wet) rgb = c.sea ? [40, 86, 150] : [58, 104, 186];
+    h[k] = wet ? SL - 0.3 : Math.max(SL - 0.3, y - 0.5);
+    // Darker and a little mottled, like the textured ground and the treetops seen from far off.
+    const woods = c.biome === BIOME.forest || c.biome === BIOME.jungle || c.biome === BIOME.bamboo || c.biome === BIOME.mangrove;
+    const mottle = 1 + (hash2(bx >> 3, bz >> 3, 5) - 0.5) * 0.16 - (woods ? 0.18 * (0.5 + 0.5 * noise(bx / 40, bz / 40, 6)) : 0);
+    const sh = wet ? 0.9 : Math.min(1.1, 0.72 + c.e / 260) * mottle;
+    col[k * 3] = Math.min(255, rgb[0] * sh); col[k * 3 + 1] = Math.min(255, rgb[1] * sh); col[k * 3 + 2] = Math.min(255, rgb[2] * sh);
+  }
+  return { h, col };
+}

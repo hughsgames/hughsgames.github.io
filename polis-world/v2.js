@@ -50,7 +50,7 @@ export function homeOK(mapId, bx, bz) {
 
 /// Shows the map chooser, then the big map to put your home on. Resolves with { map, home: [x, z] } in blocks,
 /// or null if the player backs out. `only` limits it to one map (moving your home within the map you're in).
-export function pickHome({ only = null, current = null, title = null } = {}) {
+export function pickHome({ only = null, homes = {}, title = null } = {}) {
   const box = document.getElementById('worldPick');
   const cards = document.getElementById('wpMaps'), big = document.getElementById('wpBig');
   const canvas = document.getElementById('wpCanvas'), pins = document.getElementById('wpPins'), note = document.getElementById('wpNote');
@@ -76,7 +76,7 @@ export function pickHome({ only = null, current = null, title = null } = {}) {
       go.hidden = true;
     };
     const showBig = (id) => {
-      mapId = id; home = current && current.map === id ? current.home : null;
+      mapId = id; home = homes[id] || null;
       cards.hidden = true; big.hidden = false; go.hidden = false;
       document.getElementById('wpTitle').textContent = MAPS[id].name;
       document.getElementById('wpSub').textContent = 'Tap the map where you want your home. That is where you start, and where you come back to. You can move it later.';

@@ -22,6 +22,7 @@ import { createNet, readCode, cleanName, MAX_GUESTS } from './net.js';
 import { ChunkWorld } from './world2.js';
 import { pickHome, citiesOf, mapPicture, CITY_NAME } from './v2.js';
 import { MAPS, KM, SIZE as MAP_SIZE } from './geo.js';
+import { createFarLand2 } from './farland2.js';
 import { createCommerce, MONEY, CHANGERS, BANK_ID, coinImg, fmt as fmtMoney, isFree } from './commerce.js';
 
 // Shown on the launch page. If this doesn't match what you expect, your browser is using an old copy:
@@ -96,7 +97,7 @@ addEventListener('resize', resize);
 resize();
 
 // ---------- game state ----------
-let world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null, jungle = null, farland = null;
+let far2 = null, world = null, mats = null, atlasTex = null, scenery = null, ships = null, events = null, machines = null, jungle = null, farland = null;
 const look = { day: 1, warm: 0, under: false, horizon: new THREE.Color(), rain: 0, light: new THREE.Color(1, 1, 1), px: 500 };   // the light right now, for the sky and its life
 // The weather. It clouds over, rains for a while, then clears, and does it again later in the day.
 // `now` is how hard it is raining this instant; `until` is the clock reading when this spell ends.
@@ -3234,6 +3235,7 @@ function updateDaylight(dt) {
   else { scene.fog.near = viewChunks * CS * 0.66; scene.fog.far = viewChunks * CS * 1.06; shared.uFogMode.value = 0; }
   shared.uFogNear.value = scene.fog.near; shared.uFogFar.value = scene.fog.far; shared.uFogFlat.value.copy(scene.fog.color);
   if (farland && shared.uFogMode.value === 0) { shared.uFogNear.value = 1400; shared.uFogFar.value = 3600; scene.fog.near = 200; scene.fog.far = 1600; }
+  if (far2 && shared.uFogMode.value === 0) { shared.uFogNear.value = 2800; shared.uFogFar.value = 9000; scene.fog.near = 900; scene.fog.far = 11000; }
   if (farland) farland.update();
   $('underwater').hidden = !under;
   shared.uTime.value += dt;
@@ -3646,6 +3648,51 @@ function showCard(title, sub, body) {
 }
 $('cardOk').addEventListener('click', () => { closePanels(); if (cardQueue.length) showCard(...cardQueue.shift()); });
 for (const id of ['invDone', 'mapDone', 'helpDone']) $(id).addEventListener('click', () => closePanels());
+// Polis World 2: moving your home, and going to another land. Each land keeps its own buildings and its own home;
+// your things, stars, animals and villagers come with you.
+$('mapMoveHome').addEventListener('click', async () => {
+  closePanels(true);
+  const pick = await pickHome({ only: world.mapId, homes: { [world.mapId]: G.camp.spawn }, title: 'Move your home' });
+  if (!pick) return;
+  G.camp = makeCamp(pick.home); save();
+  message('Your home has moved. Press M and click Home to travel there.');
+});
+$('mapLands').addEventListener('click', async () => {
+  closePanels(true);
+  const homes = { [world.mapId]: G.camp.spawn };
+  for (const [id, l] of Object.entries(G.lands || {})) if (l.home) homes[id] = l.home;
+  const pick = await pickHome({ homes, title: 'Go to another land' });
+  if (!pick) return;
+  if (pick.map === world.mapId) { G.camp = makeCamp(pick.home); save(); travel(pick.home[0], pick.home[1]); return; }
+  goToLand(pick.map, pick.home);
+});
+/// Leaves this land for another: this one is put away (buildings, home) and the other is opened, at its home.
+function goToLand(mapId, home) {
+  if (guestWorld) { message("You're in a friend's world: go home first to travel to another land."); return; }
+  save();
+  const sv = load();
+  if (!sv) return;
+  const lands = { ...(sv.lands || {}), [sv.map]: { edits: sv.edits, home: sv.home } };
+  const there = lands[mapId] || { edits: [] };
+  delete lands[mapId];
+  Object.assign(sv, { map: mapId, home: home || there.home, edits: there.edits || [], lands, p: null });
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(sv)); sessionStorage.setItem(RESUME_KEY, '1'); } catch (_) { message("There isn't room to save, so you can't travel just now."); return; }
+  $('loading').hidden = false; setLoading(`Travelling to ${MAPS[mapId].name}…`, 0.5);
+  location.reload();
+}
+/// Reaching one of the great cities for the first time.
+let visitT = 0;
+function updateCityVisits(dt) {
+  visitT -= dt;
+  if (visitT > 0) return;
+  visitT = 1;
+  for (const [id, c] of Object.entries(G.cities)) {
+    if (G.found.has(id) || Math.hypot(P.x - c.center[0], P.z - c.center[1]) > c.R) continue;
+    G.found.add(id);
+    addStars(2, `You reached ${CITY_NAME[id] || id}!`);
+    scheduleSave();
+  }
+}
 function showDialogue(name, title, text, choices) {
   dialogueOpen = true;
   $('dlgName').textContent = name; $('dlgTitle').textContent = title; $('dlgText').textContent = text;
@@ -3821,23 +3868,13 @@ function renderPanel() {
 let mapBase = null;
 function drawMap() {
   const c = $('mapCanvas'), n = world.n;
-  if (!mapBase) {
-    mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = n;
-    const g = mapBase.getContext('2d'), img = g.createImageData(n, n);
-    for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
-      let y = H - 1, b = 0;
-      while (y > 0) { b = world.cells[(y * n + z) * n + x]; if (b && !IS_CROSS[b]) break; y--; }
-      let col = b === WATER ? new THREE.Color(0.16, 0.36, 0.62) : tileColor(BLOCKS[b].top);
-      if (b === WATER) { let f = y; while (f > 0 && world.cells[(f * n + z) * n + x] === WATER) f--; col = col.clone().multiplyScalar(Math.max(0.5, 1 - (y - f) * 0.05)); }
-      const shade = 0.7 + (y - 23) / 48 * 0.7;
-      const i = (z * n + x) * 4;
-      img.data[i] = Math.min(255, col.r * shade * 255); img.data[i + 1] = Math.min(255, col.g * shade * 255); img.data[i + 2] = Math.min(255, col.b * shade * 255); img.data[i + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
-  }
+  // Polis World 2: the picture of the whole land is drawn from its shape (in the background, the first time).
+  if (!mapBase) { mapBase = 'wait'; mapPicture(world.mapId, 512).then((pic) => { mapBase = pic; if (openPanel === 'map') drawMap(); }); }
+  if (mapBase === 'wait') { const g0 = c.getContext('2d'); g0.fillStyle = '#2c5c9e'; g0.fillRect(0, 0, c.width, c.height); }
   const size = c.width, s = size / n, g = c.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  g.drawImage(mapBase, 0, 0, size, size);
+  g.imageSmoothingEnabled = true;
+  if (mapBase && mapBase !== 'wait') g.drawImage(mapBase, 0, 0, size, size);
+  $('mapTitle').textContent = MAPS[world.mapId].name;
   const pins = $('mapPins'); pins.innerHTML = '';
   for (const [id, p] of Object.entries(G.placed)) {
     const b = document.createElement('button');
@@ -3849,6 +3886,16 @@ function drawMap() {
     b.textContent = secret ? '?' : SITE_TEXT[id].name;
     b.title = found ? `Travel to ${SITE_TEXT[id].name}` : secret ? 'A legend… somewhere under the sea?' : `${SITE_TEXT[id].name}: not visited yet. Click to put it on your compass, then walk there.`;
     b.addEventListener('click', () => { if (!G.found.has(id)) { if (secret) message('Nobody knows where Atlantis is. Keep exploring!'); else aimFor(SITE_TEXT[id].name, p.x, p.z); return; } if (id === BANK_ID && G.bank) travel(G.bank.door[0], G.bank.door[1]); else travel(p.x - 14, p.z + 3); });
+    pins.appendChild(b);
+  }
+  // The great cities of this land. Found ones can be travelled to; the others go on your compass.
+  for (const [id, c2] of Object.entries(G.cities)) {
+    const b = document.createElement('button'), found = G.found.has(id), name = CITY_NAME[id] || id;
+    b.className = 'pin' + (found ? ' found' : ' unfound');
+    b.style.left = `${(c2.center[0] / n) * 100}%`; b.style.top = `${(c2.center[1] / n) * 100}%`;
+    b.textContent = name;
+    b.title = found ? `Travel to ${name}` : `${name}: not visited yet. Click to put it on your compass, then walk there.`;
+    b.addEventListener('click', () => { if (!G.found.has(id)) { aimFor(name, c2.center[0], c2.center[1]); return; } travel(c2.center[0] + c2.R + 20, c2.center[1]); });
     pins.appendChild(b);
   }
   if (G.mj) {
@@ -4143,7 +4190,7 @@ function save() {
     for (const [i, b] of world.allEdits()) edits.push(i, b);
     const bag = new Inventory(); bag.slots = inv.slots.map((s) => s && { ...s });
     for (const d of drops) bag.add(d.id, d.n);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, map: world.mapId, home: G.camp.spawn, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, wv: WORLD_VERSION, n: world.n, map: world.mapId, home: G.camp.spawn, lands: G.lands || {}, edits, inv: bag.slots, p: [P.x, P.y, P.z, P.yaw, P.pitch], clock: G.clock, stars: G.stars, found: [...G.found], talked: [...G.talked], hunger: G.hunger, health: G.health, sel: selected, fp2: G.firstPerson, relics: [...G.relics], villagers: G.villagers, giftDay: G.giftDay, worn: G.worn, aim: G.aim || undefined, machines: machines ? machines.state() : undefined,
       animals: keptAnimals(), money: money.state() }));
   } catch (_) { /* storage may be off (private window): the game still plays */ }
 }
@@ -4865,6 +4912,19 @@ $('btnRestore').addEventListener('click', () => {
     setUpLaunch('Your older world is back. Press Continue to play it.');
   } catch (_) { setUpLaunch('Couldn\'t swap worlds: storage is full.'); }
 });
+// The world from before Polis World 2 is still in this browser, untouched. It can be saved as a file to keep.
+try { $('btnOldWorld').hidden = !localStorage.getItem(OLD_SAVE_KEY); } catch (_) { /* no storage */ }
+$('btnOldWorld').addEventListener('click', () => {
+  let text = null;
+  try { text = localStorage.getItem(OLD_SAVE_KEY); } catch (_) { /* no storage */ }
+  if (!text) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = `polis-world-first-world-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  setUpLaunch('Your first world was saved as a file in your Downloads. It also stays safe in this browser.');
+});
 setUpLaunch();
 { // (testing: ?debug&map=egypt&home=37000,30000 goes straight into the game)
   const q = new URLSearchParams(location.search);
@@ -5032,7 +5092,7 @@ function start() {
   for (let i = 0; src && i + 1 < src.length; i += 2) startEdits.set(src[i], src[i + 1]);
   world = new ChunkWorld(choice.map, startEdits);
   world.startWorkers(Math.min(3, Math.max(2, (navigator.hardwareConcurrency || 4) >> 1)));
-  G.placed = {}; G.cities = citiesOf(choice.map); G.camp = makeCamp(choice.home);
+  G.placed = {}; G.cities = citiesOf(choice.map); G.camp = makeCamp(choice.home); G.lands = (s0 && s0.lands) || {};
   G.relicSpots = []; G.canyon = null; G.wake = []; G.leo = null; G.mj = null; G.bank = null;
   scenery = createScenery({ scene, world, H, WL, isSolid: (x, y, z) => world.solid(x, y, z), isAir: (x, y, z) => world.get(x, y, z) === 0,
     groundY: (x, z) => world.groundY(x, z), lights: world.lights, glow: (b) => GLOW[b] > 0, skyOpen: (x, y, z) => world.skyOpen(x, y, z) });
@@ -5077,7 +5137,8 @@ function start() {
   machines = null; jungle = null; events = null;
   for (const [x, y, z] of G.wake || []) wakeWater(x, y, z);
   refreshHotbar(); refreshHud();
-  farland = null;   // (Polis World 2: a far land for the big maps is on its way)
+  farland = null;
+  try { far2 = createFarLand2({ mapId: choice.map, scene, holeNear: viewChunks * CS - 12 }); } catch (err) { console.warn('far land', err); far2 = null; }
   // Build the chunks right around you before showing the world.
   setLoading('Drawing the land…', 0.92);
   // Make the land right round you now (it's only a few chunks), so you never start standing on nothing.
@@ -5193,7 +5254,7 @@ function frame(now) {
     updateFx(dt); updateDrops(dt); updateParticles(dt); updateFurnaces(dt);
     updateMobs(dt); guardNests(dt); updateTravellers(dt); updateNpcs(dt); updateHerds(dt); updateCities(dt); updateDiscovery(dt); updateVillage(dt); updateMoney(dt);
     updateFlow(dt); updateSwimmers(dt); updateRelics(dt); updateDesign(dt); updateSpray(dt);
-    updateSurvival(dt); updateDaylight(dt);
+    updateSurvival(dt); updateDaylight(dt); updateCityVisits(dt);
     updateSound(dt); sound.tick();
     if (scenery) scenery.update(dt, { P, ...look });
     if (openPanel === 'inventory') dressPreview.render(dt);
@@ -5205,6 +5266,7 @@ function frame(now) {
     if (input.mode === 'desk' && !openPanel) { const a = aimFrom(); outline.visible = !!a.block; if (a.block) outline.position.set(a.block.x + 0.5, a.block.y + 0.5, a.block.z + 0.5); }
     else outline.visible = false;
     streamChunks(6);
+    if (far2) far2.update(P.x, P.z);
     hudT -= dt; if (hudT <= 0) { hudT = 0.5; refreshHud(); refreshPaused(); }
     saveTimer -= dt; if (saveTimer <= 0 || (saveSoon && saveTimer < 12)) { saveTimer = 15; saveSoon = false; save(); }
   }
